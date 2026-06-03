@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -26,6 +27,39 @@ import (
 
 const defaultPort = 7777
 
+// version is stamped at release-build time via
+// `-ldflags "-X main.version=v0.1.0"`. Dev builds fall back to the VCS
+// revision the Go toolchain embeds automatically.
+var version = "dev"
+
+// versionString returns the stamped release version, or "dev (<commit>)" when
+// built without ldflags (e.g. plain `go build` / `go run`).
+func versionString() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		var rev, dirty string
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				if s.Value == "true" {
+					dirty = "-dirty"
+				}
+			}
+		}
+		if rev != "" {
+			if len(rev) > 12 {
+				rev = rev[:12]
+			}
+			return "dev (" + rev + dirty + ")"
+		}
+	}
+	return version
+}
+
 func main() {
 	log.SetFlags(0)
 	if err := run(os.Args[1:]); err != nil {
@@ -35,16 +69,28 @@ func main() {
 }
 
 func run(args []string) error {
-	// Subcommand dispatch: `fabrika init` scaffolds a manifest.
-	if len(args) > 0 && args[0] == "init" {
-		return cmdInit()
+	// Subcommand dispatch: `fabrika init` scaffolds a manifest,
+	// `fabrika version` prints the build version.
+	if len(args) > 0 {
+		switch args[0] {
+		case "init":
+			return cmdInit()
+		case "version":
+			fmt.Println("fabrika " + versionString())
+			return nil
+		}
 	}
 
 	fs := flag.NewFlagSet("fabrika", flag.ContinueOnError)
 	port := fs.Int("port", defaultPort, "HTTP port for the UI/API")
 	noOpen := fs.Bool("no-open", false, "do not open the browser on start")
+	showVersion := fs.Bool("version", false, "print the version and exit")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *showVersion {
+		fmt.Println("fabrika " + versionString())
+		return nil
 	}
 
 	return cmdServe(*port, !*noOpen)
@@ -112,6 +158,7 @@ func cmdServe(port int, openBrowser bool) error {
 	}
 
 	url := "http://" + addr
+	log.Printf("fabrika: %s", versionString())
 	log.Printf("fabrika: project %q", cfg.Project.Name)
 	log.Printf("fabrika: global store  %s", filepath.Join(globalDir, "fabrika.db"))
 	log.Printf("fabrika: project store %s", filepath.Join(projectDir, "fabrika.db"))

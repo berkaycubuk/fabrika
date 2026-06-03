@@ -5,11 +5,13 @@ import { el } from "./dom.js";
 
 let overlay: HTMLElement | null = null;
 
-export function openModal(title: string, body: HTMLElement, opts: { wide?: boolean } = {}): void {
+export function openModal(title: string, body: HTMLElement, opts: { wide?: boolean; subtitle?: string } = {}): void {
   closeModal();
+  const heading: HTMLElement[] = [el("h2", {}, [title])];
+  if (opts.subtitle) heading.push(el("p", { class: "modal-sub muted" }, [opts.subtitle]));
   const panel = el("div", { class: "modal" + (opts.wide ? " wide" : "") }, [
     el("div", { class: "modal-head" }, [
-      el("h2", {}, [title]),
+      el("div", {}, heading),
       el("button", { class: "modal-x", title: "Close", onclick: closeModal }, ["✕"]),
     ]),
     el("div", { class: "modal-body" }, [body]),

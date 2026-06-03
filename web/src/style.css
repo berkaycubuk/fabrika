@@ -109,6 +109,7 @@ code { font-family: var(--mono); font-size: 12.5px; }
 .content { flex: 1; min-width: 0; padding: 28px 36px; max-width: 920px; height: 100vh; overflow-y: auto; }
 .view-header h1 { margin: 0 0 4px; font-size: 24px; }
 .muted { color: var(--muted); }
+.sm { font-size: 12.5px; }
 h1 + .muted, .view-header .muted { margin-top: 0; }
 
 /* Cards */
@@ -130,7 +131,6 @@ h1 + .muted, .view-header .muted { margin-top: 0; }
 .agent-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .avatar-preview { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .photo-row { display: flex; align-items: center; gap: 12px; }
-.photo-row input { flex: 1; }
 
 /* Forms */
 form.card { display: flex; flex-direction: column; gap: 12px; }
@@ -548,6 +548,7 @@ button.option:hover { border-color: var(--accent); }
   border-bottom: 1px solid var(--border);
 }
 .modal-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.modal-sub { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; }
 .modal-x { background: none; border: none; color: var(--muted); font-size: 15px; padding: 4px 8px; }
 .modal-x:hover { color: var(--text); border-color: transparent; }
 .modal-body { padding: 20px; }

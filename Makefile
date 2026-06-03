@@ -3,6 +3,11 @@
 # Installation prefix for `make install` (override with `make install PREFIX=...`).
 PREFIX ?= /usr/local
 
+# Version stamped into the binary (override for releases: `make build VERSION=v0.1.0`).
+# Defaults to `git describe` (nearest tag, or short hash before any tag exists).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X main.version=$(VERSION)
+
 all: build
 
 # Build the TypeScript UI into web/dist (embedded by go:embed).
@@ -11,7 +16,7 @@ web:
 
 # Build the self-contained binary (depends on the embedded web assets).
 build: web
-	go build -o fabrika ./cmd/fabrika
+	go build -ldflags "$(LDFLAGS)" -o fabrika ./cmd/fabrika
 
 # Build + run from the current repo.
 run: build

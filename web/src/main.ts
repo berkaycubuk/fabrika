@@ -5,6 +5,7 @@ import { el } from "./dom.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent } from "./views/board.js";
+import { renderFactory, onFactoryEvent } from "./views/factory.js";
 import type { FabrikaEvent } from "./types.js";
 
 interface Nav {
@@ -15,6 +16,7 @@ interface Nav {
 
 const NAV: Nav[] = [
   { id: "board", label: "Board", render: renderBoard },
+  { id: "factory", label: "Factory", render: renderFactory },
   { id: "agents", label: "Agents", render: renderAgents },
 ];
 
@@ -79,6 +81,7 @@ function main(): void {
     // board owns the human gates (refreshing on every event, including
     // task/plan), the factory views own the registry/metrics.
     onBoardEvent(e);
+    onFactoryEvent();
     if (e.type.startsWith("agent.")) onAgentEvent();
   }, {
     // Link is up — reflect it immediately, even before any event arrives.
@@ -88,6 +91,7 @@ function main(): void {
     onReconnect: () => {
       setConn("live");
       onBoardEvent();
+      onFactoryEvent();
       onAgentEvent();
     },
     onDisconnect: () => setConn("reconnecting"),

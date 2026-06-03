@@ -1,15 +1,15 @@
 // Board: the whole factory on one kanban. Columns run left to right along the
 // task lifecycle — the human gates (Approve, Decide, Accept, Audit) interleaved
 // with the in-flight stages (Ready, Running, Verifying, Merged). Gate columns
-// are marked "needs you"; click any card to act or steer. "Define" / "Create
-// task" seed work; "Settings" carries the autonomy controls + throughput that
-// used to live in the Engine room. (SPECS §10.)
+// are marked "needs you"; click any card to act or steer. "Define big task" /
+// "Create task" seed work; metrics + autonomy controls live in the Factory
+// view. (SPECS §10.)
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, BigTask, Evidence, Attempt, Comment, FabrikaEvent } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Comment, FabrikaEvent } from "../types.js";
 
 type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -28,7 +28,6 @@ const IN_FLIGHT = ["claimed", "running"];
 // planning, or planning errored. Planned/running/done big tasks move on.
 const PRE_PLAN = ["draft", "planning", "error"];
 const STEERABLE = ["ready", "claimed", "running", "blocked", "failed"];
-const BARS = ["var(--accent)", "var(--tan)", "var(--teal)", "var(--green)", "var(--amber)", "var(--red)"];
 
 export function renderBoard(root: HTMLElement): void {
   clear(root);
@@ -43,7 +42,6 @@ export function renderBoard(root: HTMLElement): void {
         ]),
       ]),
       el("div", { class: "header-actions" }, [
-        el("button", { onclick: openSettings }, ["Settings"]),
         // Hidden until pushStatus reports unpushed commits (see updatePushButton).
         el("button", {
           id: "push-btn",
@@ -51,7 +49,7 @@ export function renderBoard(root: HTMLElement): void {
           onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
         }, ["Push"]),
         el("button", { onclick: openCreateTask }, ["Create task"]),
-        el("button", { class: "primary", onclick: openDefine }, ["Define"]),
+        el("button", { class: "primary", onclick: openDefine }, ["Define big task"]),
       ]),
     ]),
     el("div", { id: "board-err", class: "form-error" }, []),
@@ -573,144 +571,6 @@ function steerRow(t: Task, agents: Agent[]): HTMLElement {
   ]);
 }
 
-// ── Settings (autonomy controls + throughput; was the Engine room) ─────────
-
-function openSettings(): void {
-  const body = el("div", { class: "detail" }, [el("p", { class: "muted" }, ["Loading…"])]);
-  openModal("Factory settings", body, { wide: true });
-  loadSettings(body);
-}
-
-async function loadSettings(body: HTMLElement): Promise<void> {
-  try {
-    const [m, agents] = await Promise.all([api.metrics(), api.listAgents()]);
-    clear(body);
-    const pct = (n: number) => `${Math.round(n * 100)}%`;
-    body.append(
-      el("div", { class: "section-h sm" }, ["Throughput"]),
-      el("div", { class: "stat-grid" }, [
-        stat("In flight", String(m.wip), m.wipCap > 0 ? `/ ${m.wipCap}` : undefined),
-        stat("Ready", String(m.ready)),
-        stat("In review", String(m.inReview)),
-        stat("Merged", String(m.merged)),
-      ]),
-      el("div", { class: "section-h sm" }, ["Trust + autonomy"]),
-      el("div", { class: "stat-grid" }, [
-        stat("Touches / unit", m.merged > 0 ? m.touchesPerUnit.toFixed(2) : "—"),
-        stat("Change-fail rate", m.merged > 0 ? pct(m.changeFailRate) : "—"),
-        stat("Auto-merged", m.merged > 0 ? String(m.autoMerged) : "0", m.merged > 0 ? `· ${pct(m.autoMergeShare)}` : undefined),
-        stat("Audit queue", String(m.auditQueue)),
-      ]),
-      autonomyControls(m),
-      el("div", { class: "section-h sm" }, ["Agents by share of work"]),
-      shareTable(m),
-    );
-    void agents;
-  } catch (e) {
-    clear(body);
-    body.append(el("p", { class: "form-error" }, [(e as Error).message]));
-  }
-}
-
-function autonomyControls(m: Metrics): HTMLElement {
-  const wip = el("input", { type: "number", min: "0", value: String(m.wipCap || 0), title: "0 = unlimited" }) as HTMLInputElement;
-  const setWip = el("form", {
-    class: "wip-cap",
-    onsubmit: (e: Event) => {
-      e.preventDefault();
-      saveSetting({ wip_cap: String(parseInt(wip.value, 10) || 0) });
-    },
-  }, [el("label", {}, ["WIP cap"]), wip, el("button", { class: "primary", type: "submit" }, ["Set"])]);
-
-  const rate = el("input", {
-    type: "number", min: "0", max: "1", step: "0.05",
-    value: String(m.auditRate ?? 0), title: "Fraction of auto-merges to sample for audit (0–1)",
-  }) as HTMLInputElement;
-  const mutation = el("input", { type: "checkbox", title: "Run mutation testing on green branches before auto-merge" }) as HTMLInputElement;
-  mutation.checked = m.mutationTesting;
-  mutation.onchange = () => saveSetting({ mutation_testing: mutation.checked ? "on" : "off" });
-
-  const setRate = el("form", {
-    class: "wip-cap",
-    onsubmit: (e: Event) => {
-      e.preventDefault();
-      saveSetting({ audit_rate: String(parseFloat(rate.value) || 0) });
-    },
-  }, [
-    el("label", {}, ["Audit rate"]),
-    rate,
-    el("button", { class: "primary", type: "submit" }, ["Set"]),
-    el("label", { class: "checkbox" }, [mutation, "mutation testing"]),
-  ]);
-
-  return el("div", { class: "metrics-bar", style: "margin-top:16px" }, [setWip, setRate]);
-}
-
-async function saveSetting(s: Record<string, string>): Promise<void> {
-  try {
-    await api.putSettings(s);
-    const body = document.querySelector(".modal-body .detail") as HTMLElement | null;
-    if (body) loadSettings(body);
-    refresh();
-  } catch (e) {
-    alert((e as Error).message);
-  }
-}
-
-function shareTable(m: Metrics): HTMLElement {
-  if (m.agents.length === 0) return el("p", { class: "share-empty" }, ["No agents registered."]);
-  const totalMerged = m.agents.reduce((s, a) => s + a.merged, 0);
-  const byLoad = totalMerged === 0;
-  // In-flight load counts both running tasks and active planning runs, so the
-  // planner doesn't read as idle while it's decomposing a big task.
-  const load = (a: AgentMetrics) => a.running + (a.planning ?? 0);
-  const weight = (a: AgentMetrics) => (byLoad ? load(a) : a.merged);
-  const total = m.agents.reduce((s, a) => s + weight(a), 0);
-  const ranked = [...m.agents].sort((x, y) => weight(y) - weight(x));
-
-  const tbody = el("tbody", {});
-  ranked.forEach((a, i) => {
-    const w = weight(a);
-    const share = total > 0 ? w / total : 0;
-    const planning = (a.planning ?? 0) > 0;
-    const busy = a.running > 0 || planning;
-    const pill = busy ? (a.running > 0 ? "working" : "planning") : "idle";
-    tbody.append(
-      el("tr", {}, [
-        el("td", { class: "who" }, [
-          el("span", { class: busy ? "pill busy" : "pill idle" }, [pill]),
-          " " + a.name,
-        ]),
-        el("td", {}, [
-          el("div", { class: "share-cell" }, [
-            el("div", { class: "share-track" }, [
-              el("div", { class: "share-fill", style: `width:${Math.max(share * 100, w > 0 ? 4 : 0)}%;background:${BARS[i % BARS.length]}` }, []),
-            ]),
-            el("span", { class: "share-pct" }, [`${Math.round(share * 100)}%`]),
-          ]),
-        ]),
-        el("td", { class: "num" }, [String(byLoad ? load(a) : a.merged)]),
-      ]),
-    );
-  });
-  return el("table", { class: "share-table" }, [
-    el("thead", {}, [
-      el("tr", {}, [
-        el("th", {}, ["Agent"]),
-        el("th", {}, [byLoad ? "Share of load" : "Share of work"]),
-        el("th", { class: "num" }, [byLoad ? "In flight" : "Shipped"]),
-      ]),
-    ]),
-    tbody,
-  ]);
-}
-
-function stat(label: string, value: string, unit?: string): HTMLElement {
-  const v = el("div", { class: "stat-value" }, [value]);
-  if (unit) v.append(el("span", { class: "unit" }, [` ${unit}`]));
-  return el("div", { class: "stat" }, [el("div", { class: "stat-label" }, [label]), v]);
-}
-
 // ── Define / Create-task forms ─────────────────────────────────────────────
 
 function openDefine(): void {
@@ -743,11 +603,12 @@ function openDefine(): void {
     field("Intent", intent),
     field("Images", el("div", { class: "attach-field" }, [attach.previews, ...attach.controls])),
     field("Constraints", constraints),
-    el("p", { class: "muted sm" }, ["A planner agent turns this into a plan that lands in Approve."]),
     err,
     el("div", { class: "form-actions" }, [el("button", { class: "primary", type: "submit" }, ["Define big task"])]),
   ]);
-  openModal("Define a big task", form);
+  openModal("Define a big task", form, {
+    subtitle: "Describe an outcome in plain intent — a planner agent decomposes it into tasks for your approval.",
+  });
 }
 
 function openCreateTask(): void {
@@ -795,7 +656,9 @@ function openCreateTask(): void {
     err,
     el("div", { class: "form-actions" }, [el("button", { class: "primary", type: "submit" }, ["Create task"])]),
   ]);
-  openModal("Create a task", form);
+  openModal("Create a task", form, {
+    subtitle: "One well-scoped change, routed straight to an implementer agent — no planner involved.",
+  });
 }
 
 // ── Shared bits ────────────────────────────────────────────────────────────

@@ -121,13 +121,17 @@ function agentForm(): HTMLElement {
     return { role: r, cb };
   });
 
-  const photoInput = el("input", { type: "file", accept: "image/*" }) as HTMLInputElement;
-  const photoPreview = el("img", { class: "avatar-preview" }) as HTMLImageElement;
+  // Hidden native picker behind a themed button; the preview doubles as the
+  // "current photo" indicator (default avatar when none is set).
+  const photoInput = el("input", { type: "file", accept: "image/*", class: "attach-file" }) as HTMLInputElement;
+  const photoPreview = el("img", { class: "avatar-preview", src: DEFAULT_AVATAR, alt: "" }) as HTMLImageElement;
+  const photoBtn = el("button", { type: "button", onclick: () => photoInput.click() }, ["Choose photo…"]);
+  const photoHint = el("span", { class: "muted sm" }, ["Optional — default avatar otherwise."]);
   let photoDataUrl = "";
 
   photoInput.addEventListener("change", () => {
     const file = photoInput.files?.[0];
-    if (!file) { photoPreview.src = ""; photoDataUrl = ""; return; }
+    if (!file) { photoPreview.src = DEFAULT_AVATAR; photoDataUrl = ""; return; }
     if (!file.type.startsWith("image/")) {
       err.textContent = "File must be an image.";
       photoInput.value = "";
@@ -145,6 +149,7 @@ function agentForm(): HTMLElement {
     reader.onload = () => {
       photoDataUrl = reader.result as string;
       photoPreview.src = photoDataUrl;
+      photoHint.textContent = file.name;
     };
     reader.readAsDataURL(file);
   });
@@ -199,7 +204,7 @@ function agentForm(): HTMLElement {
     ]),
     el("div", { class: "field" }, [
       el("label", {}, ["Photo"]),
-      el("div", { class: "photo-row" }, [photoInput, photoPreview]),
+      el("div", { class: "photo-row" }, [photoPreview, photoBtn, photoHint, photoInput]),
     ]),
     err,
     el("div", { class: "form-actions" }, [submitBtn]),
@@ -214,7 +219,8 @@ function agentForm(): HTMLElement {
     concurrency.value = "1";
     timeout.value = "20m";
     photoDataUrl = "";
-    photoPreview.src = "";
+    photoPreview.src = DEFAULT_AVATAR;
+    photoHint.textContent = "Optional — default avatar otherwise.";
     submitBtn.textContent = "Add agent";
   }
 
@@ -229,7 +235,8 @@ function agentForm(): HTMLElement {
     timeout.value = a.timeout;
     roleBoxes.forEach((b) => (b.cb.checked = a.roles?.includes(b.role) ?? false));
     photoDataUrl = a.photo || "";
-    photoPreview.src = photoDataUrl;
+    photoPreview.src = photoDataUrl || DEFAULT_AVATAR;
+    photoHint.textContent = photoDataUrl ? "Current photo." : "Optional — default avatar otherwise.";
     submitBtn.textContent = "Save changes";
     form.scrollIntoView({ behavior: "smooth" });
   };
