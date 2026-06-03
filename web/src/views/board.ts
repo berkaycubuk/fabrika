@@ -61,10 +61,23 @@ function colSkeleton(c: (typeof COLUMNS)[number]): HTMLElement {
   ]);
 }
 
+// Monotonic generation token: bumped at the start of every refresh() and
+// re-checked after the fetches resolve, so only the most recent in-flight
+// refresh is allowed to paint. Bursts of WebSocket events fan into several
+// overlapping refreshes; without this an earlier-started fetch could resolve
+// last and clobber fresher columns with stale data.
+let refreshGen = 0;
+// Debounce handle: rapid onBoardEvent()-driven refreshes collapse into one
+// refetch (a task moving ready→running→verifying→review emits several
+// task.updated events within a couple of seconds).
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+const REFRESH_DEBOUNCE_MS = 150;
+
 async function refresh(): Promise<void> {
   const board = document.getElementById("needs-board");
   if (!board) return;
   const errBox = document.getElementById("board-err");
+  const gen = ++refreshGen;
   try {
     const [plans, decisions, reviews, audits, tasks, agents] = await Promise.all([
       api.listPlans(),
@@ -74,6 +87,9 @@ async function refresh(): Promise<void> {
       api.listTasks(),
       api.listAgents(),
     ]);
+    // A newer refresh started while these fetches were in flight — discard
+    // our (now stale) results so we don't paint over fresher columns.
+    if (gen !== refreshGen) return;
     if (errBox) errBox.textContent = "";
     const auditIds = new Set(audits.map((a) => a.task.id));
     const byStatus = (s: string) => tasks.filter((t) => t.status === s);
@@ -87,6 +103,7 @@ async function refresh(): Promise<void> {
     fillColumn("audit", audits.map(auditCard));
     fillColumn("merged", byStatus("merged").filter((t) => !auditIds.has(t.id)).map((t) => taskCard(t, agents)));
   } catch (e) {
+    if (gen !== refreshGen) return;
     if (errBox) errBox.textContent = (e as Error).message;
   }
 }
@@ -638,7 +655,15 @@ async function act(fn: () => Promise<unknown>): Promise<void> {
 }
 
 // onBoardEvent refreshes the columns when any plan/decision/task/bigtask event
-// arrives, keeping the board live without a reload.
+// arrives, keeping the board live without a reload. Rapid bursts are coalesced
+// behind a short debounce so a single task churning through stages triggers one
+// refetch rather than half a dozen overlapping ones. (renderBoard() and act()
+// still call refresh() directly for an immediate, un-debounced paint.)
 export function onBoardEvent(): void {
-  if (document.getElementById("needs-board")) refresh();
+  if (!document.getElementById("needs-board")) return;
+  if (refreshTimer !== null) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    refresh();
+  }, REFRESH_DEBOUNCE_MS);
 }
