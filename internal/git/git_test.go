@@ -118,6 +118,113 @@ func TestWithCoAuthor(t *testing.T) {
 	}
 }
 
+func TestNormalizeCommitTrailers(t *testing.T) {
+	ctx := context.Background()
+	root := initRepo(t)
+
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+
+	// Record the base commit so we can prove it is left untouched.
+	baseHash := strings.TrimSpace(git("rev-parse", "main"))
+
+	// Branch off and make two commits; the second carries a foreign co-author
+	// trailer that the agent must strip.
+	git("checkout", "-q", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", ".")
+	git("commit", "-q", "-m", "first change")
+
+	if err := os.WriteFile(filepath.Join(root, "b.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", ".")
+	git("commit", "-q", "-m", "second change\n\nCo-Authored-By: SomeAgent <a@b.c>")
+	git("checkout", "-q", "main")
+
+	r, err := Open(ctx, root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := r.NormalizeCommitTrailers(ctx, "main", "feature"); err != nil {
+		t.Fatalf("NormalizeCommitTrailers: %v", err)
+	}
+
+	// Every commit unique to the branch must carry the fabrika trailer exactly
+	// once and no foreign co-author line.
+	hashes := strings.Fields(git("rev-list", "main..feature"))
+	if len(hashes) != 2 {
+		t.Fatalf("branch range has %d commits, want 2", len(hashes))
+	}
+	for _, h := range hashes {
+		body := git("log", "-1", "--format=%B", h)
+		if n := strings.Count(body, CoAuthorTrailer); n != 1 {
+			t.Fatalf("commit %s has fabrika trailer %d times, want 1:\n%s", h, n, body)
+		}
+		if strings.Contains(body, "SomeAgent") {
+			t.Fatalf("commit %s still contains foreign co-author:\n%s", h, body)
+		}
+		// No co-author line other than the single fabrika one.
+		var coAuthors int
+		for _, line := range strings.Split(body, "\n") {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "co-authored-by:") {
+				coAuthors++
+			}
+		}
+		if coAuthors != 1 {
+			t.Fatalf("commit %s has %d co-author lines, want 1:\n%s", h, coAuthors, body)
+		}
+	}
+
+	// Subjects must be preserved (rev-list lists newest first).
+	if subj := strings.TrimSpace(git("log", "-1", "--format=%s", "feature")); subj != "second change" {
+		t.Fatalf("tip subject = %q, want %q", subj, "second change")
+	}
+
+	// The base commit must be byte-for-byte unchanged.
+	if got := strings.TrimSpace(git("rev-parse", "main")); got != baseHash {
+		t.Fatalf("base commit changed: %s -> %s", baseHash, got)
+	}
+	if body := git("log", "-1", "--format=%B", "main"); strings.Contains(body, CoAuthorTrailer) {
+		t.Fatalf("base commit gained a fabrika trailer:\n%s", body)
+	}
+}
+
+func TestNormalizeCommitTrailersEmptyRange(t *testing.T) {
+	ctx := context.Background()
+	root := initRepo(t)
+
+	cmd := exec.Command("git", "branch", "feature")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git branch: %v\n%s", err, out)
+	}
+
+	r, err := Open(ctx, root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	// Branch points at base: empty range must no-op without error.
+	if err := r.NormalizeCommitTrailers(ctx, "main", "feature"); err != nil {
+		t.Fatalf("NormalizeCommitTrailers (empty range): %v", err)
+	}
+}
+
 func TestAddAllAndCommit(t *testing.T) {
 	ctx := context.Background()
 	root := initRepo(t)
