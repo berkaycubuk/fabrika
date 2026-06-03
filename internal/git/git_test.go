@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -93,6 +94,30 @@ func TestWorktreeAndDiff(t *testing.T) {
 	}
 }
 
+func TestCoAuthorTrailer(t *testing.T) {
+	const want = "Co-authored-by: fabrika <fabrika@berkaycubuk.com>"
+	if CoAuthorTrailer != want {
+		t.Fatalf("CoAuthorTrailer = %q, want %q", CoAuthorTrailer, want)
+	}
+}
+
+func TestWithCoAuthor(t *testing.T) {
+	msg := "capture agent work"
+	got := WithCoAuthor(msg)
+	want := msg + "\n\n" + CoAuthorTrailer
+	if got != want {
+		t.Fatalf("WithCoAuthor = %q, want %q", got, want)
+	}
+	// Idempotent: applying again must not duplicate the trailer.
+	again := WithCoAuthor(got)
+	if again != got {
+		t.Fatalf("WithCoAuthor not idempotent: %q", again)
+	}
+	if n := strings.Count(again, CoAuthorTrailer); n != 1 {
+		t.Fatalf("trailer appears %d times, want 1", n)
+	}
+}
+
 func TestAddAllAndCommit(t *testing.T) {
 	ctx := context.Background()
 	root := initRepo(t)
@@ -131,5 +156,17 @@ func TestAddAllAndCommit(t *testing.T) {
 	if len(files) != 1 || files[0] != "new.txt" {
 		t.Fatalf("changed files = %v", files)
 	}
+
+	// The commit AddAllAndCommit created must carry the fabrika trailer.
+	logCmd := exec.Command("git", "log", "-1", "--format=%B")
+	logCmd.Dir = wt
+	body, err := logCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v\n%s", err, body)
+	}
+	if !strings.Contains(string(body), CoAuthorTrailer) {
+		t.Fatalf("commit body missing co-author trailer:\n%s", body)
+	}
+
 	_ = r.RemoveWorktree(ctx, wt)
 }

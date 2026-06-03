@@ -15,6 +15,27 @@ import (
 	"strings"
 )
 
+// CoAuthorTrailer is the canonical co-author trailer line Fabrika appends to
+// commits it creates on an agent's behalf. The casing matches GitHub's
+// recognized "Co-authored-by:" trailer so the attribution renders in the UI.
+const CoAuthorTrailer = "Co-authored-by: fabrika <fabrika@berkaycubuk.com>"
+
+// WithCoAuthor returns msg with the fabrika co-author trailer appended in a
+// properly-formatted trailer block: a blank line separates the body from the
+// trailers. It is idempotent — if the trailer is already present, msg is
+// returned unchanged. This is co-author attribution only; it never alters the
+// author or committer identity of the commit.
+func WithCoAuthor(msg string) string {
+	if strings.Contains(msg, CoAuthorTrailer) {
+		return msg
+	}
+	trimmed := strings.TrimRight(msg, "\n")
+	if trimmed == "" {
+		return CoAuthorTrailer
+	}
+	return trimmed + "\n\n" + CoAuthorTrailer
+}
+
 // Repo is a handle to a git repository at Root.
 type Repo struct {
 	Root string
@@ -112,7 +133,7 @@ func (r *Repo) AddAllAndCommit(ctx context.Context, worktreeDir, msg string) (bo
 	if _, err := runIn(ctx, worktreeDir, "diff", "--cached", "--quiet"); err == nil {
 		return false, nil // nothing staged -> clean tree
 	}
-	if _, err := runIn(ctx, worktreeDir, "commit", "-m", msg); err != nil {
+	if _, err := runIn(ctx, worktreeDir, "commit", "-m", WithCoAuthor(msg)); err != nil {
 		return false, err
 	}
 	return true, nil
