@@ -105,6 +105,7 @@ func RenderPrompt(t model.Task, conventions []model.Convention) string {
 
 	b.WriteString("## Rules\n")
 	b.WriteString("- Make commits on this branch.\n")
+	b.WriteString("- On every commit, add the trailer `Co-authored-by: fabrika <fabrika@berkaycubuk.com>` and do not add yourself or any other `Co-authored-by` line.\n")
 	b.WriteString("- Do not edit locked test files listed above.\n")
 	fmt.Fprintf(&b, "- If you hit a question you cannot resolve, print a single line: `%s {\"question\":\"...\",\"options\":[\"...\"]}` and stop.\n", DecisionMarker)
 	return b.String()
