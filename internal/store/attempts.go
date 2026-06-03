@@ -22,8 +22,9 @@ func (r *AttemptRepo) Create(a *model.Attempt) error {
 		return err
 	}
 	_, err = r.db.Exec(
-		`INSERT INTO attempts (id, task_id, agent_id, result, evidence, log) VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO attempts (id, task_id, agent_id, result, evidence, log, input_tokens, output_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, a.TaskID, a.AgentID, a.Result, string(ev), a.Log,
+		a.Usage.InputTokens, a.Usage.OutputTokens, a.Usage.TotalTokens,
 	)
 	return err
 }
@@ -31,7 +32,7 @@ func (r *AttemptRepo) Create(a *model.Attempt) error {
 // LatestForTask returns the most recent attempt for a task, or ErrNotFound.
 func (r *AttemptRepo) LatestForTask(taskID string) (*model.Attempt, error) {
 	row := r.db.QueryRow(
-		`SELECT id, task_id, agent_id, result, evidence, log FROM attempts WHERE task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+		`SELECT id, task_id, agent_id, result, evidence, log, input_tokens, output_tokens, total_tokens FROM attempts WHERE task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
 		taskID,
 	)
 	return scanAttempt(row)
@@ -40,7 +41,7 @@ func (r *AttemptRepo) LatestForTask(taskID string) (*model.Attempt, error) {
 // ListForTask returns every attempt for a task, newest first.
 func (r *AttemptRepo) ListForTask(taskID string) ([]model.Attempt, error) {
 	rows, err := r.db.Query(
-		`SELECT id, task_id, agent_id, result, evidence, log FROM attempts WHERE task_id=? ORDER BY created_at DESC, rowid DESC`,
+		`SELECT id, task_id, agent_id, result, evidence, log, input_tokens, output_tokens, total_tokens FROM attempts WHERE task_id=? ORDER BY created_at DESC, rowid DESC`,
 		taskID,
 	)
 	if err != nil {
@@ -61,7 +62,8 @@ func (r *AttemptRepo) ListForTask(taskID string) ([]model.Attempt, error) {
 func scanAttempt(s scanner) (*model.Attempt, error) {
 	var a model.Attempt
 	var ev string
-	err := s.Scan(&a.ID, &a.TaskID, &a.AgentID, &a.Result, &ev, &a.Log)
+	err := s.Scan(&a.ID, &a.TaskID, &a.AgentID, &a.Result, &ev, &a.Log,
+		&a.Usage.InputTokens, &a.Usage.OutputTokens, &a.Usage.TotalTokens)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -72,4 +74,29 @@ func scanAttempt(s scanner) (*model.Attempt, error) {
 		_ = json.Unmarshal([]byte(ev), &a.Evidence)
 	}
 	return &a, nil
+}
+
+// TokensByAgent returns per-agent token totals summed across all attempts in
+// the project store, keyed by agent ID. Rows with an empty agent_id are skipped.
+func (r *AttemptRepo) TokensByAgent() (map[string]model.Usage, error) {
+	rows, err := r.db.Query(
+		`SELECT agent_id, SUM(input_tokens), SUM(output_tokens), SUM(total_tokens) FROM attempts GROUP BY agent_id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]model.Usage)
+	for rows.Next() {
+		var agentID string
+		var u model.Usage
+		if err := rows.Scan(&agentID, &u.InputTokens, &u.OutputTokens, &u.TotalTokens); err != nil {
+			return nil, err
+		}
+		if agentID == "" {
+			continue
+		}
+		out[agentID] = u
+	}
+	return out, rows.Err()
 }
