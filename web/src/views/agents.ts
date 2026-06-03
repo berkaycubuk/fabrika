@@ -38,6 +38,8 @@ const PROVIDER_MODELS: ModelOption[] = [
   { id: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
   { id: "deepseek/deepseek-chat", label: "DeepSeek Chat" },
   { id: "deepseek/deepseek-reasoner", label: "DeepSeek Reasoner" },
+  { id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+  { id: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
 ];
 
 const AGENT_KINDS: AgentKind[] = [
