@@ -23,7 +23,8 @@ func TestAgentRoundTrip(t *testing.T) {
 
 	a := &model.Agent{
 		Name:        "Claude Code",
-		Command:     "claude --prompt {prompt_file} --cwd {worktree}",
+		Command:     "claude --prompt {prompt_file} --cwd {worktree} --model {model}",
+		Model:       "claude-sonnet-4-6",
 		Roles:       []string{model.RoleImplementer, model.RolePlanner},
 		Tags:        []string{"go", "frontend"},
 		Concurrency: 2,
@@ -45,6 +46,9 @@ func TestAgentRoundTrip(t *testing.T) {
 	if got.Name != a.Name || got.Command != a.Command {
 		t.Fatalf("mismatch: %+v", got)
 	}
+	if got.Model != "claude-sonnet-4-6" {
+		t.Fatalf("model not round-tripped: %q", got.Model)
+	}
 	if len(got.Roles) != 2 || got.Roles[0] != model.RoleImplementer {
 		t.Fatalf("roles = %v", got.Roles)
 	}
@@ -63,12 +67,13 @@ func TestAgentRoundTrip(t *testing.T) {
 
 	// Update.
 	a.Name = "Claude Code v2"
+	a.Model = "claude-opus-4-8"
 	a.Enabled = true
 	if err := s.Agents.Update(a); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	got, _ = s.Agents.Get(a.ID)
-	if got.Name != "Claude Code v2" || !got.Enabled {
+	if got.Name != "Claude Code v2" || !got.Enabled || got.Model != "claude-opus-4-8" {
 		t.Fatalf("update not applied: %+v", got)
 	}
 

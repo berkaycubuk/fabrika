@@ -14,7 +14,7 @@ var ErrNotFound = errors.New("not found")
 // AgentRepo persists agent definitions in the global store.
 type AgentRepo struct{ db *sql.DB }
 
-const agentCols = `id, name, command, roles, tags, concurrency, timeout, max_attempts, enabled`
+const agentCols = `id, name, command, model, roles, tags, concurrency, timeout, max_attempts, enabled`
 
 // Create inserts a new agent, assigning an ID if absent.
 func (r *AgentRepo) Create(a *model.Agent) error {
@@ -28,8 +28,8 @@ func (r *AgentRepo) Create(a *model.Agent) error {
 		a.MaxAttempts = 1
 	}
 	_, err := r.db.Exec(
-		`INSERT INTO agents (`+agentCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.ID, a.Name, a.Command, jsonStrings(a.Roles), jsonStrings(a.Tags),
+		`INSERT INTO agents (`+agentCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.Name, a.Command, a.Model, jsonStrings(a.Roles), jsonStrings(a.Tags),
 		a.Concurrency, a.Timeout, a.MaxAttempts, boolToInt(a.Enabled),
 	)
 	return err
@@ -44,8 +44,8 @@ func (r *AgentRepo) Update(a *model.Agent) error {
 		a.MaxAttempts = 1
 	}
 	res, err := r.db.Exec(
-		`UPDATE agents SET name=?, command=?, roles=?, tags=?, concurrency=?, timeout=?, max_attempts=?, enabled=?, updated_at=datetime('now') WHERE id=?`,
-		a.Name, a.Command, jsonStrings(a.Roles), jsonStrings(a.Tags),
+		`UPDATE agents SET name=?, command=?, model=?, roles=?, tags=?, concurrency=?, timeout=?, max_attempts=?, enabled=?, updated_at=datetime('now') WHERE id=?`,
+		a.Name, a.Command, a.Model, jsonStrings(a.Roles), jsonStrings(a.Tags),
 		a.Concurrency, a.Timeout, a.MaxAttempts, boolToInt(a.Enabled), a.ID,
 	)
 	if err != nil {
@@ -103,7 +103,7 @@ func scanAgent(s scanner) (*model.Agent, error) {
 	var a model.Agent
 	var roles, tags string
 	var enabled int
-	err := s.Scan(&a.ID, &a.Name, &a.Command, &roles, &tags, &a.Concurrency, &a.Timeout, &a.MaxAttempts, &enabled)
+	err := s.Scan(&a.ID, &a.Name, &a.Command, &a.Model, &roles, &tags, &a.Concurrency, &a.Timeout, &a.MaxAttempts, &enabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

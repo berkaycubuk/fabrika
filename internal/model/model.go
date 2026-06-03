@@ -103,7 +103,8 @@ type Task struct {
 type Agent struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`        // "Claude Code", "Aider", "Reviewer-GPT"
-	Command     string   `json:"command"`     // template: substitutes {prompt_file} {worktree}
+	Command     string   `json:"command"`     // template: substitutes {prompt_file} {worktree} {model}
+	Model       string   `json:"model"`       // program-specific model id (e.g. "claude-sonnet-4-6"); empty = no explicit model
 	Roles       []string `json:"roles"`       // implementer|planner|reviewer
 	Tags        []string `json:"tags"`        // capability hints matched against Task.Tags
 	Concurrency int      `json:"concurrency"` // max tasks this agent runs at once
