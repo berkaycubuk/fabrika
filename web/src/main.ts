@@ -45,7 +45,23 @@ function sidebar(): HTMLElement {
   return el("aside", { class: "sidebar" }, [
     el("div", { class: "brand" }, ["fabrika"]),
     el("div", { class: "nav-group" }, NAV.map(navItem)),
+    el("div", { class: "conn-row" }, [
+      el("span", { id: "conn", class: "pill soon" }, ["connecting"]),
+    ]),
   ]);
+}
+
+// Reflects the live-event socket state in the sidebar pill.
+function setConn(state: "live" | "reconnecting"): void {
+  const conn = document.getElementById("conn");
+  if (!conn) return;
+  if (state === "live") {
+    conn.textContent = "live";
+    conn.className = "pill on";
+  } else {
+    conn.textContent = "reconnecting";
+    conn.className = "pill soon";
+  }
 }
 
 function main(): void {
@@ -58,16 +74,21 @@ function main(): void {
   go();
 
   connectEvents((e: FabrikaEvent) => {
-    const conn = document.getElementById("conn");
-    if (conn) {
-      conn.textContent = "live";
-      conn.className = "pill on";
-    }
+    setConn("live");
     // Every surface guards on its own DOM presence, so fan out broadly: the
     // board owns the human gates (refreshing on every event, including
     // task/plan), the factory views own the registry/metrics.
     onBoardEvent();
     if (e.type.startsWith("agent.")) onAgentEvent();
+  }, {
+    // The socket dropped and silently missed events; pull a full snapshot so
+    // the board doesn't sit stale until a manual reload.
+    onReconnect: () => {
+      setConn("live");
+      onBoardEvent();
+      onAgentEvent();
+    },
+    onDisconnect: () => setConn("reconnecting"),
   });
 }
 

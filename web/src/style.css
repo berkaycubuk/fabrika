@@ -75,6 +75,10 @@ code { font-family: var(--mono); font-size: 12.5px; }
   letter-spacing: 0.5px;
   padding: 4px 8px 8px;
 }
+.conn-row {
+  margin-top: auto;
+  padding: 4px 8px;
+}
 .nav-group-label {
   font-size: 11px;
   text-transform: uppercase;
