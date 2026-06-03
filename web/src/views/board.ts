@@ -103,7 +103,7 @@ async function refresh(): Promise<void> {
     // (or stalls). Once planned, the proposed Plan takes over in Approve; once
     // running/done its tasks carry it forward — so only draft/planning/error
     // land here.
-    fillColumn("planning", bigTasks.filter((b) => PRE_PLAN.includes(b.status)).map(bigTaskCard));
+    fillColumn("planning", bigTasks.filter((b) => PRE_PLAN.includes(b.status)).map((b) => bigTaskCard(b, agents)));
     fillColumn("approve", plans.filter((p) => p.status === "proposed").map(planCard));
     fillColumn("decide", decisions.map(decideCard));
     fillColumn("ready", byStatus("ready").map((t) => taskCard(t, agents)));
@@ -149,20 +149,27 @@ function planCard(p: Plan): HTMLElement {
 // bigTaskCard surfaces a submitted big task while it's being planned (or after
 // planning errored), so a Define submission is visible immediately instead of
 // silently churning in the background. The status pill carries the live state;
-// errored cards read red and open to the failure reason.
-function bigTaskCard(b: BigTask): HTMLElement {
+// errored cards read red and open to the failure reason. When a planner agent is
+// assigned, its name appears on the card as well.
+function bigTaskCard(b: BigTask, agents: Agent[]): HTMLElement {
+  const meta: (Node | string)[] = [];
   const label = b.status === "planning" ? "planning…" : b.status;
-  return card(b.title, [el("span", { class: `pill status-${b.status}` }, [label])], () => openBigTaskDetail(b));
+  meta.push(el("span", { class: `pill status-${b.status}` }, [label]));
+  if (b.status === "planning" && b.plannerAgentId) {
+    meta.push(el("span", { class: "tag agent" }, [agentName(agents, b.plannerAgentId)]));
+  }
+  return card(b.title, meta, () => openBigTaskDetail(b, agents));
 }
 
-function openBigTaskDetail(b: BigTask): void {
+function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
   const children: (Node | string)[] = [
     el("div", { class: "card-meta" }, [el("span", { class: `pill status-${b.status}` }, [b.status])]),
     b.intent ? el("p", { class: "card-spec" }, [b.intent]) : el("span", {}),
   ];
   for (const c of b.constraints ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
   if (b.status === "planning") {
-    children.push(el("p", { class: "muted sm" }, ["A planner agent is decomposing this into a plan — it'll land in Approve when ready."]));
+    const who = b.plannerAgentId ? ` ${agentName(agents, b.plannerAgentId)} is` : "A planner agent is";
+    children.push(el("p", { class: "muted sm" }, [`${who} decomposing this into a plan — it'll land in Approve when ready.`]));
   } else if (b.status === "draft") {
     children.push(el("p", { class: "muted sm" }, ["Queued for planning."]));
   } else if (b.status === "error") {

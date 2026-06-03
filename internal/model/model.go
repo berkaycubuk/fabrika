@@ -57,13 +57,14 @@ const (
 
 // BigTask is an outcome the human defines; the planner turns it into Tasks.
 type BigTask struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`       // outcome statement
-	Intent      string   `json:"intent"`      // the why + desired outcome
-	Constraints []string `json:"constraints"` // e.g. "PCI-compliant", "works on mobile"
-	RepoPath    string   `json:"repoPath"`
-	Status      string   `json:"status"` // draft|planning|planned|running|done|error
-	Error       string   `json:"error"`  // failure reason when Status == error; cleared on retry
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`       // outcome statement
+	Intent          string   `json:"intent"`      // the why + desired outcome
+	Constraints     []string `json:"constraints"` // e.g. "PCI-compliant", "works on mobile"
+	RepoPath        string   `json:"repoPath"`
+	Status          string   `json:"status"`          // draft|planning|planned|running|done|error
+	Error           string   `json:"error"`           // failure reason when Status == error; cleared on retry
+	PlannerAgentID  string   `json:"plannerAgentId"`  // which registered planner agent is decomposing this
 }
 
 // Plan is a proposed decomposition of a BigTask into Tasks.
