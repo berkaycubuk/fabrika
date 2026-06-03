@@ -47,11 +47,12 @@ func Passthrough(bt model.BigTask) model.Plan {
 		Status:    model.PlanProposed,
 		Tasks: []model.Task{
 			{
-				BigTaskID: bt.ID,
-				Title:     bt.Title,
-				Spec:      bt.Intent,
-				Status:    model.TaskReady,
-				RiskTier:  model.RiskLow,
+				BigTaskID:   bt.ID,
+				Title:       bt.Title,
+				Spec:        bt.Intent,
+				Attachments: bt.Attachments,
+				Status:      model.TaskReady,
+				RiskTier:    model.RiskLow,
 			},
 		},
 	}
@@ -61,7 +62,8 @@ func Passthrough(bt model.BigTask) model.Plan {
 // conventions, the output JSON schema, and an instruction to write the plan to
 // planFile. The planner authors the acceptance contract (verify commands, locked
 // globs, held-out checks) — the implementer never sees held-out checks.
-func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile string) string {
+// attachments are local paths to images attached when the big task was defined.
+func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile string, attachments []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Plan this work: %s\n\n", bt.Title)
 	if bt.Intent != "" {
@@ -71,6 +73,13 @@ func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile str
 		b.WriteString("## Constraints\n")
 		for _, c := range bt.Constraints {
 			fmt.Fprintf(&b, "  - %s\n", c)
+		}
+		b.WriteString("\n")
+	}
+	if len(attachments) > 0 {
+		b.WriteString("## Attached images\nThe big task includes these image files — read them for context (mockups, screenshots, diagrams):\n")
+		for _, p := range attachments {
+			fmt.Fprintf(&b, "  - %s\n", p)
 		}
 		b.WriteString("\n")
 	}

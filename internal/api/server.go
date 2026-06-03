@@ -18,18 +18,19 @@ import (
 
 // Server holds the dependencies shared across handlers.
 type Server struct {
-	store  *store.Store
-	cfg    *config.Config
-	hub    *Hub
-	web    fs.FS // embedded static UI assets (may be nil in tests)
-	engine *engine.Engine
+	store    *store.Store
+	cfg      *config.Config
+	hub      *Hub
+	web      fs.FS  // embedded static UI assets (may be nil in tests)
+	repoRoot string // project root; uploads live under <repoRoot>/.fabrika/uploads
+	engine   *engine.Engine
 }
 
 // NewServer constructs a Server and its engine. cfg + repoRoot configure the
 // dispatch loop; web is the embedded UI filesystem (nil disables static
 // serving). The engine emits UI events through the WebSocket hub.
 func NewServer(s *store.Store, cfg *config.Config, repoRoot string, web fs.FS) *Server {
-	srv := &Server{store: s, cfg: cfg, hub: newHub(), web: web}
+	srv := &Server{store: s, cfg: cfg, hub: newHub(), web: web, repoRoot: repoRoot}
 	srv.engine = engine.New(s, cfg, repoRoot, func(t string, p any) {
 		srv.hub.Broadcast(Event{Type: t, Payload: p})
 	})
@@ -59,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	mux.HandleFunc("GET /api/tasks/{id}/comments", s.listComments)
 	mux.HandleFunc("POST /api/tasks/{id}/comments", s.createComment)
+	mux.HandleFunc("POST /api/uploads", s.createUpload)
+	mux.HandleFunc("GET /api/uploads/{name}", s.getUpload)
 	mux.HandleFunc("GET /api/bigtasks", s.listBigTasks)
 	mux.HandleFunc("POST /api/bigtasks", s.createBigTask)
 

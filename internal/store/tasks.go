@@ -12,7 +12,7 @@ import (
 // BigTaskRepo persists BigTasks in the per-project store.
 type BigTaskRepo struct{ db *sql.DB }
 
-const bigTaskCols = `id, title, intent, constraints, repo_path, status, error, planner_agent_id`
+const bigTaskCols = `id, title, intent, constraints, attachments, repo_path, status, error, planner_agent_id`
 
 // Create inserts a BigTask, assigning an ID and default status if absent.
 func (r *BigTaskRepo) Create(b *model.BigTask) error {
@@ -23,8 +23,8 @@ func (r *BigTaskRepo) Create(b *model.BigTask) error {
 		b.Status = model.BigTaskDraft
 	}
 	_, err := r.db.Exec(
-		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), b.RepoPath, b.Status, b.Error, b.PlannerAgentID,
+		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), jsonStrings(b.Attachments), b.RepoPath, b.Status, b.Error, b.PlannerAgentID,
 	)
 	return err
 }
@@ -32,17 +32,11 @@ func (r *BigTaskRepo) Create(b *model.BigTask) error {
 // Get returns a BigTask by ID.
 func (r *BigTaskRepo) Get(id string) (*model.BigTask, error) {
 	row := r.db.QueryRow(`SELECT `+bigTaskCols+` FROM bigtasks WHERE id=?`, id)
-	var b model.BigTask
-	var constraints string
-	err := row.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error, &b.PlannerAgentID)
+	b, err := scanBigTask(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	if err != nil {
-		return nil, err
-	}
-	b.Constraints = scanStrings(constraints)
-	return &b, nil
+	return b, err
 }
 
 // List returns all BigTasks newest-first.
@@ -54,15 +48,25 @@ func (r *BigTaskRepo) List() ([]model.BigTask, error) {
 	defer rows.Close()
 	var out []model.BigTask
 	for rows.Next() {
-		var b model.BigTask
-		var constraints string
-		if err := rows.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error, &b.PlannerAgentID); err != nil {
+		b, err := scanBigTask(rows)
+		if err != nil {
 			return nil, err
 		}
-		b.Constraints = scanStrings(constraints)
-		out = append(out, b)
+		out = append(out, *b)
 	}
 	return out, rows.Err()
+}
+
+func scanBigTask(s scanner) (*model.BigTask, error) {
+	var b model.BigTask
+	var constraints, attachments string
+	err := s.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &attachments, &b.RepoPath, &b.Status, &b.Error, &b.PlannerAgentID)
+	if err != nil {
+		return nil, err
+	}
+	b.Constraints = scanStrings(constraints)
+	b.Attachments = scanStrings(attachments)
+	return &b, nil
 }
 
 // SetPlannerAgent records which planner agent is working on a big task.
@@ -97,7 +101,7 @@ func (r *BigTaskRepo) SetError(id, reason string) error {
 // TaskRepo persists Tasks in the per-project store.
 type TaskRepo struct{ db *sql.DB }
 
-const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, risk_tier, priority, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted`
+const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, attachments, risk_tier, priority, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted`
 
 // Create inserts a Task, assigning an ID and defaults if absent.
 func (r *TaskRepo) Create(t *model.Task) error {
@@ -118,9 +122,9 @@ func (r *TaskRepo) Create(t *model.Task) error {
 		return err
 	}
 	_, err = r.db.Exec(
-		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.BigTaskID, t.Title, t.Spec, string(acc),
-		jsonStrings(t.DependsOn), jsonStrings(t.TouchPaths), jsonStrings(t.Tags),
+		jsonStrings(t.DependsOn), jsonStrings(t.TouchPaths), jsonStrings(t.Tags), jsonStrings(t.Attachments),
 		t.RiskTier, t.Priority, t.Status, t.Branch, t.AgentID, t.PreferredAgentID,
 		boolToInt(t.AutoMerged), boolToInt(t.AuditFlagged), boolToInt(t.Reverted),
 	)
@@ -267,9 +271,9 @@ func (r *TaskRepo) SetReverted(id string) error {
 
 func scanTask(s scanner) (*model.Task, error) {
 	var t model.Task
-	var acc, dependsOn, touchPaths, tags string
+	var acc, dependsOn, touchPaths, tags, attachments string
 	var autoMerged, auditFlagged, reverted int
-	err := s.Scan(&t.ID, &t.BigTaskID, &t.Title, &t.Spec, &acc, &dependsOn, &touchPaths, &tags,
+	err := s.Scan(&t.ID, &t.BigTaskID, &t.Title, &t.Spec, &acc, &dependsOn, &touchPaths, &tags, &attachments,
 		&t.RiskTier, &t.Priority, &t.Status, &t.Branch, &t.AgentID, &t.PreferredAgentID,
 		&autoMerged, &auditFlagged, &reverted)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -284,6 +288,7 @@ func scanTask(s scanner) (*model.Task, error) {
 	t.DependsOn = scanStrings(dependsOn)
 	t.TouchPaths = scanStrings(touchPaths)
 	t.Tags = scanStrings(tags)
+	t.Attachments = scanStrings(attachments)
 	t.AutoMerged = autoMerged != 0
 	t.AuditFlagged = auditFlagged != 0
 	t.Reverted = reverted != 0

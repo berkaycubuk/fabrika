@@ -131,7 +131,7 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 
 	planFile := filepath.Join(wt, planFileName)
 	conventions, _ := e.store.Conventions.List()
-	prompt := planner.RenderPrompt(bt, conventions, planFile)
+	prompt := planner.RenderPrompt(bt, conventions, planFile, e.attachmentPaths(bt.Attachments))
 	promptFile, cleanup, err := writeTempPrompt(prompt)
 	if err != nil {
 		e.failBigTask(bt.ID, "write planner prompt: %v", err)

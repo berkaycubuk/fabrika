@@ -478,6 +478,27 @@ button.option:hover { border-color: var(--accent); }
 .comment-body { font-size: 13px; color: var(--text); white-space: pre-wrap; }
 .comment-empty { padding: 4px 0; }
 .comment-compose { display: flex; flex-direction: column; gap: 8px; }
+/* Image attachments (comments, task/big-task creation + detail) */
+.attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.attachments:empty { display: none; }
+.attach-thumb {
+  max-width: 160px;
+  max-height: 120px;
+  display: block;
+  border: 1px solid var(--border);
+  object-fit: cover;
+}
+.attach-pending { position: relative; }
+.attach-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0 6px;
+  line-height: 18px;
+  font-size: 13px;
+}
+.attach-file { display: none; }
+.attach-field { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .assign-select { font-size: 12px; padding: 6px 8px; flex: 1; }
 .detail .stat-grid { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
 .detail .share-table { margin-top: 0; }

@@ -80,12 +80,20 @@ func RenderCommand(template, promptFile, worktree, model string) string {
 
 // RenderPrompt builds the prompt file contents for a task run: the spec, the
 // acceptance contract, relevant conventions, and the standing run rules. The
-// implementing agent must not edit locked test files.
-func RenderPrompt(t model.Task, conventions []model.Convention) string {
+// implementing agent must not edit locked test files. attachments are local
+// paths to images attached at task creation (mockups, screenshots).
+func RenderPrompt(t model.Task, conventions []model.Convention, attachments []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task: %s\n\n", t.Title)
 	if t.Spec != "" {
 		fmt.Fprintf(&b, "## Specification\n%s\n\n", t.Spec)
+	}
+	if len(attachments) > 0 {
+		b.WriteString("## Attached images\nThe task includes these image files — read them for context (mockups, screenshots, diagrams):\n")
+		for _, p := range attachments {
+			fmt.Fprintf(&b, "  - %s\n", p)
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("## Acceptance (machine-verified — do not weaken)\n")

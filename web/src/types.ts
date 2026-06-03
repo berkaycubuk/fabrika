@@ -31,6 +31,7 @@ export interface Task {
   dependsOn: string[];
   touchPaths: string[];
   tags: string[];
+  attachments: string[];
   riskTier: string;
   priority: string;
   status: string;
@@ -74,6 +75,7 @@ export interface BigTask {
   title: string;
   intent: string;
   constraints: string[];
+  attachments: string[];
   repoPath: string;
   status: string; // draft|planning|planned|running|done|error
   error: string; // failure reason when status === "error"
@@ -141,6 +143,7 @@ export interface Comment {
   authorType: string;
   authorId: string;
   body: string;
+  attachments: string[];
   createdAt: string;
 }
 

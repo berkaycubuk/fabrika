@@ -55,6 +55,12 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "title is required")
 		return
 	}
+	for _, a := range t.Attachments {
+		if !isUploadURL(a) {
+			writeErr(w, http.StatusBadRequest, "invalid attachment URL: "+a)
+			return
+		}
+	}
 	t.ID = ""
 	// Derive the risk tier from the paths the task will touch (manifest [risk]
 	// globs) unless the caller pinned one explicitly. Drives per-tier routing
@@ -99,6 +105,12 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 	if bt.Title == "" {
 		writeErr(w, http.StatusBadRequest, "title is required")
 		return
+	}
+	for _, a := range bt.Attachments {
+		if !isUploadURL(a) {
+			writeErr(w, http.StatusBadRequest, "invalid attachment URL: "+a)
+			return
+		}
 	}
 	// Preflight the repo synchronously so a missing initial commit (or non-repo)
 	// surfaces here as a clear 400, instead of failing silently in the async

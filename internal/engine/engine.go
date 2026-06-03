@@ -338,6 +338,21 @@ func depsSatisfied(t model.Task, byID map[string]model.Task) bool {
 	return true
 }
 
+// attachmentPaths maps stored upload URLs (/api/uploads/<name>) to the absolute
+// files under <repoRoot>/.fabrika/uploads so agent prompts can reference images
+// on disk. Malformed entries are skipped (creation already validated them).
+func (e *Engine) attachmentPaths(urls []string) []string {
+	var out []string
+	for _, u := range urls {
+		name, ok := strings.CutPrefix(u, "/api/uploads/")
+		if !ok || name == "" || strings.ContainsAny(name, `/\`) {
+			continue
+		}
+		out = append(out, filepath.Join(e.repoRoot, ".fabrika", "uploads", name))
+	}
+	return out
+}
+
 // pathsOverlap reports whether any path in a equals or contains (or is contained
 // by) any path in b, treating entries as path prefixes.
 func pathsOverlap(a, b []string) bool {
@@ -361,7 +376,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 
 	// Render the prompt to a temp file the agent command can read.
 	conventions, _ := e.store.Conventions.List()
-	promptFile, cleanup, err := writeTempPrompt(agent.RenderPrompt(task, conventions))
+	promptFile, cleanup, err := writeTempPrompt(agent.RenderPrompt(task, conventions, e.attachmentPaths(task.Attachments)))
 	if err != nil {
 		log.Printf("engine: write prompt: %v", err)
 		e.finish(task, ag, model.Evidence{}, model.ResultFail, "write prompt: "+err.Error(), model.TaskFailed)

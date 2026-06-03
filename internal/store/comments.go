@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/google/uuid"
@@ -19,16 +20,20 @@ func (r *CommentRepo) Create(c *model.Comment) error {
 	if c.AuthorType == "" {
 		c.AuthorType = "user"
 	}
+	attachments, err := json.Marshal(emptyIfNil(c.Attachments))
+	if err != nil {
+		return err
+	}
 	if c.CreatedAt != "" {
 		_, err := r.db.Exec(
-			`INSERT INTO comments (id, task_id, author_type, author_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			c.ID, c.TaskID, c.AuthorType, c.AuthorID, c.Body, c.CreatedAt,
+			`INSERT INTO comments (id, task_id, author_type, author_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			c.ID, c.TaskID, c.AuthorType, c.AuthorID, c.Body, string(attachments), c.CreatedAt,
 		)
 		return err
 	}
-	_, err := r.db.Exec(
-		`INSERT INTO comments (id, task_id, author_type, author_id, body) VALUES (?, ?, ?, ?, ?)`,
-		c.ID, c.TaskID, c.AuthorType, c.AuthorID, c.Body,
+	_, err = r.db.Exec(
+		`INSERT INTO comments (id, task_id, author_type, author_id, body, attachments) VALUES (?, ?, ?, ?, ?, ?)`,
+		c.ID, c.TaskID, c.AuthorType, c.AuthorID, c.Body, string(attachments),
 	)
 	return err
 }
@@ -36,7 +41,7 @@ func (r *CommentRepo) Create(c *model.Comment) error {
 // ListForTask returns every comment for a task, oldest first.
 func (r *CommentRepo) ListForTask(taskID string) ([]model.Comment, error) {
 	rows, err := r.db.Query(
-		`SELECT id, task_id, author_type, author_id, body, created_at FROM comments WHERE task_id=? ORDER BY created_at ASC, id ASC`,
+		`SELECT id, task_id, author_type, author_id, body, attachments, created_at FROM comments WHERE task_id=? ORDER BY created_at ASC, id ASC`,
 		taskID,
 	)
 	if err != nil {
@@ -56,8 +61,19 @@ func (r *CommentRepo) ListForTask(taskID string) ([]model.Comment, error) {
 
 func scanComment(s scanner) (*model.Comment, error) {
 	var c model.Comment
-	if err := s.Scan(&c.ID, &c.TaskID, &c.AuthorType, &c.AuthorID, &c.Body, &c.CreatedAt); err != nil {
+	var attachments string
+	if err := s.Scan(&c.ID, &c.TaskID, &c.AuthorType, &c.AuthorID, &c.Body, &attachments, &c.CreatedAt); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(attachments), &c.Attachments); err != nil {
 		return nil, err
 	}
 	return &c, nil
+}
+
+func emptyIfNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

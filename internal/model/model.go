@@ -61,6 +61,7 @@ type BigTask struct {
 	Title           string   `json:"title"`       // outcome statement
 	Intent          string   `json:"intent"`      // the why + desired outcome
 	Constraints     []string `json:"constraints"` // e.g. "PCI-compliant", "works on mobile"
+	Attachments     []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
 	RepoPath        string   `json:"repoPath"`
 	Status          string   `json:"status"`          // draft|planning|planned|running|done|error
 	Error           string   `json:"error"`           // failure reason when Status == error; cleared on retry
@@ -83,9 +84,10 @@ type Task struct {
 	Title            string   `json:"title"`
 	Spec             string   `json:"spec"`       // what to build, where, constraints
 	Acceptance       Contract `json:"acceptance"` // machine-verifiable; not authored by the implementer
-	DependsOn        []string `json:"dependsOn"`  // task IDs
-	TouchPaths       []string `json:"touchPaths"` // files/dirs it will touch
-	Tags             []string `json:"tags"`       // capability hints for routing
+	DependsOn        []string `json:"dependsOn"`   // task IDs
+	TouchPaths       []string `json:"touchPaths"`  // files/dirs it will touch
+	Tags             []string `json:"tags"`        // capability hints for routing
+	Attachments      []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
 	RiskTier         string   `json:"riskTier"`   // low|medium|high
 	Priority         string   `json:"priority"`   // low|medium|high (human-set ordering hint)
 	Status           string   `json:"status"`     // ready|claimed|running|verifying|review|merged|blocked|failed
@@ -165,12 +167,13 @@ type Decision struct {
 
 // Comment is a note on a Task, authored by a human or an agent.
 type Comment struct {
-	ID         string `json:"id"`
-	TaskID     string `json:"taskId"`
-	AuthorType string `json:"authorType"` // user|agent
-	AuthorID   string `json:"authorId"`   // agent id; empty for user
-	Body       string `json:"body"`
-	CreatedAt  string `json:"createdAt"`
+	ID          string   `json:"id"`
+	TaskID      string   `json:"taskId"`
+	AuthorType  string   `json:"authorType"` // user|agent
+	AuthorID    string   `json:"authorId"`   // agent id; empty for user
+	Body        string   `json:"body"`
+	Attachments []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
+	CreatedAt   string   `json:"createdAt"`
 }
 
 // Convention is standing context injected into future specs + agent runs.

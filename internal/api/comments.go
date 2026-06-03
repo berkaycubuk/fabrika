@@ -33,22 +33,30 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Body string `json:"body"`
+		Body        string   `json:"body"`
+		Attachments []string `json:"attachments"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	trimmed := strings.TrimSpace(body.Body)
-	if trimmed == "" {
-		writeErr(w, http.StatusBadRequest, "body is required")
+	if trimmed == "" && len(body.Attachments) == 0 {
+		writeErr(w, http.StatusBadRequest, "body or attachments required")
 		return
 	}
+	for _, a := range body.Attachments {
+		if !isUploadURL(a) {
+			writeErr(w, http.StatusBadRequest, "invalid attachment URL: "+a)
+			return
+		}
+	}
 	comment := model.Comment{
-		TaskID:     id,
-		AuthorType: "user",
-		AuthorID:   "",
-		Body:       trimmed,
+		TaskID:      id,
+		AuthorType:  "user",
+		AuthorID:    "",
+		Body:        trimmed,
+		Attachments: body.Attachments,
 	}
 	if err := s.store.Comments.Create(&comment); err != nil {
 		mapStoreErr(w, err)

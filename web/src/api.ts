@@ -36,11 +36,29 @@ export const api = {
   getTask: (id: string) => req<{ task: Task; attempts: Attempt[] }>("GET", `/api/tasks/${id}`),
   createTask: (t: Partial<Task>) => req<Task>("POST", "/api/tasks", t),
   listComments: (id: string) => req<Comment[]>("GET", `/api/tasks/${id}/comments`),
-  addComment: (id: string, body: string) => req<Comment>("POST", `/api/tasks/${id}/comments`, { body }),
+  addComment: (id: string, body: string, attachments: string[] = []) =>
+    req<Comment>("POST", `/api/tasks/${id}/comments`, { body, attachments }),
+  uploadImage: async (file: File): Promise<string> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/uploads", { method: "POST", body: form });
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`;
+      try {
+        const j = await res.json();
+        if (j && j.error) msg = j.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    const { url } = (await res.json()) as { url: string };
+    return url;
+  },
 
   // BigTask (define)
   listBigTasks: () => req<BigTask[]>("GET", "/api/bigtasks"),
-  createBigTask: (b: { title: string; intent: string; constraints?: string[] }) =>
+  createBigTask: (b: { title: string; intent: string; constraints?: string[]; attachments?: string[] }) =>
     req<BigTask>("POST", "/api/bigtasks", b),
 
   // Plans (approve flow, Phase 2)

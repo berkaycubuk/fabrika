@@ -33,8 +33,15 @@ func TestRenderCommandModel(t *testing.T) {
 }
 
 func TestRenderPromptCoAuthor(t *testing.T) {
-	out := RenderPrompt(model.Task{Title: "x"}, nil)
+	out := RenderPrompt(model.Task{Title: "x"}, nil, nil)
 	if !strings.Contains(out, "Co-authored-by: fabrika <fabrika@berkaycubuk.com>") {
 		t.Fatalf("RenderPrompt output missing fabrika co-author instruction:\n%s", out)
+	}
+}
+
+func TestRenderPromptAttachments(t *testing.T) {
+	out := RenderPrompt(model.Task{Title: "x"}, nil, []string{"/repo/.fabrika/uploads/a.png"})
+	if !strings.Contains(out, "## Attached images") || !strings.Contains(out, "/repo/.fabrika/uploads/a.png") {
+		t.Fatalf("RenderPrompt output missing attachment paths:\n%s", out)
 	}
 }

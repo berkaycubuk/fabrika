@@ -93,8 +93,8 @@ func TestBuildResolvesDepsAndDefaults(t *testing.T) {
 
 func TestRenderPromptIncludesSchemaAndPlanFile(t *testing.T) {
 	bt := model.BigTask{Title: "X", Intent: "do x", Constraints: []string{"fast"}}
-	p := RenderPrompt(bt, []model.Convention{{Rule: "use tabs"}}, "/tmp/plan.json")
-	for _, want := range []string{"do x", "fast", "use tabs", "/tmp/plan.json", "verifyCmds", "dependsOn"} {
+	p := RenderPrompt(bt, []model.Convention{{Rule: "use tabs"}}, "/tmp/plan.json", []string{"/repo/.fabrika/uploads/a.png"})
+	for _, want := range []string{"do x", "fast", "use tabs", "/tmp/plan.json", "verifyCmds", "dependsOn", "/repo/.fabrika/uploads/a.png"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("prompt missing %q", want)
 		}

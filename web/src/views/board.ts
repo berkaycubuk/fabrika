@@ -176,6 +176,7 @@ function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
     el("div", { class: "card-meta" }, [el("span", { class: `pill status-${b.status}` }, [b.status])]),
     b.intent ? el("p", { class: "card-spec" }, [b.intent]) : el("span", {}),
   ];
+  if (b.attachments?.length) children.push(attachmentGallery(b.attachments));
   for (const c of b.constraints ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
   if (b.status === "planning") {
     const who = b.plannerAgentId ? ` ${agentName(agents, b.plannerAgentId)} is` : "A planner agent is";
@@ -354,6 +355,7 @@ function openTaskDetail(t: Task, agents: Agent[]): void {
     el("div", { class: "card-meta" }, meta),
     t.spec ? el("p", { class: "card-spec" }, [t.spec]) : el("span", {}),
   ];
+  if (t.attachments?.length) children.push(attachmentGallery(t.attachments));
   for (const c of t.acceptance?.verifyCmds ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
   if (STEERABLE.includes(t.status)) children.push(steerRow(t, agents));
   children.push(el("div", { id: `task-evidence-${t.id}`, class: "task-evidence" }, []));
@@ -370,30 +372,118 @@ function openTaskDetail(t: Task, agents: Agent[]): void {
 // list paints under the agent labels we already have.
 let openTaskId: string | null = null;
 
+// imageAttach bundles the shared image-attach UI used by the comment composer
+// and the create/define forms: a hidden file picker, an "Attach image" button,
+// pending thumbnails with remove buttons, and paste-to-attach wiring on a
+// textarea. Files upload immediately; urls() is what submit should send, and
+// reset() clears the pending set after a successful post.
+function imageAttach(pasteTarget: HTMLTextAreaElement, err: HTMLElement) {
+  const pending: string[] = []; // uploaded image URLs awaiting submit
+  const previews = el("div", { class: "attachments" }, []);
+
+  const render = () => {
+    clear(previews);
+    pending.forEach((url, i) => {
+      previews.append(el("div", { class: "attach-pending" }, [
+        el("img", { src: url, class: "attach-thumb", alt: "attachment" }),
+        el("button", { type: "button", class: "attach-remove", title: "Remove image", onclick: () => {
+          pending.splice(i, 1);
+          render();
+        } }, ["×"]),
+      ]));
+    });
+  };
+
+  const upload = async (files: File[]) => {
+    err.textContent = "";
+    for (const f of files) {
+      if (!f.type.startsWith("image/")) continue;
+      try {
+        pending.push(await api.uploadImage(f));
+      } catch (e) {
+        err.textContent = (e as Error).message;
+      }
+    }
+    render();
+  };
+
+  const picker = el("input", {
+    type: "file",
+    accept: "image/png,image/jpeg,image/gif,image/webp",
+    multiple: true,
+    class: "attach-file",
+    onchange: () => {
+      upload(Array.from(picker.files ?? []));
+      picker.value = "";
+    },
+  }) as HTMLInputElement;
+
+  pasteTarget.addEventListener("paste", (e: ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
+    e.preventDefault();
+    upload(files);
+  });
+
+  const button = el("button", {
+    type: "button",
+    title: "Attach images (or paste one into the text field)",
+    onclick: () => picker.click(),
+  }, ["Attach image"]);
+
+  return {
+    previews,
+    controls: [picker, button],
+    urls: () => [...pending],
+    reset: () => {
+      pending.length = 0;
+      render();
+    },
+  };
+}
+
+// attachmentGallery renders stored attachment URLs as thumbnails linking to the
+// full-size upload.
+function attachmentGallery(urls: string[]): HTMLElement {
+  return el("div", { class: "attachments" }, urls.map((url) =>
+    el("a", { href: url, target: "_blank", rel: "noopener" }, [
+      el("img", { src: url, class: "attach-thumb", alt: "attachment", loading: "lazy" }),
+    ]),
+  ));
+}
+
 // commentsSection builds the comments block of the task detail: a heading, the
 // (lazily-loaded) list, and a composer that posts a note then reloads the list.
+// Images attach via the file picker or by pasting into the textarea; they upload
+// immediately and submit as attachment URLs alongside the text.
 function commentsSection(id: string): HTMLElement {
-  const input = el("textarea", { class: "comment-input", placeholder: "Add a comment…", rows: "2" }) as HTMLTextAreaElement;
+  const input = el("textarea", { class: "comment-input", placeholder: "Add a comment… (paste or attach images)", rows: "2" }) as HTMLTextAreaElement;
   const err = el("div", { class: "form-error" }, []);
+  const attach = imageAttach(input, err);
+
   const submit = async () => {
     const text = input.value.trim();
-    if (!text) return;
+    const attachments = attach.urls();
+    if (!text && attachments.length === 0) return;
     err.textContent = "";
     try {
-      await api.addComment(id, text);
+      await api.addComment(id, text, attachments);
       input.value = "";
+      attach.reset();
       loadComments(id);
     } catch (e) {
       err.textContent = (e as Error).message;
     }
   };
+
   return el("div", { class: "comments" }, [
     el("div", { class: "section-h sm" }, ["Comments"]),
     el("div", { id: `task-comments-${id}`, class: "comment-list" }, []),
     el("div", { class: "comment-compose" }, [
       input,
+      attach.previews,
       err,
-      el("div", { class: "form-actions" }, [primaryBtn("Comment", submit)]),
+      el("div", { class: "form-actions" }, [...attach.controls, primaryBtn("Comment", submit)]),
     ]),
   ]);
 }
@@ -415,13 +505,14 @@ async function loadComments(id: string): Promise<void> {
 }
 
 // commentItem renders one note oldest-first: a "You" label for human comments,
-// the authoring agent's id for agent comments, above the body text.
+// the authoring agent's id for agent comments, above the body text and any
+// image attachments (thumbnails linking to the full-size upload).
 function commentItem(c: Comment): HTMLElement {
   const who = c.authorType === "user" ? "You" : (c.authorId || c.authorType);
-  return el("div", { class: "comment" }, [
-    el("div", { class: "comment-author" }, [who]),
-    el("div", { class: "comment-body" }, [c.body]),
-  ]);
+  const children: (Node | string)[] = [el("div", { class: "comment-author" }, [who])];
+  if (c.body) children.push(el("div", { class: "comment-body" }, [c.body]));
+  if (c.attachments?.length) children.push(attachmentGallery(c.attachments));
+  return el("div", { class: "comment" }, children);
 }
 
 async function loadEvidence(id: string): Promise<void> {
@@ -604,9 +695,10 @@ function stat(label: string, value: string, unit?: string): HTMLElement {
 
 function openDefine(): void {
   const title = el("input", { placeholder: "Outcome (e.g. Users can log in with email)" }) as HTMLInputElement;
-  const intent = el("textarea", { placeholder: "The why + desired outcome. What does done look like?", rows: "5" }) as HTMLTextAreaElement;
+  const intent = el("textarea", { placeholder: "The why + desired outcome. What does done look like? Paste images for context.", rows: "5" }) as HTMLTextAreaElement;
   const constraints = el("textarea", { placeholder: "Constraints, one per line (e.g. PCI-compliant, works on mobile)", rows: "3" }) as HTMLTextAreaElement;
   const err = el("div", { class: "form-error" });
+  const attach = imageAttach(intent, err);
 
   const form = el("form", {
     class: "modal-form",
@@ -614,7 +706,12 @@ function openDefine(): void {
       e.preventDefault();
       err.textContent = "";
       try {
-        await api.createBigTask({ title: title.value.trim(), intent: intent.value.trim(), constraints: lines(constraints.value) });
+        await api.createBigTask({
+          title: title.value.trim(),
+          intent: intent.value.trim(),
+          constraints: lines(constraints.value),
+          attachments: attach.urls(),
+        });
         closeModal();
         refresh();
       } catch (e2) {
@@ -624,6 +721,7 @@ function openDefine(): void {
   }, [
     field("Outcome", title),
     field("Intent", intent),
+    field("Images", el("div", { class: "attach-field" }, [attach.previews, ...attach.controls])),
     field("Constraints", constraints),
     el("p", { class: "muted sm" }, ["A planner agent turns this into a plan that lands in Approve."]),
     err,
@@ -634,7 +732,7 @@ function openDefine(): void {
 
 function openCreateTask(): void {
   const title = el("input", { placeholder: "Title (e.g. Add /healthz endpoint)" }) as HTMLInputElement;
-  const spec = el("textarea", { placeholder: "What to build, where, and any constraints…", rows: "4" }) as HTMLTextAreaElement;
+  const spec = el("textarea", { placeholder: "What to build, where, and any constraints… Paste images for context.", rows: "4" }) as HTMLTextAreaElement;
   const verify = el("textarea", { placeholder: "Verify commands, one per line (e.g. go test ./...)", rows: "3" }) as HTMLTextAreaElement;
   const tags = el("input", { placeholder: "Tags, comma-separated (go, api)" }) as HTMLInputElement;
   const priority = el("select", {}, [
@@ -644,6 +742,7 @@ function openCreateTask(): void {
   ]) as HTMLSelectElement;
   priority.value = "medium";
   const err = el("div", { class: "form-error" });
+  const attach = imageAttach(spec, err);
 
   const form = el("form", {
     class: "modal-form",
@@ -657,6 +756,7 @@ function openCreateTask(): void {
           acceptance: { verifyCmds: lines(verify.value), heldOut: [], properties: [], lockedGlobs: [] },
           tags: tags.value.split(",").map((s) => s.trim()).filter(Boolean),
           priority: priority.value,
+          attachments: attach.urls(),
         });
         closeModal();
         refresh();
@@ -667,6 +767,7 @@ function openCreateTask(): void {
   }, [
     field("Title", title),
     field("Spec", spec),
+    field("Images", el("div", { class: "attach-field" }, [attach.previews, ...attach.controls])),
     field("Verify commands", verify),
     field("Tags", tags),
     field("Priority", priority),
