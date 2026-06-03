@@ -29,12 +29,9 @@ export function openModal(
     ]),
     modalBody,
   ]);
-  const o = el("div", {
-    class: "modal-overlay",
-    onclick: (e: Event) => {
-      if (e.target === o) closeModal();
-    },
-  }, [panel]);
+  // Clicking the overlay outside the modal must not close it — only the
+  // Cancel button or the top-right ✕ dismiss the modal.
+  const o = el("div", { class: "modal-overlay" }, [panel]);
   document.body.append(o);
   overlay = o;
   document.addEventListener("keydown", onEsc);
