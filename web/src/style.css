@@ -612,7 +612,7 @@ button.option:hover { border-color: var(--accent); }
   }
 }
 /* Reusable sidebar field: uppercase muted label above a value row. */
-.modal-aside-field { display: flex; flex-direction: column; gap: 6px; }
+.modal-aside-field { display: flex; flex-direction: column; gap: 4px; }
 .aside-label {
   font-size: 11px;
   font-weight: 700;
@@ -627,6 +627,9 @@ button.option:hover { border-color: var(--accent); }
   gap: 6px;
   font-size: 13px;
 }
+/* Keep file-path chips on the same 11px rhythm as the other aside chips so the
+   Touches list doesn't read as a heavier block at the bottom of the column. */
+.modal-aside .verify-cmd { font-size: 11px; }
 .modal-form { display: flex; flex-direction: column; gap: 12px; }
 .detail { display: flex; flex-direction: column; gap: 12px; }
 .detail .card-actions { margin-top: 6px; }
