@@ -78,7 +78,7 @@ function main(): void {
     // Every surface guards on its own DOM presence, so fan out broadly: the
     // board owns the human gates (refreshing on every event, including
     // task/plan), the factory views own the registry/metrics.
-    onBoardEvent();
+    onBoardEvent(e);
     if (e.type.startsWith("agent.")) onAgentEvent();
   }, {
     // Link is up — reflect it immediately, even before any event arrives.
