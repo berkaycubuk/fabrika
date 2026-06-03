@@ -345,18 +345,36 @@ function openAuditDetail(it: ReviewItem): void {
 // merged): spec + meta, live steering for in-flight work, and lazily-loaded
 // gate evidence (stages + diff) from the latest attempt.
 function openTaskDetail(t: Task, agents: Agent[]): void {
-  const meta: (Node | string)[] = [
-    el("span", { class: `tag status-${t.status}` }, [t.status]),
-    el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier]),
-  ];
-  if (t.agentId) meta.push(el("span", { class: "tag agent" }, [agentName(agents, t.agentId)]));
-  if (t.branch) meta.push(el("code", { class: "branch" }, [t.branch]));
-  for (const tag of t.tags ?? []) meta.push(el("span", { class: "tag" }, [tag]));
+  const asideField = (label: string, value: (Node | string)[]) =>
+    el("div", { class: "modal-aside-field" }, [
+      el("div", { class: "aside-label" }, [label]),
+      el("div", { class: "aside-value" }, value),
+    ]);
 
-  const children: (Node | string)[] = [
-    el("div", { class: "card-meta" }, meta),
-    t.spec ? el("p", { class: "card-spec" }, [t.spec]) : el("span", {}),
-  ];
+  const sidebar = el("div", {}, [
+    asideField("Status", [el("span", { class: `tag status-${t.status}` }, [t.status])]),
+    asideField("Risk", [el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier])]),
+    t.priority ? asideField("Priority", [el("span", { class: `tag priority-${t.priority}` }, [t.priority])]) : null,
+    asideField("Assignee", [
+      t.agentId
+        ? el("span", { class: "tag agent" }, [agentName(agents, t.agentId)])
+        : el("span", { class: "muted" }, ["unassigned"]),
+    ]),
+    t.branch ? asideField("Branch", [el("code", { class: "branch" }, [t.branch])]) : null,
+    asideField("Tags", (t.tags ?? []).length
+      ? (t.tags ?? []).map((tag) => el("span", { class: "tag" }, [tag]))
+      : [el("span", { class: "muted" }, ["none"])]),
+    (t.dependsOn ?? []).length
+      ? asideField("Depends on", (t.dependsOn ?? []).map((dep) => el("span", { class: "tag dep" }, [dep.slice(0, 6)])))
+      : null,
+    (t.touchPaths ?? []).length
+      ? asideField("Touches", (t.touchPaths ?? []).map((p) => el("code", { class: "verify-cmd" }, [p])))
+      : null,
+  ].filter(Boolean) as HTMLElement[]);
+
+  const children: (Node | string)[] = [];
+  if (t.spec) children.push(el("p", { class: "card-spec" }, [t.spec]));
+  else children.push(el("span", {}));
   if (t.attachments?.length) children.push(attachmentGallery(t.attachments));
   for (const c of t.acceptance?.verifyCmds ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
   if (STEERABLE.includes(t.status)) children.push(steerRow(t, agents));
@@ -364,7 +382,7 @@ function openTaskDetail(t: Task, agents: Agent[]): void {
   children.push(commentsSection(t.id));
 
   openTaskId = t.id;
-  openModal(t.title, el("div", { class: "detail" }, children), { wide: true });
+  openModal(t.title, el("div", { class: "detail" }, children), { wide: true, sidebar });
   loadEvidence(t.id);
   loadComments(t.id);
 }
