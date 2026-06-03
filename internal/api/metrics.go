@@ -130,7 +130,6 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-<<<<<<< HEAD
 	// Credit planners for big tasks they successfully decomposed.
 	bigs, err := s.store.BigTasks.List()
 	if err != nil {
@@ -146,7 +145,9 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 			if am := per[bt.PlannerAgentID]; am != nil {
 				am.Planned++
 			}
-=======
+		}
+	}
+
 	// Per-agent token totals from all attempts. A failed read is non-critical —
 	// agents report zeros and the board total stays 0.
 	if usageByAgent, err := s.store.Attempts.TokensByAgent(); err != nil {
@@ -161,7 +162,6 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 			am.OutputTokens = u.OutputTokens
 			am.TotalTokens = u.TotalTokens
 			m.TotalTokens += u.TotalTokens
->>>>>>> fabrika/task-62e55a7a
 		}
 	}
 

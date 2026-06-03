@@ -3,3 +3,4 @@
 - [ ] Do not close modals when clicked outside of the modal.
 - [ ] How agent pooling works? Which agents chosen for which work?
 - [ ] When agents task waiting in the Accept column, agent stops working until that task is moved.
+- [ ] More visual diff

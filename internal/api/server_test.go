@@ -300,7 +300,6 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 func TestPlannerPlannedCountsAsShipped(t *testing.T) {
 	h, s := newTestServerStore(t)
 
@@ -324,7 +323,32 @@ func TestPlannerPlannedCountsAsShipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-=======
+	rec = do(t, h, "GET", "/api/metrics", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics: %d %s", rec.Code, rec.Body.String())
+	}
+	var m Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+
+	var found bool
+	for _, a := range m.Agents {
+		if a.AgentID == agent.ID {
+			found = true
+			if a.Planned != 1 {
+				t.Fatalf("agent planned = %d, want 1", a.Planned)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("planner agent not found in metrics")
+	}
+	if m.Merged != 0 {
+		t.Fatalf("global merged = %d, want 0 (big tasks don't count as code shipment)", m.Merged)
+	}
+}
+
 func TestMetricsTokenTotals(t *testing.T) {
 	s, h := newTestServerWithStore(t)
 
@@ -352,33 +376,12 @@ func TestMetricsTokenTotals(t *testing.T) {
 	}
 
 	// Hit metrics.
->>>>>>> fabrika/task-62e55a7a
 	rec = do(t, h, "GET", "/api/metrics", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("metrics: %d %s", rec.Code, rec.Body.String())
 	}
 	var m Metrics
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
-<<<<<<< HEAD
-		t.Fatal(err)
-	}
-
-	var found bool
-	for _, a := range m.Agents {
-		if a.AgentID == agent.ID {
-			found = true
-			if a.Planned != 1 {
-				t.Fatalf("agent planned = %d, want 1", a.Planned)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("planner agent not found in metrics")
-	}
-	if m.Merged != 0 {
-		t.Fatalf("global merged = %d, want 0 (big tasks don't count as code shipment)", m.Merged)
-	}
-=======
 		t.Fatalf("decode metrics: %v", err)
 	}
 
@@ -417,7 +420,6 @@ func TestMetricsTokenTotals(t *testing.T) {
 			}
 		}
 	}
->>>>>>> fabrika/task-62e55a7a
 }
 
 func TestSettingsRoundTripOverHTTP(t *testing.T) {
