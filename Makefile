@@ -1,4 +1,7 @@
-.PHONY: all web build run test clean dev
+.PHONY: all web build run test clean dev install uninstall
+
+# Installation prefix for `make install` (override with `make install PREFIX=...`).
+PREFIX ?= /usr/local
 
 all: build
 
@@ -13,6 +16,15 @@ build: web
 # Build + run from the current repo.
 run: build
 	./fabrika
+
+# Install the binary system-wide (to $(PREFIX)/bin).
+install: build
+	install -d $(DESTDIR)$(PREFIX)/bin
+	install -m 755 fabrika $(DESTDIR)$(PREFIX)/bin/fabrika
+
+# Remove the installed binary.
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/fabrika
 
 test:
 	go test ./...
