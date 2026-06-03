@@ -90,7 +90,7 @@ func (e *Engine) runMutation(ctx context.Context, wt string, changed, lockedGlob
 	files := mutableFiles(changed, lockedGlobs)
 	testCmd := e.cfg.Verbs.Test
 	test := func(ctx context.Context) bool {
-		cmd := exec.CommandContext(ctx, "sh", "-c", testCmd)
+		cmd := exec.CommandContext(ctx, "bash", "-c", testCmd)
 		cmd.Dir = wt
 		return cmd.Run() == nil
 	}

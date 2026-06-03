@@ -176,7 +176,7 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	command := RenderCommand(a.Command, promptFile, worktree, a.Model)
 	shell := s.Shell
 	if len(shell) == 0 {
-		shell = []string{"sh", "-c"}
+		shell = []string{"bash", "-c"}
 	}
 	args := append(append([]string{}, shell[1:]...), command)
 

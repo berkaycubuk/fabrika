@@ -85,7 +85,7 @@ func (r *CommandRunner) runStage(ctx context.Context, workdir string, cmds []str
 	var out bytes.Buffer
 	shell := r.Shell
 	if len(shell) == 0 {
-		shell = []string{"sh", "-c"}
+		shell = []string{"bash", "-c"}
 	}
 	for _, c := range cmds {
 		args := append(append([]string{}, shell[1:]...), c)
