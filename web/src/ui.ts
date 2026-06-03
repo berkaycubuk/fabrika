@@ -5,16 +5,29 @@ import { el } from "./dom.js";
 
 let overlay: HTMLElement | null = null;
 
-export function openModal(title: string, body: HTMLElement, opts: { wide?: boolean; subtitle?: string } = {}): void {
+export function openModal(
+  title: string,
+  body: HTMLElement,
+  opts: { wide?: boolean; subtitle?: string; sidebar?: HTMLElement } = {},
+): void {
   closeModal();
   const heading: HTMLElement[] = [el("h2", {}, [title])];
   if (opts.subtitle) heading.push(el("p", { class: "modal-sub muted" }, [opts.subtitle]));
-  const panel = el("div", { class: "modal" + (opts.wide ? " wide" : "") }, [
+  // With a sidebar, the body becomes a two-column container (main + aside) and
+  // the modal widens to the split variant. Without one, markup is unchanged.
+  const modalBody = opts.sidebar
+    ? el("div", { class: "modal-body" }, [
+        el("div", { class: "modal-main" }, [body]),
+        el("div", { class: "modal-aside" }, [opts.sidebar]),
+      ])
+    : el("div", { class: "modal-body" }, [body]);
+  const cls = "modal" + (opts.wide ? " wide" : "") + (opts.sidebar ? " split" : "");
+  const panel = el("div", { class: cls }, [
     el("div", { class: "modal-head" }, [
       el("div", {}, heading),
       el("button", { class: "modal-x", title: "Close", onclick: closeModal }, ["✕"]),
     ]),
-    el("div", { class: "modal-body" }, [body]),
+    modalBody,
   ]);
   const o = el("div", {
     class: "modal-overlay",

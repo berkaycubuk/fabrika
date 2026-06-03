@@ -570,6 +570,7 @@ button.option:hover { border-color: var(--accent); }
   flex-direction: column;
 }
 .modal.wide { max-width: 880px; }
+.modal.split { max-width: 1040px; }
 .modal-head {
   display: flex;
   align-items: center;
@@ -583,6 +584,49 @@ button.option:hover { border-color: var(--accent); }
 .modal-x { background: none; border: none; color: var(--muted); font-size: 15px; padding: 4px 8px; }
 .modal-x:hover { color: var(--text); border-color: transparent; }
 .modal-body { padding: 20px; }
+/* Two-column split body (Jira-style detail): main flexes, aside is a fixed
+   right rail with a gutter/border. Stacks below the main column when narrow. */
+.modal.split .modal-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+.modal.split .modal-main { flex: 1; min-width: 0; }
+.modal.split .modal-aside {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+@media (max-width: 720px) {
+  .modal.split .modal-body { flex-direction: column; }
+  .modal.split .modal-aside {
+    flex: 1 1 auto;
+    width: 100%;
+    padding-left: 0;
+    padding-top: 16px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+/* Reusable sidebar field: uppercase muted label above a value row. */
+.modal-aside-field { display: flex; flex-direction: column; gap: 6px; }
+.aside-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.aside-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
 .modal-form { display: flex; flex-direction: column; gap: 12px; }
 .detail { display: flex; flex-direction: column; gap: 12px; }
 .detail .card-actions { margin-top: 6px; }
