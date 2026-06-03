@@ -104,12 +104,15 @@ async function saveSetting(s: Record<string, string>): Promise<void> {
 
 function shareTable(m: Metrics): HTMLElement {
   if (m.agents.length === 0) return el("p", { class: "share-empty" }, ["No agents registered."]);
-  const totalMerged = m.agents.reduce((s, a) => s + a.merged, 0);
+  // Shipped counts merged code plus planned decompositions, so a pure planner
+  // that broke down N big tasks reads as N rather than 0.
+  const shipped = (a: AgentMetrics) => a.merged + (a.planned ?? 0);
+  const totalMerged = m.agents.reduce((s, a) => s + shipped(a), 0);
   const byLoad = totalMerged === 0;
   // In-flight load counts both running tasks and active planning runs, so the
   // planner doesn't read as idle while it's decomposing a big task.
   const load = (a: AgentMetrics) => a.running + (a.planning ?? 0);
-  const weight = (a: AgentMetrics) => (byLoad ? load(a) : a.merged);
+  const weight = (a: AgentMetrics) => (byLoad ? load(a) : shipped(a));
   const total = m.agents.reduce((s, a) => s + weight(a), 0);
   const ranked = [...m.agents].sort((x, y) => weight(y) - weight(x));
 
@@ -134,7 +137,7 @@ function shareTable(m: Metrics): HTMLElement {
             el("span", { class: "share-pct" }, [`${Math.round(share * 100)}%`]),
           ]),
         ]),
-        el("td", { class: "num" }, [String(byLoad ? load(a) : a.merged)]),
+        el("td", { class: "num" }, [String(byLoad ? load(a) : shipped(a))]),
       ]),
     );
   });
