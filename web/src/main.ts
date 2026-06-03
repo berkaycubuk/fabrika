@@ -1,24 +1,22 @@
 // Fabrika cockpit shell. The Board surface unifies the human gates (approve /
 // decide / accept / audit) into one kanban and seeds new work via Define /
-// Create task; the Factory group stays for the registry + observability views.
+// Create task; Agents exposes the registry + observability views.
 import { el } from "./dom.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
-import { renderTasks, onTaskEvent } from "./views/tasks.js";
+import { onTaskEvent } from "./views/tasks.js";
 import { renderBoard, onBoardEvent } from "./views/board.js";
 import type { FabrikaEvent } from "./types.js";
 
 interface Nav {
   id: string;
   label: string;
-  group: "you" | "factory";
   render: (root: HTMLElement) => void;
 }
 
 const NAV: Nav[] = [
-  { id: "board", label: "Board", group: "you", render: renderBoard },
-  { id: "tasks", label: "Tasks", group: "factory", render: renderTasks },
-  { id: "agents", label: "Agents", group: "factory", render: renderAgents },
+  { id: "board", label: "Board", render: renderBoard },
+  { id: "agents", label: "Agents", render: renderAgents },
 ];
 
 let current = "board";
@@ -45,16 +43,9 @@ function navItem(n: Nav): HTMLElement {
 }
 
 function sidebar(): HTMLElement {
-  const group = (label: string, g: Nav["group"]) =>
-    el("div", { class: "nav-group" }, [
-      el("div", { class: "nav-group-label" }, [label]),
-      ...NAV.filter((n) => n.group === g).map(navItem),
-    ]);
-
   return el("aside", { class: "sidebar" }, [
     el("div", { class: "brand" }, ["fabrika"]),
-    el("div", { class: "nav-group" }, [NAV.filter((n) => n.group === "you").map(navItem)[0]]),
-    group("Factory", "factory"),
+    el("div", { class: "nav-group" }, NAV.map(navItem)),
     el("div", { class: "sidebar-foot" }, [
       el("span", { id: "conn", class: "pill off" }, ["connecting…"]),
     ]),
