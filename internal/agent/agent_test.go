@@ -76,3 +76,60 @@ func TestRenderPromptEvidenceRule(t *testing.T) {
 		t.Fatalf("RenderPrompt output missing evidence marker instruction:\n%s", out)
 	}
 }
+
+func TestRenderPromptUsageRule(t *testing.T) {
+	out := RenderPrompt(model.Task{Title: "x"}, nil, nil)
+	if !strings.Contains(out, UsageMarker) {
+		t.Fatalf("RenderPrompt output missing usage marker instruction:\n%s", out)
+	}
+}
+
+func TestParseUsage(t *testing.T) {
+	out := strings.Join([]string{
+		"some build output",
+		`fabrika_USAGE: {"inputTokens":100,"outputTokens":50,"totalTokens":150}`,
+	}, "\n")
+	got, ok := parseUsage(out)
+	if !ok {
+		t.Fatalf("parseUsage: ok=false, want true")
+	}
+	want := model.Usage{InputTokens: 100, OutputTokens: 50, TotalTokens: 150}
+	if got != want {
+		t.Fatalf("parseUsage = %+v, want %+v", got, want)
+	}
+}
+
+func TestParseUsageLastWins(t *testing.T) {
+	out := strings.Join([]string{
+		`fabrika_USAGE: {"inputTokens":1,"outputTokens":2,"totalTokens":3}`,
+		`prefix fabrika_USAGE: {"inputTokens":10,"outputTokens":20,"totalTokens":30}`,
+	}, "\n")
+	got, ok := parseUsage(out)
+	if !ok {
+		t.Fatalf("parseUsage: ok=false, want true")
+	}
+	want := model.Usage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30}
+	if got != want {
+		t.Fatalf("parseUsage = %+v, want %+v", got, want)
+	}
+}
+
+func TestParseUsageMalformedSkipped(t *testing.T) {
+	if _, ok := parseUsage("fabrika_USAGE: not json"); ok {
+		t.Fatalf("parseUsage(malformed): ok=true, want false")
+	}
+	if _, ok := parseUsage("no marker here"); ok {
+		t.Fatalf("parseUsage(absent): ok=true, want false")
+	}
+}
+
+func TestParseUsageTotalDerivation(t *testing.T) {
+	out := `fabrika_USAGE: {"inputTokens":100,"outputTokens":50}`
+	got, ok := parseUsage(out)
+	if !ok {
+		t.Fatalf("parseUsage: ok=false, want true")
+	}
+	if got.TotalTokens != 150 {
+		t.Fatalf("parseUsage TotalTokens = %d, want 150 (derived)", got.TotalTokens)
+	}
+}

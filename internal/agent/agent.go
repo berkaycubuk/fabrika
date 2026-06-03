@@ -37,6 +37,10 @@ const EvidenceMarker = "fabrika_EVIDENCE:"
 // a finished branch. The remainder of the line is a JSON ReviewVerdict payload.
 const ReviewMarker = "fabrika_REVIEW:"
 
+// UsageMarker is the stdout sentinel an agent emits on completion to report its
+// token usage. The remainder of the line is a JSON model.Usage payload.
+const UsageMarker = "fabrika_USAGE:"
+
 // ReviewVerdict is a reviewer agent's first-pass judgment on a branch (SPECS §7,
 // §13). Approve gates auto-merge; Notes surface to the human when it's kicked up.
 type ReviewVerdict struct {
@@ -60,6 +64,7 @@ type AgentResult struct {
 	Decision  string        // raw JSON after the marker, if Escalated
 	Comments  []string      `json:"comments"` // text after each CommentMarker, in order
 	Evidence  []EvidenceRef // files after each EvidenceMarker, in order
+	Usage     model.Usage   // token usage parsed from the last UsageMarker, if any
 }
 
 // Runner invokes a registered agent against a task in a worktree.
@@ -138,6 +143,7 @@ func RenderPrompt(t model.Task, conventions []model.Convention, attachments []st
 	b.WriteString("- Do not edit locked test files listed above.\n")
 	fmt.Fprintf(&b, "- If you hit a question you cannot resolve, print a single line: `%s {\"question\":\"...\",\"options\":[\"...\"]}` and stop.\n", DecisionMarker)
 	fmt.Fprintf(&b, "- To attach proof of your work (screenshot, recording, log), print one line per file: `%s <path-in-worktree> | optional caption`.\n", EvidenceMarker)
+	fmt.Fprintf(&b, "- On completion, print your token usage: `%s {\"inputTokens\":N,\"outputTokens\":N,\"totalTokens\":N}`.\n", UsageMarker)
 	return b.String()
 }
 
@@ -232,7 +238,36 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	}
 	res.Comments = parseComments(res.Stdout)
 	res.Evidence = parseEvidence(res.Stdout)
+	if u, ok := parseUsage(res.Stdout); ok {
+		res.Usage = u
+	}
 	return res, nil
+}
+
+// parseUsage scans output for the last UsageMarker line and decodes its JSON
+// payload (last-wins, consistent with parseEscalation/ParseReview). A malformed
+// or absent payload returns ok=false. When the agent reports a zero total but
+// non-zero input/output, the total is derived as input+output.
+func parseUsage(out string) (model.Usage, bool) {
+	var payload string
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		if idx := strings.Index(line, UsageMarker); idx >= 0 {
+			payload = strings.TrimSpace(line[idx+len(UsageMarker):])
+			found = true
+		}
+	}
+	if !found {
+		return model.Usage{}, false
+	}
+	var u model.Usage
+	if err := json.Unmarshal([]byte(payload), &u); err != nil {
+		return model.Usage{}, false
+	}
+	if u.TotalTokens == 0 && (u.InputTokens != 0 || u.OutputTokens != 0) {
+		u.TotalTokens = u.InputTokens + u.OutputTokens
+	}
+	return u, true
 }
 
 // parseEscalation scans output for the last DecisionMarker line and returns the

@@ -132,7 +132,16 @@ type Attempt struct {
 	AgentID  string   `json:"agentId"`
 	Result   string   `json:"result"` // pass|fail|escalated
 	Evidence Evidence `json:"evidence"`
+	Usage    Usage    `json:"usage"`
 	Log      string   `json:"log"`
+}
+
+// Usage is the token usage an agent self-reports for a run. TotalTokens is the
+// agent-reported total, or InputTokens+OutputTokens when the agent omits it.
+type Usage struct {
+	InputTokens  int `json:"inputTokens"`
+	OutputTokens int `json:"outputTokens"`
+	TotalTokens  int `json:"totalTokens"`
 }
 
 // Evidence is the normalized output of the verification gate.
