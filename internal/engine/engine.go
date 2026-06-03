@@ -382,6 +382,19 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 		return
 	}
 
+	// Persist agent-authored comments so they survive the run regardless of outcome.
+	for _, text := range agentRes.Comments {
+		if err := e.store.Comments.Create(&model.Comment{
+			TaskID: task.ID, AuthorType: "agent", AuthorID: ag.ID, Body: text,
+		}); err != nil {
+			log.Printf("engine: create comment: %v", err)
+		} else {
+			e.emit("task.comment.added", &model.Comment{
+				TaskID: task.ID, AuthorType: "agent", AuthorID: ag.ID, Body: text,
+			})
+		}
+	}
+
 	logText := combineLog(agentRes.Stdout, agentRes.Stderr)
 
 	// Agent escalated a question it couldn't resolve -> record a Decision for the
