@@ -383,6 +383,98 @@ button.option:hover { border-color: var(--accent); }
 .decision-answer input { flex: 1; }
 .decision-card .checkbox { font-weight: 400; color: var(--muted); font-size: 13px; }
 
+/* ── Board (unified Needs-you kanban) ────────────────────────────────────── */
+.content:has(.needs-board) { max-width: none; }
+.board-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.header-actions { display: flex; gap: 10px; flex-shrink: 0; }
+
+.needs-board { margin-top: 18px; }
+.board-col-body { display: flex; flex-direction: column; }
+
+.needs-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0;
+  padding: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.needs-card:hover { border-color: var(--accent); }
+.needs-card-title { font-weight: 600; font-size: 13px; }
+.needs-card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.board-col[data-col="approve"] .needs-card { border-left-color: var(--accent); }
+.board-col[data-col="decide"] .needs-card { border-left-color: var(--amber); }
+.board-col[data-col="ready"] .needs-card { border-left-color: var(--muted); }
+.board-col[data-col="running"] .needs-card { border-left-color: var(--accent); }
+.board-col[data-col="verifying"] .needs-card { border-left-color: var(--amber); }
+.board-col[data-col="accept"] .needs-card { border-left-color: var(--green); }
+.board-col[data-col="audit"] .needs-card { border-left-color: var(--teal); }
+.board-col[data-col="merged"] .needs-card { border-left-color: var(--green); opacity: 0.78; }
+.needs-card .tag[class*="status-"] { color: var(--accent); border-color: rgba(109, 139, 255, 0.4); }
+.needs-card .tag.status-blocked, .needs-card .tag.status-failed { color: var(--red); border-color: rgba(229, 104, 122, 0.5); }
+.needs-card .tag.status-review { color: var(--green); border-color: rgba(70, 201, 139, 0.4); }
+.needs-card .tag.agent { color: var(--accent); border-color: rgba(109, 139, 255, 0.4); }
+
+/* Gate columns (the ones that need you) get a marker dot. */
+.gate-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--amber);
+  vertical-align: middle;
+}
+.board-col.gate .board-col-head { color: var(--text); }
+.board-col.gate { border-top: 2px solid var(--amber); }
+
+.task-evidence { display: flex; flex-direction: column; gap: 12px; }
+.task-evidence:empty { display: none; }
+.assign-select { font-size: 12px; padding: 6px 8px; flex: 1; }
+.detail .stat-grid { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
+.detail .share-table { margin-top: 0; }
+.detail .metrics-bar { flex-wrap: wrap; }
+
+/* Modal overlay (forms + per-card action panels) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 20px;
+  overflow-y: auto;
+  z-index: 50;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+}
+.modal.wide { max-width: 880px; }
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.modal-x { background: none; border: none; color: var(--muted); font-size: 15px; padding: 4px 8px; }
+.modal-x:hover { color: var(--text); border-color: transparent; }
+.modal-body { padding: 20px; }
+.modal-form { display: flex; flex-direction: column; gap: 12px; }
+.detail { display: flex; flex-direction: column; gap: 12px; }
+.detail .card-actions { margin-top: 6px; }
+
 /* ── Engine room dashboard (analytics style) ─────────────────────────────── */
 .content:has(.dash) { max-width: none; }
 
