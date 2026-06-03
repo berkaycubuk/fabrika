@@ -1,0 +1,17 @@
+# Binaries
+/fabrika
+*.exe
+
+# Local state stores
+/.fabrika/
+*.db
+*.db-shm
+*.db-wal
+
+# Node / web build
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+
+# OS
+.DS_Store
