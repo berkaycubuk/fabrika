@@ -61,18 +61,107 @@ func (e *Engine) PlannerAgent() (model.Agent, bool) {
 	return model.Agent{}, false
 }
 
-// PlanBigTask runs the planner agent against a big task and persists the
-// resulting proposed plan (tasks in `planned` status, plus any open decisions).
-// It runs asynchronously; the UI is notified via events as it progresses. The
-// caller should only invoke this when PlannerAgent reports an available planner.
+// PlanBigTask is the public trigger to (eventually) decompose a big task into a
+// proposed plan. It does NOT run the planner directly: planning is gated by the
+// planner agent's Concurrency, so excess big tasks must WAIT in `draft` (the
+// board renders that as "Queued for planning") until a planner slot frees. It
+// simply ensures the big task is in `draft` and wakes the gated dispatcher
+// (dispatchPlanning), which claims a slot and runs the plan FIFO.
 func (e *Engine) PlanBigTask(bt model.BigTask) {
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.planBigTask(bt)
-	}()
+	if bt.Status != model.BigTaskDraft {
+		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+	}
+	e.Wake()
 }
 
+// dispatchPlanning launches every currently-plannable big task, each in its own
+// goroutine, respecting the planner agent's Concurrency. A planner's planning
+// runs share one Concurrency budget with its running implementer tasks, so it
+// stops claiming once that budget is full; the rest wait in `draft`. Each run's
+// goroutine releases the claimed slot exactly once on completion and re-wakes the
+// loop so the next queued big task flows immediately.
+func (e *Engine) dispatchPlanning() {
+	for {
+		if e.ctx != nil && e.ctx.Err() != nil {
+			return
+		}
+		bt, ag, ok := e.claimPlanning()
+		if !ok {
+			return
+		}
+		e.wg.Add(1)
+		go func() {
+			defer e.wg.Done()
+			// The slot was claimed (incremented) synchronously in claimPlanning;
+			// release it exactly once here so it is never double-counted.
+			defer e.markPlanning(ag.ID, -1)
+			e.planBigTaskCore(bt, ag)
+			e.Wake()
+		}()
+	}
+}
+
+// claimPlanning selects the oldest `draft` big task and claims a planning slot for
+// the planner agent under the lock, returning the work to do. It enforces the
+// per-planner Concurrency cap: planning runs plus that agent's running implementer
+// tasks are counted jointly against its single Concurrency value. The slot (the
+// planning-count increment) is taken synchronously here, BEFORE the run goroutine
+// starts, so two dispatcher iterations can't both observe a free slot and
+// double-spawn. Returns false when no slot is free or no big task is queued.
+func (e *Engine) claimPlanning() (model.BigTask, model.Agent, bool) {
+	ag, ok := e.PlannerAgent()
+	if !ok {
+		return model.BigTask{}, model.Agent{}, false
+	}
+	bts, err := e.store.BigTasks.List()
+	if err != nil {
+		log.Printf("engine: list bigtasks for planning: %v", err)
+		return model.BigTask{}, model.Agent{}, false
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.planMu.Lock()
+	defer e.planMu.Unlock()
+
+	// Joint budget: active planning runs + this planner's running implementer
+	// tasks share the agent's (store-normalized, >=1) Concurrency value.
+	used := e.planning[ag.ID]
+	for _, ri := range e.running {
+		if ri.agentID == ag.ID {
+			used++
+		}
+	}
+	if used >= ag.Concurrency {
+		return model.BigTask{}, model.Agent{}, false
+	}
+
+	// List is newest-first; iterate oldest-first so big tasks plan FIFO.
+	for i := len(bts) - 1; i >= 0; i-- {
+		bt := bts[i]
+		if bt.Status != model.BigTaskDraft {
+			continue
+		}
+		// Claim the slot now, under the lock, so the next iteration sees it taken.
+		e.planning[ag.ID]++
+		// Record the planner agent before flipping status so the emit carries the
+		// agent ID and the UI shows it in the card.
+		if serr := e.store.BigTasks.SetPlannerAgent(bt.ID, ag.ID); serr != nil {
+			log.Printf("engine: set planner agent %s: %v", bt.ID, serr)
+		}
+		e.setBigTaskStatus(bt.ID, model.BigTaskPlanning)
+		bt.Status = model.BigTaskPlanning
+		bt.PlannerAgentID = ag.ID
+		return bt, ag, true
+	}
+	return model.BigTask{}, model.Agent{}, false
+}
+
+// planBigTask runs the planner against a big task with self-contained slot
+// accounting. It is the synchronous entry retained for direct callers (tests):
+// it claims a planning slot itself, then runs the core. The gated dispatcher does
+// NOT go through here — it claims the slot in claimPlanning and calls
+// planBigTaskCore directly, so the slot is never counted twice.
 func (e *Engine) planBigTask(bt model.BigTask) {
 	ag, ok := e.PlannerAgent()
 	if !ok {
@@ -85,6 +174,14 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 	e.markPlanning(ag.ID, 1)
 	defer e.markPlanning(ag.ID, -1)
 
+	e.planBigTaskCore(bt, ag)
+}
+
+// planBigTaskCore is the actual planner run body. The caller owns the
+// planning-slot accounting (markPlanning), so this MUST NOT adjust it. Recording
+// the planner agent and flipping status to `planning` is idempotent: the gated
+// dispatcher already did both when it claimed the slot; direct callers rely on it.
+func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 	// Record the planner agent on the big task before flipping status so the
 	// subsequent emit carries the agent ID and the UI shows it in the card.
 	e.store.BigTasks.SetPlannerAgent(bt.ID, ag.ID)

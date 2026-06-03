@@ -125,6 +125,7 @@ func (e *Engine) loop() {
 	defer ticker.Stop()
 	for {
 		e.dispatchReady()
+		e.dispatchPlanning()
 		select {
 		case <-e.ctx.Done():
 			return

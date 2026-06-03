@@ -39,9 +39,11 @@ func (r *BigTaskRepo) Get(id string) (*model.BigTask, error) {
 	return b, err
 }
 
-// List returns all BigTasks newest-first.
+// List returns all BigTasks newest-first. The rowid tiebreaker keeps the order
+// stable when rows share a (second-resolution) created_at, so callers that
+// iterate in reverse get a deterministic oldest-first (FIFO) sequence.
 func (r *BigTaskRepo) List() ([]model.BigTask, error) {
-	rows, err := r.db.Query(`SELECT ` + bigTaskCols + ` FROM bigtasks ORDER BY created_at DESC`)
+	rows, err := r.db.Query(`SELECT ` + bigTaskCols + ` FROM bigtasks ORDER BY created_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
