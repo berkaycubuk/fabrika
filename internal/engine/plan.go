@@ -85,6 +85,10 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 	e.markPlanning(ag.ID, 1)
 	defer e.markPlanning(ag.ID, -1)
 
+	// Record the planner agent on the big task before flipping status so the
+	// subsequent emit carries the agent ID and the UI shows it in the card.
+	e.store.BigTasks.SetPlannerAgent(bt.ID, ag.ID)
+
 	e.setBigTaskStatus(bt.ID, model.BigTaskPlanning)
 
 	// A clean worktree gives the planner repo context without touching main.

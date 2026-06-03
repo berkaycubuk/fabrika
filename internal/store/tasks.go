@@ -12,7 +12,7 @@ import (
 // BigTaskRepo persists BigTasks in the per-project store.
 type BigTaskRepo struct{ db *sql.DB }
 
-const bigTaskCols = `id, title, intent, constraints, repo_path, status, error`
+const bigTaskCols = `id, title, intent, constraints, repo_path, status, error, planner_agent_id`
 
 // Create inserts a BigTask, assigning an ID and default status if absent.
 func (r *BigTaskRepo) Create(b *model.BigTask) error {
@@ -23,8 +23,8 @@ func (r *BigTaskRepo) Create(b *model.BigTask) error {
 		b.Status = model.BigTaskDraft
 	}
 	_, err := r.db.Exec(
-		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), b.RepoPath, b.Status, b.Error,
+		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), b.RepoPath, b.Status, b.Error, b.PlannerAgentID,
 	)
 	return err
 }
@@ -34,7 +34,7 @@ func (r *BigTaskRepo) Get(id string) (*model.BigTask, error) {
 	row := r.db.QueryRow(`SELECT `+bigTaskCols+` FROM bigtasks WHERE id=?`, id)
 	var b model.BigTask
 	var constraints string
-	err := row.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error)
+	err := row.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error, &b.PlannerAgentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -56,13 +56,22 @@ func (r *BigTaskRepo) List() ([]model.BigTask, error) {
 	for rows.Next() {
 		var b model.BigTask
 		var constraints string
-		if err := rows.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error); err != nil {
+		if err := rows.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error, &b.PlannerAgentID); err != nil {
 			return nil, err
 		}
 		b.Constraints = scanStrings(constraints)
 		out = append(out, b)
 	}
 	return out, rows.Err()
+}
+
+// SetPlannerAgent records which planner agent is working on a big task.
+func (r *BigTaskRepo) SetPlannerAgent(id, agentID string) error {
+	res, err := r.db.Exec(`UPDATE bigtasks SET planner_agent_id=? WHERE id=?`, agentID, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
 }
 
 // UpdateStatus sets a big task's lifecycle status, clearing any prior error

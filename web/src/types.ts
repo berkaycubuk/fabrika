@@ -77,6 +77,7 @@ export interface BigTask {
   repoPath: string;
   status: string; // draft|planning|planned|running|done|error
   error: string; // failure reason when status === "error"
+  plannerAgentId: string; // which registered planner agent is decomposing this
 }
 
 export interface Decision {
