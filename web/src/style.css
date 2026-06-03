@@ -241,6 +241,25 @@ pre.diff {
 .dl.del { color: var(--red); }
 .dl.hunk { color: var(--accent); }
 
+/* Failure detail: why a run went red, in the panel body (not just a tooltip). */
+.failure { margin-top: 10px; }
+.fail-head { color: var(--red); font-weight: 600; font-size: 13px; margin: 0 0 6px; }
+pre.fail-out {
+  background: #0a0c10;
+  border: 1px solid rgba(229, 104, 122, 0.4);
+  border-radius: 0;
+  padding: 12px;
+  margin: 0 0 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 320px;
+}
+.log-wrap summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+
 /* Engine room */
 .content:has(.board) { max-width: none; }
 .section-h { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin: 24px 0 8px; }

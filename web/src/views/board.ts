@@ -8,7 +8,7 @@ import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, Evidence } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, Evidence, Attempt } from "../types.js";
 
 type ColId = "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -226,6 +226,7 @@ function openReviewDetail(it: ReviewItem): void {
     blockedReason ? el("p", { class: "blocked-q" }, [blockedReason]) : el("span", {}),
     reviewNote ? el("p", { class: "blocked-q" }, [reviewNote]) : el("span", {}),
     attempt ? stageRow(attempt.evidence) : el("span", { class: "muted" }, ["no evidence"]),
+    !green && attempt ? failureBlock(attempt) : el("span", {}),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     actionRow([
       el("button", {
@@ -301,6 +302,7 @@ async function loadEvidence(id: string): Promise<void> {
     const a = attempts && attempts.length ? attempts[attempts.length - 1] : null;
     if (!a) return;
     slot.append(stageRow(a.evidence));
+    if (a.result !== "pass") slot.append(failureBlock(a));
     const diff = a.evidence?.diff?.trim();
     if (diff) slot.append(diffBlock(diff));
   } catch {
@@ -578,6 +580,39 @@ function stageRow(ev: Evidence): HTMLElement {
   });
   if (chips.length === 0) return el("div", { class: "stage-row" }, [el("span", { class: "muted" }, ["no gate stages"])]);
   return el("div", { class: "stage-row" }, chips);
+}
+
+// failureBlock surfaces *why* a run failed, in the panel body rather than a
+// chip tooltip: the first failing gate stage and its captured output — with an
+// explicit note when a command exited non-zero but printed nothing (e.g. a
+// `grep -q` acceptance check) — plus the agent's own log, which carries crashes
+// (a missing model, a dead provider) that abort before the gate ever runs.
+function failureBlock(attempt: Attempt): HTMLElement {
+  const stages = attempt.evidence?.stages ?? {};
+  const failed = STAGE_ORDER.find((s) => stages[s] && !stages[s].skipped && !stages[s].pass);
+  const children: HTMLElement[] = [];
+  let stageOut = "";
+  if (failed) {
+    const r = stages[failed];
+    stageOut = (r.output ?? "").trim();
+    children.push(el("p", { class: "fail-head" }, [`✗ ${failed} failed (exit ${r.exitCode})`]));
+    children.push(
+      stageOut
+        ? el("pre", { class: "fail-out" }, [r.output.slice(-8000)])
+        : el("p", { class: "muted" }, [`(command exited ${r.exitCode} with no output — check the agent log below)`]),
+    );
+  }
+  const log = (attempt.log ?? "").trim();
+  if (log) {
+    // Expand the log by default when the failing stage gave us nothing useful —
+    // it's the only place the real cause lives in that case.
+    children.push(el("details", { class: "log-wrap", open: !stageOut }, [
+      el("summary", {}, ["Agent log"]),
+      el("pre", { class: "fail-out" }, [log.slice(-8000)]),
+    ]));
+  }
+  if (children.length === 0) return el("span", {});
+  return el("div", { class: "failure" }, children);
 }
 
 function diffBlock(diff: string): HTMLElement {
