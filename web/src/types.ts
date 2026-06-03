@@ -56,12 +56,20 @@ export interface Evidence {
   artifacts: string[];
 }
 
+// Usage mirrors internal/model.Usage: token usage an agent self-reports for a run.
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
 export interface Attempt {
   id: string;
   taskId: string;
   agentId: string;
   result: string; // pass|fail|escalated
   evidence: Evidence;
+  usage?: Usage;
   log: string;
 }
 
@@ -114,6 +122,9 @@ export interface AgentMetrics {
   planned: number;
   kickedBack: number;
   kickbackRate: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
 }
 
 export interface Metrics {
@@ -136,6 +147,7 @@ export interface Metrics {
   changeFailRate: number;
   auditRate: number;
   mutationTesting: boolean;
+  totalTokens?: number; // board-wide sum of agent token usage
 }
 
 export interface Comment {

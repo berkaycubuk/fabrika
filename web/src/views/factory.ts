@@ -36,6 +36,7 @@ async function refresh(): Promise<void> {
         stat("Ready", String(m.ready)),
         stat("In review", String(m.inReview)),
         stat("Merged", String(m.merged)),
+        stat("Tokens", m.totalTokens ? formatTokens(m.totalTokens) : "—"),
       ]),
       el("div", { class: "section-h sm" }, ["Trust + autonomy"]),
       el("div", { class: "stat-grid" }, [
@@ -138,6 +139,7 @@ function shareTable(m: Metrics): HTMLElement {
           ]),
         ]),
         el("td", { class: "num" }, [String(byLoad ? load(a) : shipped(a))]),
+        el("td", { class: "num" }, [(a.totalTokens ?? 0) > 0 ? formatTokens(a.totalTokens as number) : "—"]),
       ]),
     );
   });
@@ -147,10 +149,16 @@ function shareTable(m: Metrics): HTMLElement {
         el("th", {}, ["Agent"]),
         el("th", {}, [byLoad ? "Share of load" : "Share of work"]),
         el("th", { class: "num" }, [byLoad ? "In flight" : "Shipped"]),
+        el("th", { class: "num" }, ["Tokens"]),
       ]),
     ]),
     tbody,
   ]);
+}
+
+// formatTokens renders a token count with thousands separators (12345 → "12,345").
+function formatTokens(n: number): string {
+  return n.toLocaleString("en-US");
 }
 
 function stat(label: string, value: string, unit?: string): HTMLElement {
