@@ -17,6 +17,7 @@ type AgentMetrics struct {
 	Running      int     `json:"running"`      // tasks in flight (running/verifying)
 	Planning     int     `json:"planning"`     // big-task planning runs in flight
 	Merged       int     `json:"merged"`       // shipped by this agent
+	Planned      int     `json:"planned"`      // big tasks this agent successfully decomposed into a plan
 	KickedBack   int     `json:"kickedBack"`   // rejected (closed) PRs
 	KickbackRate float64 `json:"kickbackRate"` // kicked / (merged + kicked)
 }
@@ -120,6 +121,24 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		m.Planning += n
 		if am := per[id]; am != nil {
 			am.Planning += n
+		}
+	}
+
+	// Credit planners for big tasks they successfully decomposed.
+	bigs, err := s.store.BigTasks.List()
+	if err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	for _, bt := range bigs {
+		if bt.PlannerAgentID == "" {
+			continue
+		}
+		switch bt.Status {
+		case model.BigTaskPlanned, model.BigTaskRunning, model.BigTaskDone:
+			if am := per[bt.PlannerAgentID]; am != nil {
+				am.Planned++
+			}
 		}
 	}
 
