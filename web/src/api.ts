@@ -56,6 +56,7 @@ export const api = {
   acceptTask: (id: string) => req<{ status: string }>("POST", `/api/tasks/${id}/accept`),
   rejectTask: (id: string, reason: string) =>
     req<{ status: string }>("POST", `/api/tasks/${id}/reject`, { reason }),
+  retryTask: (id: string) => req<{ status: string }>("POST", `/api/tasks/${id}/retry`),
 
   // Audit queue (Phase 3: post-merge sampling of auto-merged work)
   listAudits: () => req<ReviewItem[]>("GET", "/api/audits"),

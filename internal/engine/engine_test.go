@@ -145,6 +145,57 @@ func TestGateFailureSurfacesAsFailed(t *testing.T) {
 	}
 }
 
+func TestRetryRequeuesFailedTask(t *testing.T) {
+	eng, st, _ := setup(t)
+	registerAgent(t, st, "printf 'x' > out.txt")
+
+	task := &model.Task{
+		Title:      "failing verify",
+		Acceptance: model.Contract{VerifyCmds: []string{"exit 1"}},
+	}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+	if got, _ := st.Tasks.Get(task.ID); got.Status != model.TaskFailed {
+		t.Fatalf("status = %q, want failed", got.Status)
+	}
+
+	// Retry returns the task to ready for a fresh attempt.
+	if err := eng.Retry(task.ID); err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskReady {
+		t.Fatalf("status = %q, want ready after retry", got.Status)
+	}
+	// The failed attempt is preserved as history.
+	if _, err := st.Attempts.LatestForTask(task.ID); err != nil {
+		t.Fatalf("prior attempt should be kept: %v", err)
+	}
+	// A re-dispatch picks it up again (it fails the same way, but it ran).
+	if !eng.dispatchOnce() {
+		t.Fatal("expected the re-queued task to dispatch")
+	}
+
+	// Retry is refused for a merged task and for an unknown id.
+	merged := &model.Task{Title: "done"}
+	if err := st.Tasks.Create(merged); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Tasks.UpdateStatus(merged.ID, model.TaskMerged); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Retry(merged.ID); err == nil {
+		t.Fatal("Retry should be refused for a merged task")
+	}
+	if err := eng.Retry("nonexistent"); err == nil {
+		t.Fatal("Retry should fail for an unknown task")
+	}
+}
+
 func TestEscalationBlocks(t *testing.T) {
 	eng, st, _ := setup(t)
 	registerAgent(t, st, `echo 'fabrika_DECISION: {"question":"which db?"}'`)

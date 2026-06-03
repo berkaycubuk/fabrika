@@ -2,21 +2,21 @@
 # tool stays stack-agnostic. Agents are NOT defined here — manage them in the UI.
 
 [project]
-name = "my-app"
+name = "fabrika"
 
 [verbs]                       # abstract verb -> concrete command, run in the repo
-setup     = "npm install"
-build     = "npm run build"
-test      = "npm test"
-lint      = "npm run lint -- --max-warnings 0"
-typecheck = "tsc --noEmit"
-verify    = "npm run test:acceptance"   # spec-derived acceptance tests
-# e2e     = "npx playwright test"        # optional
-# run     = "npm run dev"                # optional, for preview
+setup     = "cd web && npm install --silent"   # install the web UI's dev deps
+typecheck = "cd web && npx tsc --noEmit"        # type-check the TS frontend
+build     = "make build"                        # esbuild UI + go build the binary
+test      = "go test ./..."                     # Go unit tests
+# lint    =                                      # no linter configured yet
+# verify  =                                      # no spec-derived acceptance tests yet
+# e2e     =                                      # optional
+# run     = "make run"                            # optional, for preview
 
 [risk]                        # path globs -> tier; anything unmatched = low
-high   = ["**/auth/**", "**/payments/**", "migrations/**", "**/*.sql"]
-medium = ["src/api/**"]
+high   = ["**/migrations/**", "**/*.sql", "internal/store/**"]
+medium = ["internal/api/**", "internal/engine/**"]
 
 [autonomy]
 auto_merge = ["low"]          # tiers that merge without you

@@ -233,6 +233,10 @@ function openReviewDetail(it: ReviewItem): void {
         title: green ? "" : "Only green runs can be merged",
         onclick: green ? () => act(() => api.acceptTask(task.id)) : undefined,
       }, ["Merge"]),
+      // Failed/escalated runs can be re-queued for a fresh attempt from scratch.
+      !green
+        ? el("button", { onclick: () => act(() => api.retryTask(task.id)) }, ["Retry"])
+        : el("span", {}),
       dangerBtn("Kick back", () => {
         const reason = prompt("Reason for kicking this back? (optional)") ?? "";
         act(() => api.rejectTask(task.id, reason));

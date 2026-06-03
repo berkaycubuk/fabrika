@@ -64,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/reviews", s.listReviews)
 	mux.HandleFunc("POST /api/tasks/{id}/accept", s.acceptTask)
 	mux.HandleFunc("POST /api/tasks/{id}/reject", s.rejectTask)
+	mux.HandleFunc("POST /api/tasks/{id}/retry", s.retryTask)
 
 	// --- Audit queue (Phase 3: post-merge sampling of auto-merged work) ---
 	mux.HandleFunc("GET /api/audits", s.listAudits)

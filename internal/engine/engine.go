@@ -641,6 +641,49 @@ func (e *Engine) Reject(taskID, reason string) error {
 	return nil
 }
 
+// Retry re-queues a stuck task for a fresh run from scratch. Valid for terminal
+// non-merged states (failed, blocked, closed); an in-flight task must be stopped
+// first. It drops any stale worktree/branch and resets the task to ready, then
+// wakes the dispatch loop so claim() rebuilds a clean worktree and re-routes it.
+// Prior attempts are kept as history.
+func (e *Engine) Retry(taskID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if _, ok := e.running[taskID]; ok {
+		return fmt.Errorf("task is running; stop it before retrying")
+	}
+	t, err := e.store.Tasks.Get(taskID)
+	if err != nil {
+		return err
+	}
+	switch t.Status {
+	case model.TaskFailed, model.TaskBlocked, model.TaskClosed:
+		// retryable
+	default:
+		return fmt.Errorf("task is %s, not retryable", t.Status)
+	}
+
+	// Drop any stale worktree/branch so the next claim starts clean. claim() also
+	// does this defensively, but clearing it here makes the UI reflect it at once.
+	if repo, rerr := git.Open(e.ctx, e.repoRoot); rerr == nil {
+		wt := e.worktreePath(taskID)
+		_ = repo.RemoveWorktree(e.ctx, wt)
+		_ = os.RemoveAll(wt)
+		if t.Branch != "" {
+			_ = repo.DeleteBranch(e.ctx, t.Branch)
+		}
+	}
+
+	if err := e.store.Tasks.UpdateStatus(taskID, model.TaskReady); err != nil {
+		return err
+	}
+	e.emitTask(taskID)
+	e.Wake()
+	log.Printf("engine: task %q re-queued (retry)", t.Title)
+	return nil
+}
+
 // AckAudit acknowledges a sampled post-merge audit as acceptable, removing it
 // from the audit queue (SPECS.md §13 Phase 3).
 func (e *Engine) AckAudit(taskID string) error {
