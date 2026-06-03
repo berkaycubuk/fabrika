@@ -81,6 +81,8 @@ function main(): void {
     onBoardEvent();
     if (e.type.startsWith("agent.")) onAgentEvent();
   }, {
+    // Link is up — reflect it immediately, even before any event arrives.
+    onConnect: () => setConn("live"),
     // The socket dropped and silently missed events; pull a full snapshot so
     // the board doesn't sit stale until a manual reload.
     onReconnect: () => {

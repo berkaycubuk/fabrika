@@ -4,6 +4,10 @@ import type { FabrikaEvent } from "./types.js";
 type Listener = (e: FabrikaEvent) => void;
 
 interface Handlers {
+  // Called every time the socket opens, including the first connect. Lets the
+  // UI show "live" as soon as the link is up rather than waiting for the first
+  // event to arrive (a quiet system may emit nothing for a long while).
+  onConnect?: () => void;
   // Called whenever the socket re-opens after a prior close — not on the very
   // first connect. The app uses this to force a full reconcile, since any
   // events emitted while the socket was down (server restart, sleep, blip) are
@@ -25,6 +29,7 @@ export function connectEvents(onEvent: Listener, handlers: Handlers = {}): void 
     const ws = new WebSocket(url);
     ws.onopen = () => {
       backoff = 500;
+      handlers.onConnect?.();
       if (everClosed) handlers.onReconnect?.();
     };
     ws.onmessage = (msg) => {

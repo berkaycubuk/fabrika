@@ -17,6 +17,13 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap exposes the underlying ResponseWriter so http.ResponseController and
+// the WebSocket layer can reach interfaces we don't promote here (notably
+// http.Hijacker, which coder/websocket needs to upgrade /api/events).
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // logRequests logs API calls (skips static asset noise) with status + latency.
 func logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
