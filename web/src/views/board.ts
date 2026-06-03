@@ -297,6 +297,7 @@ function openReviewDetail(it: ReviewItem): void {
     reviewNote ? el("p", { class: "blocked-q" }, [reviewNote]) : el("span", {}),
     attempt ? stageRow(attempt.evidence) : el("span", { class: "muted" }, ["no evidence"]),
     !green && attempt ? failureBlock(attempt) : el("span", {}),
+    evidenceArtifacts(attempt?.evidence),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     actionRow([
       el("button", {
@@ -327,6 +328,7 @@ function openAuditDetail(it: ReviewItem): void {
       task.branch ? el("code", { class: "branch" }, [task.branch]) : el("span", {}),
     ]),
     attempt ? stageRow(attempt.evidence) : el("span", { class: "muted" }, ["no evidence"]),
+    evidenceArtifacts(attempt?.evidence),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     actionRow([
       primaryBtn("Looks good", () => act(() => api.ackAudit(task.id))),
@@ -442,14 +444,31 @@ function imageAttach(pasteTarget: HTMLTextAreaElement, err: HTMLElement) {
   };
 }
 
-// attachmentGallery renders stored attachment URLs as thumbnails linking to the
-// full-size upload.
+// attachmentGallery renders stored attachment URLs: images as thumbnails linking
+// to the full-size upload, other artifact types (logs, recordings) as named
+// link chips.
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
+
 function attachmentGallery(urls: string[]): HTMLElement {
   return el("div", { class: "attachments" }, urls.map((url) =>
-    el("a", { href: url, target: "_blank", rel: "noopener" }, [
-      el("img", { src: url, class: "attach-thumb", alt: "attachment", loading: "lazy" }),
-    ]),
+    IMAGE_EXT.test(url)
+      ? el("a", { href: url, target: "_blank", rel: "noopener" }, [
+          el("img", { src: url, class: "attach-thumb", alt: "attachment", loading: "lazy" }),
+        ])
+      : el("a", { href: url, target: "_blank", rel: "noopener", class: "attach-link" }, [
+          url.split("/").pop() ?? url,
+        ]),
   ));
+}
+
+// evidenceArtifacts renders agent-attached proof files (screenshots, recordings,
+// logs) from the attempt's evidence, or nothing when the run produced none.
+function evidenceArtifacts(ev: Evidence | undefined): HTMLElement {
+  if (!ev?.artifacts?.length) return el("span", {});
+  return el("div", { class: "evidence-artifacts" }, [
+    el("div", { class: "section-h sm" }, ["Evidence"]),
+    attachmentGallery(ev.artifacts),
+  ]);
 }
 
 // commentsSection builds the comments block of the task detail: a heading, the
@@ -525,6 +544,7 @@ async function loadEvidence(id: string): Promise<void> {
     if (!a) return;
     slot.append(stageRow(a.evidence));
     if (a.result !== "pass") slot.append(failureBlock(a));
+    if (a.evidence?.artifacts?.length) slot.append(evidenceArtifacts(a.evidence));
     const diff = a.evidence?.diff?.trim();
     if (diff) slot.append(diffBlock(diff));
   } catch {

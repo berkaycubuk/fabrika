@@ -399,14 +399,26 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 
 	// Persist agent-authored comments so they survive the run regardless of outcome.
 	for _, text := range agentRes.Comments {
-		if err := e.store.Comments.Create(&model.Comment{
-			TaskID: task.ID, AuthorType: "agent", AuthorID: ag.ID, Body: text,
-		}); err != nil {
+		c := &model.Comment{TaskID: task.ID, AuthorType: "agent", AuthorID: ag.ID, Body: text}
+		if err := e.store.Comments.Create(c); err != nil {
 			log.Printf("engine: create comment: %v", err)
 		} else {
-			e.emit("task.comment.added", &model.Comment{
-				TaskID: task.ID, AuthorType: "agent", AuthorID: ag.ID, Body: text,
-			})
+			e.emit("task.comment.added", c)
+		}
+	}
+
+	// Copy evidence artifacts (fabrika_EVIDENCE: lines) out of the worktree while
+	// it still exists, and surface them in the task thread as one agent comment.
+	artifactURLs, captions := e.ingestEvidence(wt, agentRes.Evidence)
+	if len(artifactURLs) > 0 {
+		c := &model.Comment{
+			TaskID: task.ID, AuthorType: "agent", AuthorID: ag.ID,
+			Body: evidenceCommentBody(artifactURLs, captions), Attachments: artifactURLs,
+		}
+		if err := e.store.Comments.Create(c); err != nil {
+			log.Printf("engine: create evidence comment: %v", err)
+		} else {
+			e.emit("task.comment.added", c)
 		}
 	}
 
@@ -416,7 +428,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	// queue and block the task. Answering it (AnswerDecision) resumes the task.
 	if agentRes.Escalated {
 		e.recordEscalation(task, agentRes.Decision)
-		e.finish(task, ag, model.Evidence{}, model.ResultEscalated,
+		e.finish(task, ag, model.Evidence{Artifacts: artifactURLs}, model.ResultEscalated,
 			"DECISION: "+agentRes.Decision+"\n\n"+logText, model.TaskBlocked)
 		return
 	}
@@ -451,7 +463,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	if viol := lockedViolations(changed, task.Acceptance.LockedGlobs); len(viol) > 0 {
 		ev := model.Evidence{Stages: map[string]model.StageResult{
 			"locked": {Pass: false, Output: "branch edits protected files: " + strings.Join(viol, ", ")},
-		}, Diff: diff}
+		}, Diff: diff, Artifacts: artifactURLs}
 		e.finish(task, ag, ev, model.ResultFail,
 			"LOCKED GLOB VIOLATION: "+strings.Join(viol, ", ")+"\n\n"+logText, model.TaskFailed)
 		log.Printf("engine: task %q failed: locked globs touched (%v)", task.Title, viol)
@@ -466,6 +478,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 		log.Printf("engine: gate: %v", err)
 	}
 	ev.Diff = diff
+	ev.Artifacts = artifactURLs
 
 	// A red gate fails the task outright. The green path runs the Phase 3 trust
 	// checks (reviewer + mutation testing) and decides auto-merge vs human review.

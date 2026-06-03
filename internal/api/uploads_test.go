@@ -2,14 +2,21 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
+	"github.com/berkaycubuk/fabrika/internal/config"
 	"github.com/berkaycubuk/fabrika/internal/model"
+	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
 // pngBytes is a minimal payload that sniffs as image/png.
@@ -59,6 +66,43 @@ func TestImageUploadAndServe(t *testing.T) {
 	// Names that aren't generated uploads (e.g. traversal attempts) 404.
 	if rec := do(t, h, "GET", "/api/uploads/..%2Ffabrika.db", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("traversal name: %d", rec.Code)
+	}
+}
+
+func TestEvidenceArtifactServe(t *testing.T) {
+	// Engine-deposited evidence artifacts use a wider extension set than human
+	// image uploads; the served-name pattern must accept them.
+	dir := t.TempDir()
+	initRepo(t, dir)
+	s, err := store.Open(filepath.Join(dir, "g"), filepath.Join(dir, "p"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	srv := NewServer(s, &config.Config{}, dir, nil)
+	srv.Start(context.Background())
+	h := srv.Handler()
+
+	name := uuid.NewString() + ".log"
+	up := filepath.Join(dir, ".fabrika", "uploads")
+	if err := os.MkdirAll(up, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(up, name), []byte("gate output"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, h, "GET", "/api/uploads/"+name, nil)
+	if rec.Code != 200 || rec.Body.String() != "gate output" {
+		t.Fatalf("serve artifact: %d %q", rec.Code, rec.Body.String())
+	}
+	// Artifact URLs are also valid comment attachments.
+	if !isUploadURL("/api/uploads/" + name) {
+		t.Fatalf("isUploadURL rejected artifact %q", name)
+	}
+	// Extensions outside the allowlist still 404.
+	if rec := do(t, h, "GET", "/api/uploads/"+uuid.NewString()+".sh", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("disallowed ext: %d", rec.Code)
 	}
 }
 

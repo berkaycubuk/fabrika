@@ -28,6 +28,11 @@ const DecisionMarker = "fabrika_DECISION:"
 // The remainder of the line is the comment text.
 const CommentMarker = "fabrika_COMMENT:"
 
+// EvidenceMarker is the stdout sentinel an agent emits to attach a proof file
+// (screenshot, recording, log). The remainder of the line is a worktree path,
+// optionally followed by " | " and a caption.
+const EvidenceMarker = "fabrika_EVIDENCE:"
+
 // ReviewMarker is the stdout sentinel a reviewer agent emits with its verdict on
 // a finished branch. The remainder of the line is a JSON ReviewVerdict payload.
 const ReviewMarker = "fabrika_REVIEW:"
@@ -39,14 +44,22 @@ type ReviewVerdict struct {
 	Notes   string `json:"notes"`
 }
 
+// EvidenceRef is one artifact an agent pointed at via EvidenceMarker: a path
+// inside its worktree and an optional human caption.
+type EvidenceRef struct {
+	Path    string
+	Caption string
+}
+
 // AgentResult is the normalized outcome of one agent subprocess run.
 type AgentResult struct {
 	ExitCode  int
 	Stdout    string
 	Stderr    string
-	Escalated bool     // true if the agent emitted a DecisionMarker
-	Decision  string   // raw JSON after the marker, if Escalated
-	Comments  []string `json:"comments"` // text after each CommentMarker, in order
+	Escalated bool          // true if the agent emitted a DecisionMarker
+	Decision  string        // raw JSON after the marker, if Escalated
+	Comments  []string      `json:"comments"` // text after each CommentMarker, in order
+	Evidence  []EvidenceRef // files after each EvidenceMarker, in order
 }
 
 // Runner invokes a registered agent against a task in a worktree.
@@ -124,6 +137,7 @@ func RenderPrompt(t model.Task, conventions []model.Convention, attachments []st
 	b.WriteString("- On every commit, add the trailer `Co-authored-by: fabrika <fabrika@berkaycubuk.com>` and do not add yourself or any other `Co-authored-by` line.\n")
 	b.WriteString("- Do not edit locked test files listed above.\n")
 	fmt.Fprintf(&b, "- If you hit a question you cannot resolve, print a single line: `%s {\"question\":\"...\",\"options\":[\"...\"]}` and stop.\n", DecisionMarker)
+	fmt.Fprintf(&b, "- To attach proof of your work (screenshot, recording, log), print one line per file: `%s <path-in-worktree> | optional caption`.\n", EvidenceMarker)
 	return b.String()
 }
 
@@ -217,6 +231,7 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 		res.Decision = q
 	}
 	res.Comments = parseComments(res.Stdout)
+	res.Evidence = parseEvidence(res.Stdout)
 	return res, nil
 }
 
@@ -247,4 +262,26 @@ func parseComments(out string) []string {
 		}
 	}
 	return comments
+}
+
+// parseEvidence scans output for all lines containing EvidenceMarker and returns
+// the referenced files in order. The remainder of the line is split once on
+// " | " into a worktree path and an optional caption, so paths may contain
+// spaces; lines with an empty path are skipped.
+func parseEvidence(out string) []EvidenceRef {
+	var refs []EvidenceRef
+	for _, line := range strings.Split(out, "\n") {
+		idx := strings.Index(line, EvidenceMarker)
+		if idx < 0 {
+			continue
+		}
+		rest := strings.TrimSpace(line[idx+len(EvidenceMarker):])
+		path, caption, _ := strings.Cut(rest, " | ")
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		refs = append(refs, EvidenceRef{Path: path, Caption: strings.TrimSpace(caption)})
+	}
+	return refs
 }

@@ -16,7 +16,9 @@ import (
 // served name can be validated with a strict pattern (no path traversal).
 const maxUploadBytes = 10 << 20 // 10 MiB
 
-var uploadNameRe = regexp.MustCompile(`^[a-f0-9-]{36}\.(png|jpg|gif|webp)$`)
+// The extension set covers human image uploads plus engine-deposited evidence
+// artifacts (screenshots/recordings/logs); see internal/engine evidenceExts.
+var uploadNameRe = regexp.MustCompile(`^[a-f0-9-]{36}\.(png|jpg|jpeg|gif|webp|txt|log|json|mp4|webm)$`)
 
 // extByType maps the sniffed content type to the stored extension; doubling as
 // the allowlist of accepted image formats.

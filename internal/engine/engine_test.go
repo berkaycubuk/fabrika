@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -342,5 +343,85 @@ func TestPickRemote(t *testing.T) {
 	}
 	if _, err := pickRemote([]string{"a", "b"}); err == nil {
 		t.Fatal("expected error for ambiguous remotes")
+	}
+}
+
+func TestEvidenceArtifactIngest(t *testing.T) {
+	eng, st, repo := setup(t)
+	// Agent produces a screenshot and points at it via the evidence marker.
+	registerAgent(t, st, "printf 'shot' > shot.png && "+
+		"echo 'fabrika_EVIDENCE: shot.png | login screen'")
+
+	task := &model.Task{Title: "with evidence", Spec: "s"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected a task to be dispatched")
+	}
+
+	att, err := st.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if len(att.Evidence.Artifacts) != 1 {
+		t.Fatalf("artifacts = %v, want 1", att.Evidence.Artifacts)
+	}
+	url := att.Evidence.Artifacts[0]
+	if !regexp.MustCompile(`^/api/uploads/[a-f0-9-]{36}\.png$`).MatchString(url) {
+		t.Fatalf("artifact url = %q", url)
+	}
+	// The file was copied out of the worktree into the project uploads dir.
+	name := strings.TrimPrefix(url, "/api/uploads/")
+	data, err := os.ReadFile(filepath.Join(repo, ".fabrika", "uploads", name))
+	if err != nil || string(data) != "shot" {
+		t.Fatalf("stored artifact: %q, %v", data, err)
+	}
+	// The run also surfaces the artifact as one agent comment with the caption.
+	comments, err := st.Comments.ListForTask(task.ID)
+	if err != nil {
+		t.Fatalf("comments: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("comments = %+v, want 1", comments)
+	}
+	c := comments[0]
+	if c.AuthorType != "agent" || len(c.Attachments) != 1 || c.Attachments[0] != url ||
+		!strings.Contains(c.Body, "login screen") {
+		t.Fatalf("evidence comment = %+v", c)
+	}
+}
+
+func TestEvidenceBadRefsSkipped(t *testing.T) {
+	eng, st, _ := setup(t)
+	// Escaping paths (even with allowed extensions), disallowed types, and
+	// missing files are all skipped without failing the run.
+	registerAgent(t, st, "printf 'x' > ../../../escape.png && printf 'y' > run.sh && "+
+		"echo 'fabrika_EVIDENCE: ../../../escape.png' && "+
+		"echo 'fabrika_EVIDENCE: run.sh' && "+
+		"echo 'fabrika_EVIDENCE: missing.png'")
+
+	task := &model.Task{Title: "bad evidence", Spec: "s"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected a task to be dispatched")
+	}
+
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskReview {
+		t.Fatalf("status = %q, want review (bad evidence must not fail the run)", got.Status)
+	}
+	att, err := st.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if len(att.Evidence.Artifacts) != 0 {
+		t.Fatalf("artifacts = %v, want none", att.Evidence.Artifacts)
+	}
+	comments, _ := st.Comments.ListForTask(task.ID)
+	if len(comments) != 0 {
+		t.Fatalf("comments = %+v, want none", comments)
 	}
 }

@@ -45,3 +45,34 @@ func TestRenderPromptAttachments(t *testing.T) {
 		t.Fatalf("RenderPrompt output missing attachment paths:\n%s", out)
 	}
 }
+
+func TestParseEvidence(t *testing.T) {
+	out := strings.Join([]string{
+		"some build output",
+		"fabrika_EVIDENCE: shots/login.png | login page after fix",
+		"prefix fabrika_EVIDENCE: docs/run log.txt", // marker mid-line; path keeps its space
+		"fabrika_EVIDENCE:   ",                      // empty path skipped
+		"fabrika_EVIDENCE: demo.mp4",                // no caption
+	}, "\n")
+	want := []EvidenceRef{
+		{Path: "shots/login.png", Caption: "login page after fix"},
+		{Path: "docs/run log.txt"},
+		{Path: "demo.mp4"},
+	}
+	got := parseEvidence(out)
+	if len(got) != len(want) {
+		t.Fatalf("parseEvidence = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("parseEvidence[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRenderPromptEvidenceRule(t *testing.T) {
+	out := RenderPrompt(model.Task{Title: "x"}, nil, nil)
+	if !strings.Contains(out, EvidenceMarker) {
+		t.Fatalf("RenderPrompt output missing evidence marker instruction:\n%s", out)
+	}
+}

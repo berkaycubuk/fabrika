@@ -498,6 +498,19 @@ button.option:hover { border-color: var(--accent); }
   font-size: 13px;
 }
 .attach-file { display: none; }
+/* Non-image evidence artifacts (logs, recordings) render as named link chips */
+.attach-link {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-family: var(--mono, monospace);
+  color: var(--text);
+  text-decoration: none;
+  background: var(--bg);
+}
+.attach-link:hover { border-color: var(--text); }
+.evidence-artifacts { margin-top: 8px; }
 .attach-field { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .assign-select { font-size: 12px; padding: 6px 8px; flex: 1; }
 .detail .stat-grid { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
