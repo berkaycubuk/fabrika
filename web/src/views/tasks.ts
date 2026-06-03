@@ -30,6 +30,12 @@ function taskForm(): HTMLElement {
     rows: "3",
   }) as HTMLTextAreaElement;
   const tags = el("input", { placeholder: "Tags, comma-separated (go, api)" }) as HTMLInputElement;
+  const priority = el("select", {}, [
+    el("option", { value: "low" }, ["Low"]),
+    el("option", { value: "medium" }, ["Medium"]),
+    el("option", { value: "high" }, ["High"]),
+  ]) as HTMLSelectElement;
+  priority.value = "medium";
   const err = el("div", { class: "form-error" });
 
   return el("form", {
@@ -47,6 +53,7 @@ function taskForm(): HTMLElement {
           lockedGlobs: [],
         },
         tags: tags.value.split(",").map((s) => s.trim()).filter(Boolean),
+        priority: priority.value,
       };
       try {
         await api.createTask(payload);
@@ -61,6 +68,7 @@ function taskForm(): HTMLElement {
     el("div", { class: "field" }, [el("label", {}, ["Spec"]), spec]),
     el("div", { class: "field" }, [el("label", {}, ["Verify commands"]), verify]),
     el("div", { class: "field" }, [el("label", {}, ["Tags"]), tags]),
+    el("div", { class: "field" }, [el("label", {}, ["Priority"]), priority]),
     err,
     el("div", { class: "form-actions" }, [
       el("button", { class: "primary", type: "submit" }, ["Create task"]),
@@ -91,6 +99,7 @@ function taskCard(t: Task): HTMLElement {
         t.title,
         el("span", { class: `pill status-${t.status}` }, [t.status]),
         el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier]),
+        el("span", { class: `tag priority-${t.priority}` }, [`priority: ${t.priority}`]),
       ]),
       t.spec ? el("p", { class: "card-spec" }, [t.spec]) : el("span", {}),
       el("div", { class: "card-meta" }, [

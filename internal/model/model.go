@@ -39,6 +39,11 @@ const (
 	RiskMedium = "medium"
 	RiskHigh   = "high"
 
+	// Task priorities (human-set ordering hint; default medium)
+	PriorityLow    = "low"
+	PriorityMedium = "medium"
+	PriorityHigh   = "high"
+
 	// Agent roles
 	RoleImplementer = "implementer"
 	RolePlanner     = "planner"
@@ -81,6 +86,7 @@ type Task struct {
 	TouchPaths       []string `json:"touchPaths"` // files/dirs it will touch
 	Tags             []string `json:"tags"`       // capability hints for routing
 	RiskTier         string   `json:"riskTier"`   // low|medium|high
+	Priority         string   `json:"priority"`   // low|medium|high (human-set ordering hint)
 	Status           string   `json:"status"`     // ready|claimed|running|verifying|review|merged|blocked|failed
 	Branch           string   `json:"branch"`     // git worktree/branch
 	AgentID          string   `json:"agentId"`    // which registered agent picked it up

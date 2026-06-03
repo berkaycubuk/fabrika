@@ -30,6 +30,7 @@ export interface Task {
   touchPaths: string[];
   tags: string[];
   riskTier: string;
+  priority: string;
   status: string;
   branch: string;
   agentId: string;
