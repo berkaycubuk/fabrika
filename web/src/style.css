@@ -120,7 +120,7 @@ h1 + .muted, .view-header .muted { margin-top: 0; }
 .card-cmd { display: block; word-break: break-all; }
 .card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .card-actions { display: flex; gap: 8px; margin-top: 14px; }
-.agent-card, .task-card { display: flex; flex-direction: column; }
+.agent-card { display: flex; flex-direction: column; }
 
 /* Forms */
 form.card { display: flex; flex-direction: column; gap: 12px; }
@@ -187,6 +187,9 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 .tag.risk-high { color: var(--red); }
 .tag.risk-medium { color: var(--amber); }
 .tag.risk-low { color: var(--green); }
+.tag.priority-high { color: var(--red); }
+.tag.priority-medium { color: var(--amber); }
+.tag.priority-low { color: var(--green); }
 .verify-cmd { background: var(--panel-2); padding: 2px 8px; border-radius: 0; }
 
 .placeholder { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }

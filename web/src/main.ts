@@ -4,7 +4,6 @@
 import { el } from "./dom.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
-import { onTaskEvent } from "./views/tasks.js";
 import { renderBoard, onBoardEvent } from "./views/board.js";
 import type { FabrikaEvent } from "./types.js";
 
@@ -65,12 +64,10 @@ function main(): void {
       conn.className = "pill on";
     }
     // Every surface guards on its own DOM presence, so fan out broadly: the
-    // board owns the human gates, the factory views own the registry/metrics.
+    // board owns the human gates (refreshing on every event, including
+    // task/plan), the factory views own the registry/metrics.
     onBoardEvent();
     if (e.type.startsWith("agent.")) onAgentEvent();
-    if (e.type.startsWith("task.") || e.type.startsWith("bigtask.") || e.type.startsWith("plan.")) {
-      onTaskEvent();
-    }
   });
 }
 

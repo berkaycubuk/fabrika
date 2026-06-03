@@ -145,6 +145,7 @@ function taskCard(t: Task, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
   if (t.agentId) meta.push(el("span", { class: "tag agent" }, [agentName(agents, t.agentId)]));
   meta.push(el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier]));
+  meta.push(el("span", { class: `tag priority-${t.priority}` }, [`priority: ${t.priority}`]));
   for (const tag of t.tags ?? []) meta.push(el("span", { class: "tag" }, [tag]));
   return card(t.title, meta, () => openTaskDetail(t, agents));
 }
@@ -497,6 +498,12 @@ function openCreateTask(): void {
   const spec = el("textarea", { placeholder: "What to build, where, and any constraints…", rows: "4" }) as HTMLTextAreaElement;
   const verify = el("textarea", { placeholder: "Verify commands, one per line (e.g. go test ./...)", rows: "3" }) as HTMLTextAreaElement;
   const tags = el("input", { placeholder: "Tags, comma-separated (go, api)" }) as HTMLInputElement;
+  const priority = el("select", {}, [
+    el("option", { value: "low" }, ["Low"]),
+    el("option", { value: "medium" }, ["Medium"]),
+    el("option", { value: "high" }, ["High"]),
+  ]) as HTMLSelectElement;
+  priority.value = "medium";
   const err = el("div", { class: "form-error" });
 
   const form = el("form", {
@@ -510,6 +517,7 @@ function openCreateTask(): void {
           spec: spec.value.trim(),
           acceptance: { verifyCmds: lines(verify.value), heldOut: [], properties: [], lockedGlobs: [] },
           tags: tags.value.split(",").map((s) => s.trim()).filter(Boolean),
+          priority: priority.value,
         });
         closeModal();
         refresh();
@@ -522,6 +530,7 @@ function openCreateTask(): void {
     field("Spec", spec),
     field("Verify commands", verify),
     field("Tags", tags),
+    field("Priority", priority),
     el("p", { class: "muted sm" }, ["Verify commands are the machine-checkable acceptance contract."]),
     err,
     el("div", { class: "form-actions" }, [el("button", { class: "primary", type: "submit" }, ["Create task"])]),
