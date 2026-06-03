@@ -1,7 +1,7 @@
 // Package api exposes Fabrika's REST + WebSocket surface (SPECS.md §11) over the
-// store. In this phase the agents/tasks/settings endpoints are fully wired;
-// planner/decision/review/steer/metrics endpoints are present but return 501 so
-// the surface is discoverable while the live loop is built out.
+// store. Agents, tasks, reviews, settings, and the Phase 1 scheduling surface
+// (assign, steer, metrics) are fully wired; the planner/decision endpoints
+// remain present but return 501 until Phase 2.
 package api
 
 import (
@@ -19,6 +19,7 @@ import (
 // Server holds the dependencies shared across handlers.
 type Server struct {
 	store  *store.Store
+	cfg    *config.Config
 	hub    *Hub
 	web    fs.FS // embedded static UI assets (may be nil in tests)
 	engine *engine.Engine
@@ -28,7 +29,7 @@ type Server struct {
 // dispatch loop; web is the embedded UI filesystem (nil disables static
 // serving). The engine emits UI events through the WebSocket hub.
 func NewServer(s *store.Store, cfg *config.Config, repoRoot string, web fs.FS) *Server {
-	srv := &Server{store: s, hub: newHub(), web: web}
+	srv := &Server{store: s, cfg: cfg, hub: newHub(), web: web}
 	srv.engine = engine.New(s, cfg, repoRoot, func(t string, p any) {
 		srv.hub.Broadcast(Event{Type: t, Payload: p})
 	})
@@ -63,6 +64,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/accept", s.acceptTask)
 	mux.HandleFunc("POST /api/tasks/{id}/reject", s.rejectTask)
 
+	// --- Scheduling / steering (Phase 1) ---
+	mux.HandleFunc("POST /api/tasks/{id}/assign", s.assignTask)
+	mux.HandleFunc("POST /api/steer", s.steer)
+	mux.HandleFunc("GET /api/metrics", s.getMetrics)
+
 	// --- Settings (global store) ---
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
@@ -77,9 +83,6 @@ func (s *Server) Handler() http.Handler {
 		"POST /api/plans/{id}/reject",
 		"GET /api/decisions",
 		"POST /api/decisions/{id}/answer",
-		"POST /api/tasks/{id}/assign",
-		"POST /api/steer",
-		"GET /api/metrics",
 	} {
 		mux.HandleFunc(p, notImplemented)
 	}

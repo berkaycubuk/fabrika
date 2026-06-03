@@ -3,9 +3,11 @@
 // agent in an isolated git worktree, verify the result through the gate, and
 // record normalized Evidence. Accepted work is merged on human approval.
 //
-// Phase 0 completion: dispatch is single-flight (one task in flight at a time);
-// parallel scheduling across agent slots is Phase 1. Merge is manual (the human
-// Accepts); risk-tiered auto-merge is Phase 3. See SPECS.md §7, §8, §9, §13.
+// Phase 1: dispatch is parallel. The scheduler tracks each agent's free slots
+// (Concurrency minus running attempts), honors a global WIP cap, avoids
+// TouchPaths collisions between concurrently running tasks, and gates tasks on
+// their DependsOn edges. Merge is still manual (the human Accepts); risk-tiered
+// auto-merge is Phase 3. See SPECS.md §7, §8, §9, §13.
 package engine
 
 import (
@@ -14,6 +16,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +33,19 @@ import (
 // Engine stays decoupled from api to avoid an import cycle.
 type EventFunc func(eventType string, payload any)
 
+// Settings keys read from the global store to tune the scheduler at runtime.
+const (
+	settingWIPCap = "wip_cap"     // global max concurrently-running tasks (0 = unlimited)
+	settingRoute  = "route_tier_" // + tier -> agentID: per-risk-tier routing override
+)
+
+// runInfo records what an in-flight task is doing, for slot accounting and
+// TouchPaths collision avoidance. Held in Engine.running under mu.
+type runInfo struct {
+	agentID    string
+	touchPaths []string
+}
+
 // Engine coordinates dispatch, verification, and merge.
 type Engine struct {
 	store    *store.Store
@@ -39,9 +55,11 @@ type Engine struct {
 	agent    agent.Runner
 	emit     EventFunc
 
-	ctx  context.Context
-	wake chan struct{}
-	mu   sync.Mutex // serializes git ops + task state writes (single-flight Phase 0)
+	ctx     context.Context
+	wake    chan struct{}
+	mu      sync.Mutex         // guards running + serializes git worktree/state writes
+	running map[string]runInfo // taskID -> in-flight info
+	wg      sync.WaitGroup     // tracks dispatched goroutines
 }
 
 // New constructs an Engine rooted at repoRoot (the target repo). emit may be nil.
@@ -57,6 +75,7 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		agent:    agent.NewSubprocess(),
 		emit:     emit,
 		wake:     make(chan struct{}, 1),
+		running:  map[string]runInfo{},
 	}
 }
 
@@ -78,12 +97,7 @@ func (e *Engine) loop() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		// Drain all currently-dispatchable work before sleeping.
-		for e.dispatchOnce() {
-			if e.ctx.Err() != nil {
-				return
-			}
-		}
+		e.dispatchReady()
 		select {
 		case <-e.ctx.Done():
 			return
@@ -93,19 +107,53 @@ func (e *Engine) loop() {
 	}
 }
 
-// dispatchOnce picks the oldest ready task that routes to an enabled agent and
-// runs it to completion. Returns false when nothing could be dispatched.
+// dispatchReady launches every currently-dispatchable task, each in its own
+// goroutine, until the scheduler can place no more (slots full, WIP cap reached,
+// dependencies unmet, or collisions). Each goroutine frees its slot and re-wakes
+// the loop on completion so newly unblocked work flows immediately.
+func (e *Engine) dispatchReady() {
+	for {
+		if e.ctx.Err() != nil {
+			return
+		}
+		task, ag, base, ok := e.claim()
+		if !ok {
+			return
+		}
+		e.wg.Add(1)
+		go func() {
+			defer e.wg.Done()
+			e.run(task, ag, base)
+			e.markDone(task.ID)
+			e.Wake()
+		}()
+	}
+}
+
+// dispatchOnce claims one task and runs it to completion synchronously. Retained
+// for tests and as the single-flight building block; the live loop uses
+// dispatchReady for parallelism. Returns false when nothing could be dispatched.
 func (e *Engine) dispatchOnce() bool {
 	task, ag, base, ok := e.claim()
 	if !ok {
 		return false
 	}
 	e.run(task, ag, base)
+	e.markDone(task.ID)
 	return true
 }
 
-// claim selects and marks a task running under the lock, returning the work to
-// do. The slow agent/gate work happens outside the lock (see run).
+// markDone releases a finished task's slot so the scheduler can place more work.
+func (e *Engine) markDone(taskID string) {
+	e.mu.Lock()
+	delete(e.running, taskID)
+	e.mu.Unlock()
+}
+
+// claim selects and marks one ready task running under the lock, returning the
+// work to do. It enforces the Phase 1 scheduling rules: per-agent free slots, a
+// global WIP cap, TouchPaths collision avoidance, and DependsOn gating. The slow
+// agent/gate work happens outside the lock (see run).
 func (e *Engine) claim() (model.Task, model.Agent, string, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -121,15 +169,50 @@ func (e *Engine) claim() (model.Task, model.Agent, string, bool) {
 		return model.Task{}, model.Agent{}, "", false
 	}
 
+	// Global WIP cap: stop dispatching once the configured ceiling is reached.
+	if wip := e.wipCap(); wip > 0 && len(e.running) >= wip {
+		return model.Task{}, model.Agent{}, "", false
+	}
+
+	// Free slots per agent = Concurrency minus tasks it's currently running.
+	free := map[string]int{}
+	for i := range agents {
+		free[agents[i].ID] = agents[i].Concurrency
+	}
+	for _, ri := range e.running {
+		free[ri.agentID]--
+	}
+
+	byID := map[string]model.Task{}
+	for _, t := range tasks {
+		byID[t.ID] = t
+	}
+	tierRoutes := e.tierRoutes()
+
 	// List is newest-first; iterate oldest-first so tasks run FIFO.
 	for i := len(tasks) - 1; i >= 0; i-- {
 		t := tasks[i]
 		if t.Status != model.TaskReady {
 			continue
 		}
-		ag := agent.Route(t, agents)
+		if !depsSatisfied(t, byID) {
+			continue // a prerequisite hasn't merged yet
+		}
+		if e.collides(t.TouchPaths) {
+			continue // would write paths a running task is already touching
+		}
+
+		// Apply per-risk-tier routing as an effective pin when the task isn't
+		// already pinned, then route honoring live free slots.
+		routed := t
+		if routed.PreferredAgentID == "" {
+			if a := tierRoutes[t.RiskTier]; a != "" {
+				routed.PreferredAgentID = a
+			}
+		}
+		ag := agent.Route(routed, agents, free)
 		if ag == nil {
-			continue // no enabled agent for this task; try the next
+			continue // no eligible agent with a free slot; try the next task
 		}
 
 		repo, err := git.Open(e.ctx, e.repoRoot)
@@ -163,11 +246,79 @@ func (e *Engine) claim() (model.Task, model.Agent, string, bool) {
 			return model.Task{}, model.Agent{}, "", false
 		}
 		t.AgentID, t.Branch, t.Status = ag.ID, branch, model.TaskRunning
+		e.running[t.ID] = runInfo{agentID: ag.ID, touchPaths: t.TouchPaths}
 		e.emitTask(t.ID)
 		log.Printf("engine: dispatch task %q -> agent %q on %s", t.Title, ag.Name, branch)
 		return t, *ag, base, true
 	}
 	return model.Task{}, model.Agent{}, "", false
+}
+
+// wipCap reads the global work-in-progress ceiling from settings (0/unset =
+// unlimited). A malformed value is treated as unlimited.
+func (e *Engine) wipCap() int {
+	v, err := e.store.Settings.Get(settingWIPCap)
+	if err != nil || v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// tierRoutes returns the per-risk-tier agent overrides (risk tier -> agentID).
+func (e *Engine) tierRoutes() map[string]string {
+	out := map[string]string{}
+	for _, tier := range []string{model.RiskLow, model.RiskMedium, model.RiskHigh} {
+		if a, _ := e.store.Settings.Get(settingRoute + tier); a != "" {
+			out[tier] = a
+		}
+	}
+	return out
+}
+
+// collides reports whether paths overlap any currently-running task's
+// TouchPaths. Overlap means equality or directory containment either way. A task
+// that declares no paths never collides (we can't reason about it, so we let it
+// run — Phase 1 best-effort, as TouchPaths is the declared collision surface).
+func (e *Engine) collides(paths []string) bool {
+	if len(paths) == 0 {
+		return false
+	}
+	for _, ri := range e.running {
+		if pathsOverlap(paths, ri.touchPaths) {
+			return true
+		}
+	}
+	return false
+}
+
+// depsSatisfied reports whether every task this one DependsOn has merged.
+func depsSatisfied(t model.Task, byID map[string]model.Task) bool {
+	for _, dep := range t.DependsOn {
+		d, ok := byID[dep]
+		if !ok || d.Status != model.TaskMerged {
+			return false
+		}
+	}
+	return true
+}
+
+// pathsOverlap reports whether any path in a equals or contains (or is contained
+// by) any path in b, treating entries as path prefixes.
+func pathsOverlap(a, b []string) bool {
+	for _, x := range a {
+		x = strings.TrimSuffix(x, "/")
+		for _, y := range b {
+			y = strings.TrimSuffix(y, "/")
+			if x == y || strings.HasPrefix(x, y+"/") || strings.HasPrefix(y, x+"/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // run executes the agent then the gate (both unlocked, as they are slow), and

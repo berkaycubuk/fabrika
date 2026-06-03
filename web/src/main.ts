@@ -6,6 +6,7 @@ import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderTasks, onTaskEvent } from "./views/tasks.js";
 import { renderAccept, onReviewEvent } from "./views/accept.js";
+import { renderEngine, onEngineEvent } from "./views/engine.js";
 import { api } from "./api.js";
 import type { FabrikaEvent } from "./types.js";
 
@@ -23,7 +24,7 @@ const NAV: Nav[] = [
   { id: "accept", label: "Accept", group: "needs-you", render: renderAccept },
   { id: "decide", label: "Decide", group: "needs-you", render: placeholder("Decide", "The decision queue — answer questions agents can't resolve. Arrives with the planner (Phase 2)."), soon: true },
   { id: "approve", label: "Approve", group: "needs-you", render: placeholder("Approve", "Review a proposed plan before work starts. Arrives with the planner (Phase 2)."), soon: true },
-  { id: "engine", label: "Engine room", group: "factory", render: placeholder("Engine room", "Live task DAG, per-agent activity, and metrics. Arrives with the scheduler (Phase 1)."), soon: true },
+  { id: "engine", label: "Engine room", group: "factory", render: renderEngine },
 ];
 
 function placeholder(title: string, body: string) {
@@ -98,10 +99,14 @@ function main(): void {
       conn.textContent = "live";
       conn.className = "pill on";
     }
-    if (e.type.startsWith("agent.")) onAgentEvent();
+    if (e.type.startsWith("agent.")) {
+      onAgentEvent();
+      onEngineEvent();
+    }
     if (e.type.startsWith("task.") || e.type.startsWith("bigtask.")) {
       onTaskEvent();
       onReviewEvent();
+      onEngineEvent();
       updateBadge();
     }
   });

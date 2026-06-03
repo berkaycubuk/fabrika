@@ -63,6 +63,28 @@ export interface ReviewItem {
   attempt: Attempt | null;
 }
 
+export interface AgentMetrics {
+  agentId: string;
+  name: string;
+  enabled: boolean;
+  concurrency: number;
+  running: number;
+  merged: number;
+  kickedBack: number;
+  kickbackRate: number;
+}
+
+export interface Metrics {
+  agents: AgentMetrics[];
+  wip: number;
+  wipCap: number;
+  ready: number;
+  inReview: number;
+  blocked: number;
+  merged: number;
+  throughput: number;
+}
+
 export interface FabrikaEvent {
   type: string;
   payload: unknown;

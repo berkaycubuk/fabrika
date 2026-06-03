@@ -56,6 +56,12 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t.ID = ""
+	// Derive the risk tier from the paths the task will touch (manifest [risk]
+	// globs) unless the caller pinned one explicitly. Drives per-tier routing
+	// now and the merge gate in Phase 3.
+	if t.RiskTier == "" && s.cfg != nil {
+		t.RiskTier = s.cfg.TierFor(t.TouchPaths)
+	}
 	if err := s.store.Tasks.Create(&t); err != nil {
 		mapStoreErr(w, err)
 		return

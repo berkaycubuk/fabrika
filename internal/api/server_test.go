@@ -143,9 +143,24 @@ func TestBigTaskCreatesPassthroughTask(t *testing.T) {
 
 func TestDeferredEndpointReturns501(t *testing.T) {
 	h := newTestServer(t)
-	rec := do(t, h, "GET", "/api/metrics", nil)
+	rec := do(t, h, "GET", "/api/decisions", nil)
 	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("metrics should be 501, got %d", rec.Code)
+		t.Fatalf("decisions should be 501, got %d", rec.Code)
+	}
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	h := newTestServer(t)
+	rec := do(t, h, "GET", "/api/metrics", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics: %d %s", rec.Code, rec.Body.String())
+	}
+	var m Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+	if m.Agents == nil {
+		t.Fatal("agents should be a (possibly empty) array, not null")
 	}
 }
 
