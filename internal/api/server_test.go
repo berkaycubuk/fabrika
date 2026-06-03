@@ -422,6 +422,62 @@ func TestMetricsTokenTotals(t *testing.T) {
 	}
 }
 
+func TestMetricsPlanningTokens(t *testing.T) {
+	s, h := newTestServerWithStore(t)
+
+	// Register a planner agent.
+	rec := do(t, h, "POST", "/api/agents", model.Agent{
+		Name: "Planner", Command: "true", Enabled: true,
+	})
+	var planner model.Agent
+	json.Unmarshal(rec.Body.Bytes(), &planner)
+
+	// Seed a planned big task crediting the planner with token usage.
+	bt := &model.BigTask{
+		Title:          "big",
+		Status:         model.BigTaskPlanned,
+		PlannerAgentID: planner.ID,
+	}
+	if err := s.BigTasks.Create(bt); err != nil {
+		t.Fatalf("create big task: %v", err)
+	}
+	if err := s.BigTasks.SetUsage(bt.ID, model.Usage{
+		InputTokens: 200, OutputTokens: 80, TotalTokens: 280,
+	}); err != nil {
+		t.Fatalf("set usage: %v", err)
+	}
+
+	// Hit metrics.
+	rec = do(t, h, "GET", "/api/metrics", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics: %d %s", rec.Code, rec.Body.String())
+	}
+	var m Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+
+	// Planning tokens land in the board-wide total.
+	if m.TotalTokens != 280 {
+		t.Fatalf("board totalTokens = %d, want 280", m.TotalTokens)
+	}
+
+	// And in the planner agent's per-agent total.
+	var got *AgentMetrics
+	for i := range m.Agents {
+		if m.Agents[i].AgentID == planner.ID {
+			got = &m.Agents[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatal("Planner missing from metrics")
+	}
+	if got.TotalTokens != 280 {
+		t.Fatalf("planner totalTokens = %d, want 280", got.TotalTokens)
+	}
+}
+
 func TestSettingsRoundTripOverHTTP(t *testing.T) {
 	h := newTestServer(t)
 	rec := do(t, h, "PUT", "/api/settings", map[string]string{"wip_cap": "4"})
