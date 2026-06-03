@@ -379,7 +379,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	promptFile, cleanup, err := writeTempPrompt(agent.RenderPrompt(task, conventions, e.attachmentPaths(task.Attachments)))
 	if err != nil {
 		log.Printf("engine: write prompt: %v", err)
-		e.finish(task, ag, model.Evidence{}, model.ResultFail, "write prompt: "+err.Error(), model.TaskFailed)
+		e.finish(task, ag, model.Evidence{}, model.ResultFail, "write prompt: "+err.Error(), model.TaskFailed, model.Usage{})
 		return
 	}
 	defer cleanup()
@@ -393,7 +393,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	}
 	if err != nil {
 		log.Printf("engine: agent run %q: %v", ag.Name, err)
-		e.finish(task, ag, model.Evidence{}, model.ResultFail, "agent error: "+err.Error(), model.TaskFailed)
+		e.finish(task, ag, model.Evidence{}, model.ResultFail, "agent error: "+err.Error(), model.TaskFailed, model.Usage{})
 		return
 	}
 
@@ -429,7 +429,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	if agentRes.Escalated {
 		e.recordEscalation(task, agentRes.Decision)
 		e.finish(task, ag, model.Evidence{Artifacts: artifactURLs}, model.ResultEscalated,
-			"DECISION: "+agentRes.Decision+"\n\n"+logText, model.TaskBlocked)
+			"DECISION: "+agentRes.Decision+"\n\n"+logText, model.TaskBlocked, agentRes.Usage)
 		return
 	}
 
@@ -465,7 +465,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 			"locked": {Pass: false, Output: "branch edits protected files: " + strings.Join(viol, ", ")},
 		}, Diff: diff, Artifacts: artifactURLs}
 		e.finish(task, ag, ev, model.ResultFail,
-			"LOCKED GLOB VIOLATION: "+strings.Join(viol, ", ")+"\n\n"+logText, model.TaskFailed)
+			"LOCKED GLOB VIOLATION: "+strings.Join(viol, ", ")+"\n\n"+logText, model.TaskFailed, agentRes.Usage)
 		log.Printf("engine: task %q failed: locked globs touched (%v)", task.Title, viol)
 		return
 	}
@@ -483,11 +483,11 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	// A red gate fails the task outright. The green path runs the Phase 3 trust
 	// checks (reviewer + mutation testing) and decides auto-merge vs human review.
 	if !gatePassed(ev) {
-		e.finish(task, ag, ev, model.ResultFail, logText, model.TaskFailed)
+		e.finish(task, ag, ev, model.ResultFail, logText, model.TaskFailed, agentRes.Usage)
 		log.Printf("engine: task %q -> failed (gate red)", task.Title)
 		return
 	}
-	e.finishGreen(ctx, task, ag, ev, logText, base, changed, conventions)
+	e.finishGreen(ctx, task, ag, ev, logText, base, changed, conventions, agentRes.Usage)
 }
 
 // finishGreen handles a task whose gate passed: it runs the optional reviewer
@@ -496,7 +496,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 // to the human Accept queue. A random sample of auto-merges is flagged for a
 // post-merge audit so trust can be calibrated without re-introducing a human in
 // the common path (SPECS.md §9, §13 Phase 3).
-func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agent, ev model.Evidence, logText, base string, changed []string, conventions []model.Convention) {
+func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agent, ev model.Evidence, logText, base string, changed []string, conventions []model.Convention, usage model.Usage) {
 	wt := e.worktreePath(task.ID)
 	if ev.Stages == nil {
 		ev.Stages = map[string]model.StageResult{}
@@ -524,7 +524,7 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 	eligible := e.cfg != nil && e.cfg.AutoMerges(tier) && reviewApproved && mutationOK
 
 	if !eligible {
-		e.finish(task, ag, ev, model.ResultPass, logText, model.TaskReview)
+		e.finish(task, ag, ev, model.ResultPass, logText, model.TaskReview, usage)
 		log.Printf("engine: task %q -> review (tier=%s autoMerge=%v review=%v mutation=%v)",
 			task.Title, tier, e.cfg != nil && e.cfg.AutoMerges(tier), reviewApproved, mutationOK)
 		return
@@ -534,7 +534,7 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 	// A sampled fraction is flagged for post-merge audit (merge still proceeds).
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.recordAttempt(task, ag, ev, model.ResultPass, logText)
+	e.recordAttempt(task, ag, ev, model.ResultPass, logText, usage)
 
 	repo, err := git.Open(e.ctx, e.repoRoot)
 	if err != nil {
@@ -562,21 +562,22 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 
 // finish persists the attempt and sets the terminal-for-now status, emitting an
 // update. Holds the lock for the DB writes.
-func (e *Engine) finish(task model.Task, ag model.Agent, ev model.Evidence, result, logText, status string) {
+func (e *Engine) finish(task model.Task, ag model.Agent, ev model.Evidence, result, logText, status string, usage model.Usage) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.recordAttempt(task, ag, ev, result, logText)
+	e.recordAttempt(task, ag, ev, result, logText, usage)
 	e.setStatus(task.ID, status)
 	e.emitTask(task.ID)
 }
 
 // recordAttempt persists one attempt row. The caller must hold e.mu.
-func (e *Engine) recordAttempt(task model.Task, ag model.Agent, ev model.Evidence, result, logText string) {
+func (e *Engine) recordAttempt(task model.Task, ag model.Agent, ev model.Evidence, result, logText string, usage model.Usage) {
 	att := &model.Attempt{
 		TaskID:   task.ID,
 		AgentID:  ag.ID,
 		Result:   result,
 		Evidence: ev,
+		Usage:    usage,
 		Log:      logText,
 	}
 	if err := e.store.Attempts.Create(att); err != nil {
@@ -614,7 +615,7 @@ func (e *Engine) finalizeCancelled(task model.Task, ag model.Agent, reason strin
 	if reason != "" {
 		note += ": " + reason
 	}
-	e.recordAttempt(task, ag, model.Evidence{}, model.ResultFail, note)
+	e.recordAttempt(task, ag, model.Evidence{}, model.ResultFail, note, model.Usage{})
 	e.setStatus(task.ID, model.TaskClosed)
 	e.emitTask(task.ID)
 	log.Printf("engine: task %q stopped in flight", task.Title)
