@@ -45,6 +45,12 @@ func initRepo(t *testing.T, dir string) {
 
 func newTestServer(t *testing.T) http.Handler {
 	t.Helper()
+	_, h := newTestServerWithStore(t)
+	return h
+}
+
+func newTestServerWithStore(t *testing.T) (*store.Store, http.Handler) {
+	t.Helper()
 	dir := t.TempDir()
 	initRepo(t, dir)
 	s, err := store.Open(filepath.Join(dir, "g"), filepath.Join(dir, "p"))
@@ -54,7 +60,7 @@ func newTestServer(t *testing.T) http.Handler {
 	t.Cleanup(func() { s.Close() })
 	srv := NewServer(s, &config.Config{}, dir, nil)
 	srv.Start(context.Background())
-	return srv.Handler()
+	return s, srv.Handler()
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
@@ -291,6 +297,79 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 	if m.Agents == nil {
 		t.Fatal("agents should be a (possibly empty) array, not null")
+	}
+}
+
+func TestMetricsTokenTotals(t *testing.T) {
+	s, h := newTestServerWithStore(t)
+
+	// Register two agents.
+	rec := do(t, h, "POST", "/api/agents", model.Agent{
+		Name: "Agent One", Command: "true", Enabled: true,
+	})
+	_ = json.Unmarshal(rec.Body.Bytes(), new(model.Agent))
+	rec = do(t, h, "POST", "/api/agents", model.Agent{
+		Name: "Agent Two", Command: "true", Enabled: true,
+	})
+	var a2 model.Agent
+	json.Unmarshal(rec.Body.Bytes(), &a2)
+
+	// Seed tasks + attempts with usage.
+	t1 := &model.Task{Title: "t1"}
+	if err := s.Tasks.Create(t1); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if err := s.Attempts.Create(&model.Attempt{
+		TaskID: t1.ID, AgentID: a2.ID, Result: model.ResultPass,
+		Usage: model.Usage{InputTokens: 100, OutputTokens: 50, TotalTokens: 150},
+	}); err != nil {
+		t.Fatalf("create attempt: %v", err)
+	}
+
+	// Hit metrics.
+	rec = do(t, h, "GET", "/api/metrics", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics: %d %s", rec.Code, rec.Body.String())
+	}
+	var m Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+
+	// Board-wide total.
+	if m.TotalTokens != 150 {
+		t.Fatalf("board totalTokens = %d, want 150", m.TotalTokens)
+	}
+
+	// Find Agent Two in the response — its token totals should be non-zero.
+	var gotA2 *AgentMetrics
+	for i := range m.Agents {
+		if m.Agents[i].AgentID == a2.ID {
+			gotA2 = &m.Agents[i]
+			break
+		}
+	}
+	if gotA2 == nil {
+		t.Fatal("Agent Two missing from metrics")
+	}
+	if gotA2.InputTokens != 100 {
+		t.Fatalf("agent2 inputTokens = %d, want 100", gotA2.InputTokens)
+	}
+	if gotA2.OutputTokens != 50 {
+		t.Fatalf("agent2 outputTokens = %d, want 50", gotA2.OutputTokens)
+	}
+	if gotA2.TotalTokens != 150 {
+		t.Fatalf("agent2 totalTokens = %d, want 150", gotA2.TotalTokens)
+	}
+
+	// Agent One has no attempts — tokens should be zero.
+	for i := range m.Agents {
+		if m.Agents[i].AgentID != a2.ID {
+			if m.Agents[i].InputTokens != 0 || m.Agents[i].OutputTokens != 0 || m.Agents[i].TotalTokens != 0 {
+				t.Fatalf("agent %s tokens should all be zero, got %d/%d/%d",
+					m.Agents[i].Name, m.Agents[i].InputTokens, m.Agents[i].OutputTokens, m.Agents[i].TotalTokens)
+			}
+		}
 	}
 }
 

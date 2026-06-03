@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +20,9 @@ type AgentMetrics struct {
 	Merged       int     `json:"merged"`       // shipped by this agent
 	KickedBack   int     `json:"kickedBack"`   // rejected (closed) PRs
 	KickbackRate float64 `json:"kickbackRate"` // kicked / (merged + kicked)
+	InputTokens  int     `json:"inputTokens"`
+	OutputTokens int     `json:"outputTokens"`
+	TotalTokens  int     `json:"totalTokens"`
 }
 
 // Metrics is the engine-room snapshot: per-agent activity plus board totals and
@@ -44,6 +48,8 @@ type Metrics struct {
 	ChangeFailRate  float64 `json:"changeFailRate"`  // reverted / merged — keep flat as autonomy widens
 	AuditRate       float64 `json:"auditRate"`       // configured post-merge audit sampling rate
 	MutationTesting bool    `json:"mutationTesting"` // mutation-testing validator enabled
+
+	TotalTokens int `json:"totalTokens"` // board-wide sum of agent token usage
 }
 
 // getMetrics computes activity and trust metrics from task state. Counts are
@@ -120,6 +126,23 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		m.Planning += n
 		if am := per[id]; am != nil {
 			am.Planning += n
+		}
+	}
+
+	// Per-agent token totals from all attempts. A failed read is non-critical —
+	// agents report zeros and the board total stays 0.
+	if usageByAgent, err := s.store.Attempts.TokensByAgent(); err != nil {
+		log.Printf("getMetrics: TokensByAgent: %v", err)
+	} else {
+		for agentID, u := range usageByAgent {
+			am := per[agentID]
+			if am == nil {
+				continue
+			}
+			am.InputTokens = u.InputTokens
+			am.OutputTokens = u.OutputTokens
+			am.TotalTokens = u.TotalTokens
+			m.TotalTokens += u.TotalTokens
 		}
 	}
 
