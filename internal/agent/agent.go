@@ -24,6 +24,10 @@ import (
 // instead of failing. The remainder of the line is a JSON Decision payload.
 const DecisionMarker = "fabrika_DECISION:"
 
+// CommentMarker is the stdout sentinel an agent emits to add a comment.
+// The remainder of the line is the comment text.
+const CommentMarker = "fabrika_COMMENT:"
+
 // ReviewMarker is the stdout sentinel a reviewer agent emits with its verdict on
 // a finished branch. The remainder of the line is a JSON ReviewVerdict payload.
 const ReviewMarker = "fabrika_REVIEW:"
@@ -40,8 +44,9 @@ type AgentResult struct {
 	ExitCode  int
 	Stdout    string
 	Stderr    string
-	Escalated bool   // true if the agent emitted a DecisionMarker
-	Decision  string // raw JSON after the marker, if Escalated
+	Escalated bool     // true if the agent emitted a DecisionMarker
+	Decision  string   // raw JSON after the marker, if Escalated
+	Comments  []string `json:"comments"` // text after each CommentMarker, in order
 }
 
 // Runner invokes a registered agent against a task in a worktree.
@@ -203,6 +208,7 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 		res.Escalated = true
 		res.Decision = q
 	}
+	res.Comments = parseComments(res.Stdout)
 	return res, nil
 }
 
@@ -218,4 +224,19 @@ func parseEscalation(out string) (string, bool) {
 		}
 	}
 	return payload, found
+}
+
+// parseComments scans output for all lines beginning with CommentMarker and
+// returns the trimmed text after the marker, preserving order and skipping empty.
+func parseComments(out string) []string {
+	var comments []string
+	for _, line := range strings.Split(out, "\n") {
+		if idx := strings.Index(line, CommentMarker); idx >= 0 {
+			text := strings.TrimSpace(line[idx+len(CommentMarker):])
+			if text != "" {
+				comments = append(comments, text)
+			}
+		}
+	}
+	return comments
 }
