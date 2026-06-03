@@ -135,6 +135,15 @@ export interface Metrics {
   mutationTesting: boolean;
 }
 
+export interface Comment {
+  id: string;
+  taskId: string;
+  authorType: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface FabrikaEvent {
   type: string;
   payload: unknown;

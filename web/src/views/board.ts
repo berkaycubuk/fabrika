@@ -9,7 +9,7 @@ import { el, clear } from "../dom.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, BigTask, Evidence, Attempt } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, BigTask, Evidence, Attempt, Comment, FabrikaEvent } from "../types.js";
 
 type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -348,9 +348,71 @@ function openTaskDetail(t: Task, agents: Agent[]): void {
   for (const c of t.acceptance?.verifyCmds ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
   if (STEERABLE.includes(t.status)) children.push(steerRow(t, agents));
   children.push(el("div", { id: `task-evidence-${t.id}`, class: "task-evidence" }, []));
+  children.push(commentsSection(t.id));
 
+  openTaskId = t.id;
   openModal(t.title, el("div", { class: "detail" }, children), { wide: true });
   loadEvidence(t.id);
+  loadComments(t.id);
+}
+
+// The task whose detail modal is currently open (if any). Comment websocket
+// events that target this task reload the in-modal list live; cleared so the
+// list paints under the agent labels we already have.
+let openTaskId: string | null = null;
+
+// commentsSection builds the comments block of the task detail: a heading, the
+// (lazily-loaded) list, and a composer that posts a note then reloads the list.
+function commentsSection(id: string): HTMLElement {
+  const input = el("textarea", { class: "comment-input", placeholder: "Add a comment…", rows: "2" }) as HTMLTextAreaElement;
+  const err = el("div", { class: "form-error" }, []);
+  const submit = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    err.textContent = "";
+    try {
+      await api.addComment(id, text);
+      input.value = "";
+      loadComments(id);
+    } catch (e) {
+      err.textContent = (e as Error).message;
+    }
+  };
+  return el("div", { class: "comments" }, [
+    el("div", { class: "section-h sm" }, ["Comments"]),
+    el("div", { id: `task-comments-${id}`, class: "comment-list" }, []),
+    el("div", { class: "comment-compose" }, [
+      input,
+      err,
+      el("div", { class: "form-actions" }, [primaryBtn("Comment", submit)]),
+    ]),
+  ]);
+}
+
+async function loadComments(id: string): Promise<void> {
+  try {
+    const comments = await api.listComments(id);
+    const slot = document.getElementById(`task-comments-${id}`);
+    if (!slot) return;
+    clear(slot);
+    if (comments.length === 0) {
+      slot.append(el("div", { class: "comment-empty muted sm" }, ["No comments yet."]));
+      return;
+    }
+    for (const c of comments) slot.append(commentItem(c));
+  } catch {
+    /* comments are best-effort */
+  }
+}
+
+// commentItem renders one note oldest-first: a "You" label for human comments,
+// the authoring agent's id for agent comments, above the body text.
+function commentItem(c: Comment): HTMLElement {
+  const who = c.authorType === "user" ? "You" : (c.authorId || c.authorType);
+  return el("div", { class: "comment" }, [
+    el("div", { class: "comment-author" }, [who]),
+    el("div", { class: "comment-body" }, [c.body]),
+  ]);
 }
 
 async function loadEvidence(id: string): Promise<void> {
@@ -715,8 +777,14 @@ async function act(fn: () => Promise<unknown>): Promise<void> {
 // behind a short debounce so a single task churning through stages triggers one
 // refetch rather than half a dozen overlapping ones. (renderBoard() and act()
 // still call refresh() directly for an immediate, un-debounced paint.)
-export function onBoardEvent(): void {
+export function onBoardEvent(e?: FabrikaEvent): void {
   if (!document.getElementById("needs-board")) return;
+  // A new comment on the currently-open task: reload just that modal's list so
+  // it updates live (the debounced board refresh below won't touch the modal).
+  if (e?.type === "task.comment.added" && openTaskId) {
+    const c = e.payload as Comment | null;
+    if (c && c.taskId === openTaskId) loadComments(openTaskId);
+  }
   if (refreshTimer !== null) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
     refreshTimer = null;

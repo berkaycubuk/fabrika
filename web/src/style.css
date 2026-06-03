@@ -464,6 +464,20 @@ button.option:hover { border-color: var(--accent); }
 
 .task-evidence { display: flex; flex-direction: column; gap: 12px; }
 .task-evidence:empty { display: none; }
+
+/* Task-detail comments */
+.comments { display: flex; flex-direction: column; gap: 8px; }
+.comment-list { display: flex; flex-direction: column; gap: 8px; }
+.comment {
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  padding: 8px 10px;
+  background: var(--bg);
+}
+.comment-author { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.comment-body { font-size: 13px; color: var(--text); white-space: pre-wrap; }
+.comment-empty { padding: 4px 0; }
+.comment-compose { display: flex; flex-direction: column; gap: 8px; }
 .assign-select { font-size: 12px; padding: 6px 8px; flex: 1; }
 .detail .stat-grid { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
 .detail .share-table { margin-top: 0; }
