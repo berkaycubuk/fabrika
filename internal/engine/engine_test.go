@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,6 +30,19 @@ func gitRun(t *testing.T, dir string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+}
+
+// gitOut runs git and returns its combined output, failing the test on error.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = gitEnv()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return string(out)
 }
 
 // setup creates a repo with one commit and an engine wired to a temp store.
@@ -117,6 +131,54 @@ func TestDispatchProducesGreenReview(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, "out.txt")); err != nil {
 		t.Fatalf("out.txt should exist on main after merge: %v", err)
+	}
+}
+
+func TestDispatchNormalizesCommitTrailers(t *testing.T) {
+	eng, st, repo := setup(t)
+	// The agent makes its own commit carrying a foreign co-author trailer; the
+	// engine must rewrite the branch so each commit instead carries the fabrika
+	// trailer and no foreign attribution before the diff/gate run.
+	registerAgent(t, st, "printf 'done' > out.txt && "+
+		"git add . && "+
+		"git commit -qm 'agent work\n\nCo-Authored-By: SomeAgent <a@b.c>'")
+
+	task := &model.Task{Title: "normalize trailers", Spec: "create out.txt"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+
+	if !eng.dispatchOnce() {
+		t.Fatal("expected a task to be dispatched")
+	}
+
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Branch == "" {
+		t.Fatal("task should have a branch after dispatch")
+	}
+
+	const fabrikaTrailer = "Co-authored-by: fabrika <fabrika@berkaycubuk.com>"
+	hashes := strings.Fields(gitOut(t, repo, "rev-list", "main.."+got.Branch))
+	if len(hashes) == 0 {
+		t.Fatal("expected at least one commit on the branch")
+	}
+	for _, h := range hashes {
+		body := gitOut(t, repo, "log", "-1", "--format=%B", h)
+		if n := strings.Count(body, fabrikaTrailer); n != 1 {
+			t.Fatalf("commit %s carries fabrika trailer %d times, want 1:\n%s", h, n, body)
+		}
+		if strings.Contains(body, "SomeAgent") {
+			t.Fatalf("commit %s still contains foreign co-author:\n%s", h, body)
+		}
+		var coAuthors int
+		for _, line := range strings.Split(body, "\n") {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "co-authored-by:") {
+				coAuthors++
+			}
+		}
+		if coAuthors != 1 {
+			t.Fatalf("commit %s has %d co-author lines, want 1:\n%s", h, coAuthors, body)
+		}
 	}
 }
 
