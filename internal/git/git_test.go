@@ -36,6 +36,86 @@ func initRepo(t *testing.T) string {
 	return dir
 }
 
+func TestPushToBareRemote(t *testing.T) {
+	dir := initRepo(t)
+	ctx := context.Background()
+	repo, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No remote yet -> Push should fail and Remotes should be empty.
+	if rs, err := repo.Remotes(ctx); err != nil || len(rs) != 0 {
+		t.Fatalf("expected no remotes, got %v, %v", rs, err)
+	}
+
+	// Create a bare repo to act as "origin" and wire it up.
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	if out, err := exec.Command("git", "init", "-q", "--bare", bare).CombinedOutput(); err != nil {
+		t.Fatalf("init bare: %v\n%s", err, out)
+	}
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("remote", "add", "origin", bare)
+
+	if rs, err := repo.Remotes(ctx); err != nil || len(rs) != 1 || rs[0] != "origin" {
+		t.Fatalf("expected [origin], got %v, %v", rs, err)
+	}
+
+	// Never pushed: the whole branch (1 commit) counts as ahead.
+	if n, err := repo.Ahead(ctx, "origin", "main"); err != nil || n != 1 {
+		t.Fatalf("ahead before push = %d, %v; want 1", n, err)
+	}
+
+	if _, err := repo.Push(ctx, "origin", "main"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	// Pushed: nothing left to ship.
+	if n, err := repo.Ahead(ctx, "origin", "main"); err != nil || n != 0 {
+		t.Fatalf("ahead after push = %d, %v; want 0", n, err)
+	}
+
+	// The bare remote now has the main branch at our HEAD.
+	got, err := exec.Command("git", "--git-dir", bare, "rev-parse", "main").Output()
+	if err != nil {
+		t.Fatalf("rev-parse on remote: %v", err)
+	}
+	want, err := repo.run(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(got)) != strings.TrimSpace(want) {
+		t.Fatalf("remote main = %s, want %s", got, want)
+	}
+
+	// A second push with no new commits succeeds (up-to-date).
+	if _, err := repo.Push(ctx, "origin", "main"); err != nil {
+		t.Fatalf("idempotent push: %v", err)
+	}
+
+	// A new local commit reads as ahead again; pushing clears it.
+	if err := os.WriteFile(filepath.Join(dir, "more.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "more")
+	if n, err := repo.Ahead(ctx, "origin", "main"); err != nil || n != 1 {
+		t.Fatalf("ahead after new commit = %d, %v; want 1", n, err)
+	}
+	if _, err := repo.Push(ctx, "origin", "main"); err != nil {
+		t.Fatalf("push new commit: %v", err)
+	}
+	if n, err := repo.Ahead(ctx, "origin", "main"); err != nil || n != 0 {
+		t.Fatalf("ahead after second push = %d, %v; want 0", n, err)
+	}
+}
+
 func TestWorktreeAndDiff(t *testing.T) {
 	ctx := context.Background()
 	root := initRepo(t)

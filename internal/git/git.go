@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -120,6 +121,58 @@ func (r *Repo) Merge(ctx context.Context, base, branch string) error {
 		return fmt.Errorf("merge %s into %s: %w", branch, base, err)
 	}
 	return nil
+}
+
+// Remotes lists the configured remote names (one per line from `git remote`).
+func (r *Repo) Remotes(ctx context.Context) ([]string, error) {
+	out, err := r.run(ctx, "remote")
+	if err != nil {
+		return nil, err
+	}
+	var remotes []string
+	for _, line := range strings.Split(out, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			remotes = append(remotes, s)
+		}
+	}
+	return remotes, nil
+}
+
+// Ahead reports how many commits branch carries that remote/branch does not —
+// the work waiting to be pushed. It reads the local remote-tracking ref (the
+// state as of the last fetch/push; no network). When that ref doesn't exist yet
+// (branch never pushed), every commit on branch counts as ahead.
+func (r *Repo) Ahead(ctx context.Context, remote, branch string) (int, error) {
+	rng := remote + "/" + branch + ".." + branch
+	if _, err := r.run(ctx, "rev-parse", "--verify", "--quiet", remote+"/"+branch); err != nil {
+		rng = branch
+	}
+	out, err := r.run(ctx, "rev-list", "--count", rng)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(out))
+}
+
+// Push pushes branch to remote, setting upstream tracking (-u). It pushes the
+// ref by name, so the result is independent of which branch is checked out.
+// git writes its human-readable summary ("To <url> ... main -> main" or
+// "Everything up-to-date") to stderr, which this returns so callers can surface
+// what happened. A rejected (non-fast-forward) push surfaces as an error.
+func (r *Repo) Push(ctx context.Context, remote, branch string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "push", "-u", remote, branch)
+	cmd.Dir = r.Root
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git push %s %s: %w: %s",
+			remote, branch, err, strings.TrimSpace(stderr.String()))
+	}
+	if summary := strings.TrimSpace(stderr.String()); summary != "" {
+		return summary, nil
+	}
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 // AddAllAndCommit stages everything in a worktree and commits it on the

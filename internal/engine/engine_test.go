@@ -329,3 +329,18 @@ func TestLoopStopsOnContextCancel(t *testing.T) {
 		t.Fatal("loop did not stop on cancelled context")
 	}
 }
+
+func TestPickRemote(t *testing.T) {
+	if _, err := pickRemote(nil); err == nil {
+		t.Fatal("expected error for no remotes")
+	}
+	if r, err := pickRemote([]string{"upstream"}); err != nil || r != "upstream" {
+		t.Fatalf("single remote: got %q, %v", r, err)
+	}
+	if r, err := pickRemote([]string{"upstream", "origin"}); err != nil || r != "origin" {
+		t.Fatalf("multi remote: prefer origin, got %q, %v", r, err)
+	}
+	if _, err := pickRemote([]string{"a", "b"}); err == nil {
+		t.Fatal("expected error for ambiguous remotes")
+	}
+}

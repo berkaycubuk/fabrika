@@ -71,6 +71,11 @@ export const api = {
     req<Task>("POST", `/api/tasks/${id}/assign`, { agentId }),
   cancelTask: (taskId: string) =>
     req<{ status: string }>("POST", "/api/steer", { action: "cancel", taskId }),
+  // Ship: push the integration branch to its remote
+  push: () => req<{ status: string; detail: string }>("POST", "/api/push"),
+  pushStatus: () =>
+    req<{ canPush: boolean; ahead: number; branch: string; remote: string }>("GET", "/api/push/status"),
+
   getSettings: () => req<Record<string, string>>("GET", "/api/settings"),
   putSettings: (s: Record<string, string>) =>
     req<Record<string, string>>("PUT", "/api/settings", s),

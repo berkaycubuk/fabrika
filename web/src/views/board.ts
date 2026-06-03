@@ -44,6 +44,12 @@ export function renderBoard(root: HTMLElement): void {
       ]),
       el("div", { class: "header-actions" }, [
         el("button", { onclick: openSettings }, ["Settings"]),
+        // Hidden until pushStatus reports unpushed commits (see updatePushButton).
+        el("button", {
+          id: "push-btn",
+          style: "display:none",
+          onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
+        }, ["Push"]),
         el("button", { onclick: openCreateTask }, ["Create task"]),
         el("button", { class: "primary", onclick: openDefine }, ["Define"]),
       ]),
@@ -83,6 +89,9 @@ async function refresh(): Promise<void> {
   if (!board) return;
   const errBox = document.getElementById("board-err");
   const gen = ++refreshGen;
+  // Independent of the column fetches: a push-status hiccup (git error) should
+  // never blank the board, and vice versa. Fire-and-forget with its own catch.
+  void updatePushButton();
   try {
     const [plans, decisions, reviews, audits, tasks, agents, bigTasks] = await Promise.all([
       api.listPlans(),
@@ -760,6 +769,41 @@ function diffBlock(diff: string): HTMLElement {
     pre.append(el("span", { class: `dl ${cls}` }, [line + "\n"]));
   }
   return el("details", { class: "diff-wrap" }, [el("summary", {}, ["Diff"]), pre]);
+}
+
+// updatePushButton shows the Push button only when the integration branch has
+// commits its remote lacks, labelled with the count ("Push 3"). Hidden when
+// up-to-date, when no remote is configured, or when the status check fails.
+async function updatePushButton(): Promise<void> {
+  const btn = document.getElementById("push-btn") as HTMLButtonElement | null;
+  if (!btn || btn.disabled) return; // don't fight a push in flight
+  try {
+    const s = await api.pushStatus();
+    btn.style.display = s.canPush ? "" : "none";
+    if (s.canPush) btn.textContent = `Push ${s.ahead}`;
+  } catch {
+    btn.style.display = "none";
+  }
+}
+
+// pushMain ships the integration branch to its remote. It disables the button
+// and shows "Pushing…" for the duration (network-bound), then reports git's
+// summary — or the error — via an alert. Afterwards the status re-check hides
+// the button (a successful push means nothing is left to ship).
+async function pushMain(btn: HTMLButtonElement): Promise<void> {
+  const label = btn.textContent ?? "Push";
+  btn.disabled = true;
+  btn.textContent = "Pushing…";
+  try {
+    const res = await api.push();
+    alert(res.detail || "Pushed.");
+  } catch (e) {
+    alert((e as Error).message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+    void updatePushButton();
+  }
 }
 
 async function act(fn: () => Promise<unknown>): Promise<void> {

@@ -624,6 +624,92 @@ func (e *Engine) Accept(taskID string) error {
 	return nil
 }
 
+// Push ships the integration branch — the current branch that accepted tasks
+// merge into — to its remote, so the human can publish the work agents have
+// accumulated locally. The branch is pushed by name, so it is safe to run
+// alongside the dispatch loop without holding e.mu (an in-flight Accept's
+// checkout cannot change which ref gets pushed). It targets "origin" when
+// present, else the sole remote, and errors when there is none or the choice is
+// ambiguous. Returns git's push summary for the UI to surface.
+func (e *Engine) Push(ctx context.Context) (string, error) {
+	repo, err := git.Open(ctx, e.repoRoot)
+	if err != nil {
+		return "", err
+	}
+	branch, err := repo.CurrentBranch(ctx)
+	if err != nil {
+		return "", err
+	}
+	remotes, err := repo.Remotes(ctx)
+	if err != nil {
+		return "", err
+	}
+	remote, err := pickRemote(remotes)
+	if err != nil {
+		return "", err
+	}
+	summary, err := repo.Push(ctx, remote, branch)
+	if err != nil {
+		return "", err
+	}
+	log.Printf("engine: pushed %s to %s", branch, remote)
+	return summary, nil
+}
+
+// PushState describes whether the integration branch has work waiting to be
+// pushed. The UI uses it to decide whether to offer the Push action at all.
+type PushState struct {
+	CanPush bool   `json:"canPush"`
+	Ahead   int    `json:"ahead"`
+	Branch  string `json:"branch"`
+	Remote  string `json:"remote"`
+}
+
+// PushStatus reports how far the current branch is ahead of its remote (per the
+// local remote-tracking ref — no network round-trip). When no usable remote is
+// configured it returns a zero PushState rather than an error: there is nowhere
+// to push, so the UI simply doesn't offer the action.
+func (e *Engine) PushStatus(ctx context.Context) (PushState, error) {
+	repo, err := git.Open(ctx, e.repoRoot)
+	if err != nil {
+		return PushState{}, err
+	}
+	branch, err := repo.CurrentBranch(ctx)
+	if err != nil {
+		return PushState{}, err
+	}
+	remotes, err := repo.Remotes(ctx)
+	if err != nil {
+		return PushState{}, err
+	}
+	remote, err := pickRemote(remotes)
+	if err != nil {
+		return PushState{}, nil
+	}
+	ahead, err := repo.Ahead(ctx, remote, branch)
+	if err != nil {
+		return PushState{}, err
+	}
+	return PushState{CanPush: ahead > 0, Ahead: ahead, Branch: branch, Remote: remote}, nil
+}
+
+// pickRemote chooses which remote to push to: the only one if there is a single
+// remote, "origin" when several are configured, otherwise an error.
+func pickRemote(remotes []string) (string, error) {
+	switch len(remotes) {
+	case 0:
+		return "", fmt.Errorf("no git remote configured")
+	case 1:
+		return remotes[0], nil
+	}
+	for _, r := range remotes {
+		if r == "origin" {
+			return "origin", nil
+		}
+	}
+	return "", fmt.Errorf("multiple remotes (%s); none named origin", strings.Join(remotes, ", "))
+}
+
 // Reject dismisses a task without merging, cleaning up its worktree. For an
 // in-flight (running) task it steers it to a stop: it cancels the task's context
 // to kill the subprocess and lets that run's goroutine finalize it as closed with

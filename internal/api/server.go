@@ -78,6 +78,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/steer", s.steer)
 	mux.HandleFunc("GET /api/metrics", s.getMetrics)
 
+	// --- Ship: push the integration branch to its remote ---
+	mux.HandleFunc("GET /api/push/status", s.pushStatus)
+	mux.HandleFunc("POST /api/push", s.pushMain)
+
 	// --- Planner: plans + decisions (Phase 2) ---
 	mux.HandleFunc("GET /api/plans", s.listPlans)
 	mux.HandleFunc("GET /api/plans/{id}", s.getPlan)
