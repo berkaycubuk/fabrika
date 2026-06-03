@@ -791,16 +791,16 @@ async function updatePushButton(): Promise<void> {
 }
 
 // pushMain ships the integration branch to its remote. It disables the button
-// and shows "Pushing…" for the duration (network-bound), then reports git's
-// summary — or the error — via an alert. Afterwards the status re-check hides
-// the button (a successful push means nothing is left to ship).
+// and shows "Pushing…" for the duration (network-bound), then shows a success
+// modal with git's summary — or an alert on error. Afterwards the status
+// re-check hides the button (a successful push means nothing is left to ship).
 async function pushMain(btn: HTMLButtonElement): Promise<void> {
   const label = btn.textContent ?? "Push";
   btn.disabled = true;
   btn.textContent = "Pushing…";
   try {
     const res = await api.push();
-    alert(res.detail || "Pushed.");
+    openModal("Push succeeded", el("p", {}, [res.detail || "Pushed."]));
   } catch (e) {
     alert((e as Error).message);
   } finally {
