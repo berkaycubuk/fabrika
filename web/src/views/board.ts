@@ -8,10 +8,11 @@ import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, Evidence, Attempt } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, BigTask, Evidence, Attempt } from "../types.js";
 
-type ColId = "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
+type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
+  { id: "planning", label: "Planning" },
   { id: "approve", label: "Approve", gate: true },
   { id: "decide", label: "Decide", gate: true },
   { id: "ready", label: "Ready" },
@@ -22,6 +23,9 @@ const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
   { id: "merged", label: "Merged" },
 ];
 const IN_FLIGHT = ["claimed", "running"];
+// Big-task statuses shown in the Planning column: the request is in (or awaiting)
+// planning, or planning errored. Planned/running/done big tasks move on.
+const PRE_PLAN = ["draft", "planning", "error"];
 const STEERABLE = ["ready", "claimed", "running", "blocked", "failed"];
 const BARS = ["var(--accent)", "var(--tan)", "var(--teal)", "var(--green)", "var(--amber)", "var(--red)"];
 
@@ -79,13 +83,14 @@ async function refresh(): Promise<void> {
   const errBox = document.getElementById("board-err");
   const gen = ++refreshGen;
   try {
-    const [plans, decisions, reviews, audits, tasks, agents] = await Promise.all([
+    const [plans, decisions, reviews, audits, tasks, agents, bigTasks] = await Promise.all([
       api.listPlans(),
       api.listDecisions(),
       api.listReviews(),
       api.listAudits(),
       api.listTasks(),
       api.listAgents(),
+      api.listBigTasks(),
     ]);
     // A newer refresh started while these fetches were in flight — discard
     // our (now stale) results so we don't paint over fresher columns.
@@ -94,6 +99,11 @@ async function refresh(): Promise<void> {
     const auditIds = new Set(audits.map((a) => a.task.id));
     const byStatus = (s: string) => tasks.filter((t) => t.status === s);
 
+    // Pre-plan big tasks: show the submitted request while the planner works
+    // (or stalls). Once planned, the proposed Plan takes over in Approve; once
+    // running/done its tasks carry it forward — so only draft/planning/error
+    // land here.
+    fillColumn("planning", bigTasks.filter((b) => PRE_PLAN.includes(b.status)).map(bigTaskCard));
     fillColumn("approve", plans.filter((p) => p.status === "proposed").map(planCard));
     fillColumn("decide", decisions.map(decideCard));
     fillColumn("ready", byStatus("ready").map((t) => taskCard(t, agents)));
@@ -134,6 +144,31 @@ function planCard(p: Plan): HTMLElement {
   const meta: (Node | string)[] = [el("span", { class: "tag" }, [`${p.tasks.length} tasks`])];
   if (p.openDecisions.length) meta.push(el("span", { class: "tag dep" }, [`${p.openDecisions.length} open Q`]));
   return card(p.bigTask?.title ?? "Plan", meta, () => openPlanDetail(p));
+}
+
+// bigTaskCard surfaces a submitted big task while it's being planned (or after
+// planning errored), so a Define submission is visible immediately instead of
+// silently churning in the background. The status pill carries the live state;
+// errored cards read red and open to the failure reason.
+function bigTaskCard(b: BigTask): HTMLElement {
+  const label = b.status === "planning" ? "planning…" : b.status;
+  return card(b.title, [el("span", { class: `pill status-${b.status}` }, [label])], () => openBigTaskDetail(b));
+}
+
+function openBigTaskDetail(b: BigTask): void {
+  const children: (Node | string)[] = [
+    el("div", { class: "card-meta" }, [el("span", { class: `pill status-${b.status}` }, [b.status])]),
+    b.intent ? el("p", { class: "card-spec" }, [b.intent]) : el("span", {}),
+  ];
+  for (const c of b.constraints ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
+  if (b.status === "planning") {
+    children.push(el("p", { class: "muted sm" }, ["A planner agent is decomposing this into a plan — it'll land in Approve when ready."]));
+  } else if (b.status === "draft") {
+    children.push(el("p", { class: "muted sm" }, ["Queued for planning."]));
+  } else if (b.status === "error") {
+    children.push(el("p", { class: "form-error bigtask-error" }, [b.error || "Planning failed."]));
+  }
+  openModal(b.title, el("div", { class: "detail" }, children), { wide: true });
 }
 
 function decideCard(d: Decision): HTMLElement {
@@ -436,7 +471,10 @@ function shareTable(m: Metrics): HTMLElement {
   if (m.agents.length === 0) return el("p", { class: "share-empty" }, ["No agents registered."]);
   const totalMerged = m.agents.reduce((s, a) => s + a.merged, 0);
   const byLoad = totalMerged === 0;
-  const weight = (a: AgentMetrics) => (byLoad ? a.running : a.merged);
+  // In-flight load counts both running tasks and active planning runs, so the
+  // planner doesn't read as idle while it's decomposing a big task.
+  const load = (a: AgentMetrics) => a.running + (a.planning ?? 0);
+  const weight = (a: AgentMetrics) => (byLoad ? load(a) : a.merged);
   const total = m.agents.reduce((s, a) => s + weight(a), 0);
   const ranked = [...m.agents].sort((x, y) => weight(y) - weight(x));
 
@@ -444,10 +482,13 @@ function shareTable(m: Metrics): HTMLElement {
   ranked.forEach((a, i) => {
     const w = weight(a);
     const share = total > 0 ? w / total : 0;
+    const planning = (a.planning ?? 0) > 0;
+    const busy = a.running > 0 || planning;
+    const pill = busy ? (a.running > 0 ? "working" : "planning") : "idle";
     tbody.append(
       el("tr", {}, [
         el("td", { class: "who" }, [
-          el("span", { class: a.running > 0 ? "pill busy" : "pill idle" }, [a.running > 0 ? "working" : "idle"]),
+          el("span", { class: busy ? "pill busy" : "pill idle" }, [pill]),
           " " + a.name,
         ]),
         el("td", {}, [
@@ -458,7 +499,7 @@ function shareTable(m: Metrics): HTMLElement {
             el("span", { class: "share-pct" }, [`${Math.round(share * 100)}%`]),
           ]),
         ]),
-        el("td", { class: "num" }, [String(byLoad ? a.running : a.merged)]),
+        el("td", { class: "num" }, [String(byLoad ? load(a) : a.merged)]),
       ]),
     );
   });

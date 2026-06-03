@@ -15,6 +15,7 @@ type AgentMetrics struct {
 	Enabled      bool    `json:"enabled"`
 	Concurrency  int     `json:"concurrency"`
 	Running      int     `json:"running"`      // tasks in flight (running/verifying)
+	Planning     int     `json:"planning"`     // big-task planning runs in flight
 	Merged       int     `json:"merged"`       // shipped by this agent
 	KickedBack   int     `json:"kickedBack"`   // rejected (closed) PRs
 	KickbackRate float64 `json:"kickbackRate"` // kicked / (merged + kicked)
@@ -25,6 +26,7 @@ type AgentMetrics struct {
 type Metrics struct {
 	Agents     []AgentMetrics `json:"agents"`
 	WIP        int            `json:"wip"`        // tasks currently running/verifying
+	Planning   int            `json:"planning"`   // big tasks currently being planned
 	WIPCap     int            `json:"wipCap"`     // configured ceiling (0 = unlimited)
 	Ready      int            `json:"ready"`      // queued, awaiting an agent slot
 	InReview   int            `json:"inReview"`   // awaiting human accept
@@ -108,6 +110,16 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 			am.Merged++
 		case model.TaskClosed:
 			am.KickedBack++
+		}
+	}
+
+	// Fold in live planning activity. The planner runs outside the dispatch
+	// loop, so it leaves no task in a running status — without this it reads as
+	// idle while it's actually decomposing a big task.
+	for id, n := range s.engine.PlanningCounts() {
+		m.Planning += n
+		if am := per[id]; am != nil {
+			am.Planning += n
 		}
 	}
 

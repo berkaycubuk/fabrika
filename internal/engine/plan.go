@@ -80,6 +80,11 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 		return
 	}
 
+	// Mark the planner busy for the duration so it doesn't read as idle in the
+	// metrics while it works (planning runs outside the task-dispatch loop).
+	e.markPlanning(ag.ID, 1)
+	defer e.markPlanning(ag.ID, -1)
+
 	e.setBigTaskStatus(bt.ID, model.BigTaskPlanning)
 
 	// A clean worktree gives the planner repo context without touching main.
@@ -200,6 +205,31 @@ func (e *Engine) failBigTask(id, format string, args ...any) {
 	if bt, err := e.store.BigTasks.Get(id); err == nil {
 		e.emit("bigtask.updated", *bt)
 	}
+}
+
+// markPlanning adjusts the active planning-run count for an agent. A positive
+// delta marks it busy; a negative delta releases it (the entry is dropped at
+// zero so PlanningCounts only ever reports agents currently planning).
+func (e *Engine) markPlanning(agentID string, delta int) {
+	e.planMu.Lock()
+	defer e.planMu.Unlock()
+	e.planning[agentID] += delta
+	if e.planning[agentID] <= 0 {
+		delete(e.planning, agentID)
+	}
+}
+
+// PlanningCounts returns a snapshot of how many big-task planning runs each
+// agent is currently executing, so the metrics surface can show the planner as
+// busy even though planning runs outside the task-dispatch loop.
+func (e *Engine) PlanningCounts() map[string]int {
+	e.planMu.Lock()
+	defer e.planMu.Unlock()
+	out := make(map[string]int, len(e.planning))
+	for id, n := range e.planning {
+		out[id] = n
+	}
+	return out
 }
 
 func (e *Engine) setBigTaskStatus(id, status string) {

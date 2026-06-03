@@ -104,6 +104,7 @@ export interface AgentMetrics {
   enabled: boolean;
   concurrency: number;
   running: number;
+  planning: number;
   merged: number;
   kickedBack: number;
   kickbackRate: number;
@@ -112,6 +113,7 @@ export interface AgentMetrics {
 export interface Metrics {
   agents: AgentMetrics[];
   wip: number;
+  planning: number;
   wipCap: number;
   ready: number;
   inReview: number;

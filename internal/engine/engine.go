@@ -68,6 +68,12 @@ type Engine struct {
 	running map[string]runInfo // taskID -> in-flight info
 	wg      sync.WaitGroup     // tracks dispatched goroutines
 
+	// planning tracks agents currently busy planning a big task (agentID ->
+	// active runs). Planning happens outside the task-dispatch loop, so without
+	// this the planner agent would read as idle in the metrics while it works.
+	planMu   sync.Mutex
+	planning map[string]int
+
 	// sample decides, per auto-merge, whether to flag a PR for post-merge audit.
 	// Overridable in tests for determinism; defaults to a rate-based RNG.
 	sample func(rate float64) bool
@@ -87,6 +93,7 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		emit:     emit,
 		wake:     make(chan struct{}, 1),
 		running:  map[string]runInfo{},
+		planning: map[string]int{},
 		sample: func(rate float64) bool {
 			if rate <= 0 {
 				return false
