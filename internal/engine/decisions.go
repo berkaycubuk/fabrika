@@ -42,8 +42,10 @@ func (e *Engine) recordEscalation(task model.Task, payload string) {
 //   - promote=true adds the Q→A as a standing Convention injected into future runs.
 //   - a task-level decision resumes its task: the resolution is appended to the
 //     task spec and the task returns to ready so the scheduler re-runs it.
-//
-// Plan-level decisions (from the planner) only record the answer (+ convention).
+//   - a plan-level decision (from the planner) propagates the resolution into
+//     the spec of every plan task that hasn't started running yet, so the
+//     answer is in the implementers' context whether the plan is approved
+//     before or after the question is answered.
 func (e *Engine) AnswerDecision(id, answer string, promote bool) error {
 	d, err := e.store.Decisions.Get(id)
 	if err != nil {
@@ -68,6 +70,10 @@ func (e *Engine) AnswerDecision(id, answer string, promote bool) error {
 	if d.TaskID != "" {
 		if rerr := e.resumeTask(d.TaskID, d.Question, answer); rerr != nil {
 			log.Printf("engine: resume task %s: %v", d.TaskID, rerr)
+		}
+	} else if d.PlanID != "" {
+		if perr := e.propagatePlanAnswer(d.PlanID, d.Question, answer); perr != nil {
+			log.Printf("engine: propagate plan decision %s: %v", id, perr)
 		}
 	}
 
@@ -100,6 +106,37 @@ func (e *Engine) resumeTask(taskID, question, answer string) error {
 		e.emit("task.updated", *updated)
 	}
 	e.Wake()
+	return nil
+}
+
+// propagatePlanAnswer appends a resolved plan-level decision to the spec of
+// every task in the plan that hasn't been dispatched yet (planned or ready).
+// Tasks already running or finished keep their spec — the answer can't be
+// retrofitted into a live agent's context.
+func (e *Engine) propagatePlanAnswer(planID, question, answer string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	p, err := e.store.Plans.Get(planID)
+	if err != nil {
+		return err
+	}
+	tasks, err := e.store.Tasks.ListByBigTask(p.BigTaskID)
+	if err != nil {
+		return err
+	}
+	resolution := fmt.Sprintf("\n\n## Resolved decision\n**Q:** %s\n**A:** %s\n", question, answer)
+	for _, t := range tasks {
+		if t.Status != model.TaskPlanned && t.Status != model.TaskReady {
+			continue
+		}
+		if err := e.store.Tasks.SetSpec(t.ID, t.Spec+resolution); err != nil {
+			return err
+		}
+		if updated, gerr := e.store.Tasks.Get(t.ID); gerr == nil {
+			e.emit("task.updated", *updated)
+		}
+	}
 	return nil
 }
 

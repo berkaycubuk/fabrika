@@ -152,7 +152,8 @@ function planCard(p: Plan, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
   if (p.bigTask?.plannerAgentId) meta.push(agentPhoto(agents, p.bigTask.plannerAgentId));
   meta.push(el("span", { class: "tag" }, [`${p.tasks.length} tasks`]));
-  if (p.openDecisions.length) meta.push(el("span", { class: "tag dep" }, [`${p.openDecisions.length} open Q`]));
+  const openQ = p.openDecisions.filter((d) => d.status === "open").length;
+  if (openQ) meta.push(el("span", { class: "tag dep" }, [`${openQ} open Q`]));
   return card(p.bigTask?.title ?? "Plan", meta, () => openPlanDetail(p));
 }
 
@@ -229,11 +230,13 @@ function openPlanDetail(p: Plan): void {
     el("div", { class: "plan-tasks" }, p.tasks.map((t) => planTaskRow(t, titleOf))),
     p.openDecisions.length
       ? el("div", { class: "plan-decisions" }, [
-          el("div", { class: "section-h sm" }, ["Open questions"]),
+          el("div", { class: "section-h sm" }, ["Questions"]),
           ...p.openDecisions.map((d) =>
             el("div", { class: "plan-decision" }, [
               el("span", { class: "q" }, [d.question]),
-              el("span", { class: "muted hint" }, [" — answer it in Decide"]),
+              d.status === "answered"
+                ? el("span", { class: "tag" }, [`→ ${d.answer}`])
+                : el("span", { class: "muted hint" }, [" — answer it in Decide"]),
             ]),
           ),
         ])

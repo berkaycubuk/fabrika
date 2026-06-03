@@ -69,6 +69,66 @@ func TestPlanBigTaskProducesProposedPlan(t *testing.T) {
 	}
 }
 
+func TestPlanDecisionAnswerPropagatesToTasks(t *testing.T) {
+	eng, st, _ := setup(t)
+
+	plan := `{"tasks":[` +
+		`{"title":"Schema","spec":"tables"},` +
+		`{"title":"API","spec":"endpoints"}` +
+		`],"decisions":[` +
+		`{"question":"Which DB?","options":["sqlite","pg"]},` +
+		`{"question":"Auth scheme?","options":["jwt","session"]}` +
+		`]}`
+	ag := &model.Agent{
+		Name:    "planner",
+		Command: "printf '%s' '" + plan + "' > fabrika_plan.json",
+		Roles:   []string{model.RolePlanner},
+		Enabled: true,
+	}
+	if err := st.Agents.Create(ag); err != nil {
+		t.Fatal(err)
+	}
+	bt := &model.BigTask{Title: "ship feature", Intent: "do the thing"}
+	if err := st.BigTasks.Create(bt); err != nil {
+		t.Fatal(err)
+	}
+	eng.planBigTask(*bt)
+
+	p, err := st.Plans.GetByBigTask(bt.ID)
+	if err != nil {
+		t.Fatalf("plan not created: %v", err)
+	}
+	ds, _ := st.Decisions.ListForPlan(p.ID)
+	if len(ds) != 2 {
+		t.Fatalf("expected 2 plan decisions, got %d", len(ds))
+	}
+
+	// Answer before approval: every planned task's spec carries the resolution.
+	if err := eng.AnswerDecision(ds[0].ID, "sqlite", false); err != nil {
+		t.Fatalf("AnswerDecision: %v", err)
+	}
+	tasks, _ := st.Tasks.ListByBigTask(bt.ID)
+	for _, tk := range tasks {
+		if !strings.Contains(tk.Spec, ds[0].Question) || !strings.Contains(tk.Spec, "sqlite") {
+			t.Fatalf("task %q spec missing pre-approval resolution: %q", tk.Title, tk.Spec)
+		}
+	}
+
+	// Answer after approval: ready (not yet dispatched) tasks get it too.
+	if err := eng.ApprovePlan(p.ID); err != nil {
+		t.Fatalf("ApprovePlan: %v", err)
+	}
+	if err := eng.AnswerDecision(ds[1].ID, "jwt", false); err != nil {
+		t.Fatalf("AnswerDecision: %v", err)
+	}
+	tasks, _ = st.Tasks.ListByBigTask(bt.ID)
+	for _, tk := range tasks {
+		if !strings.Contains(tk.Spec, ds[1].Question) || !strings.Contains(tk.Spec, "jwt") {
+			t.Fatalf("task %q spec missing post-approval resolution: %q", tk.Title, tk.Spec)
+		}
+	}
+}
+
 func TestEscalationCreatesDecisionAndAnswerResumes(t *testing.T) {
 	eng, st, _ := setup(t)
 	registerAgent(t, st, `echo 'fabrika_DECISION: {"question":"which db?","options":["a","b"]}'`)
