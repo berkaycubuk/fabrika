@@ -6,6 +6,9 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/model"
 )
 
+// maxPhotoBytes caps the decoded photo data URI string at 2 MiB.
+const maxPhotoBytes = 2 * 1024 * 1024
+
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 	agents, err := s.store.Agents.List()
 	if err != nil {
@@ -28,6 +31,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name and command are required")
 		return
 	}
+	if len(a.Photo) > maxPhotoBytes {
+		writeErr(w, http.StatusBadRequest, "photo exceeds maximum size of 2 MiB")
+		return
+	}
 	a.ID = "" // server assigns
 	if err := s.store.Agents.Create(&a); err != nil {
 		mapStoreErr(w, err)
@@ -46,6 +53,10 @@ func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request) {
 	a.ID = r.PathValue("id")
 	if a.Name == "" || a.Command == "" {
 		writeErr(w, http.StatusBadRequest, "name and command are required")
+		return
+	}
+	if len(a.Photo) > maxPhotoBytes {
+		writeErr(w, http.StatusBadRequest, "photo exceeds maximum size of 2 MiB")
 		return
 	}
 	if err := s.store.Agents.Update(&a); err != nil {
