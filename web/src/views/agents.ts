@@ -25,15 +25,16 @@ export function renderAgents(root: HTMLElement): void {
         "Registered workers, reusable across repos. Pick the local coding agent to run — Fabrika handles the rest.",
       ]),
     ]),
-    agentForm(root),
+    agentForm(),
     el("div", { id: "agent-list", class: "card-list" }, ["Loading…"]),
   );
   refresh();
 }
 
 let editingId: string | null = null;
+let populateForm: ((a: Agent) => void) | null = null;
 
-function agentForm(root: HTMLElement): HTMLElement {
+function agentForm(): HTMLElement {
   const name = el("input", { placeholder: "Name (e.g. Claude Code)" }) as HTMLInputElement;
   const kind = el(
     "select",
@@ -110,7 +111,7 @@ function agentForm(root: HTMLElement): HTMLElement {
   }
 
   // Expose a way for the list to populate the form for editing.
-  (root as any).__editAgent = (a: Agent) => {
+  populateForm = (a: Agent) => {
     editingId = a.id;
     name.value = a.name;
     kind.value = (kindFor(a.command) ?? AGENT_KINDS[0]).id;
@@ -142,7 +143,6 @@ async function refresh(): Promise<void> {
 }
 
 function agentCard(a: Agent): HTMLElement {
-  const root = document.getElementById("app")!;
   return el("div", { class: "card agent-card" }, [
     el("div", { class: "card-main" }, [
       el("div", { class: "card-title" }, [
@@ -157,7 +157,7 @@ function agentCard(a: Agent): HTMLElement {
       ]),
     ]),
     el("div", { class: "card-actions" }, [
-      el("button", { onclick: () => (root as any).__editAgent(a) }, ["Edit"]),
+      el("button", { onclick: () => populateForm?.(a) }, ["Edit"]),
       el("button", {
         onclick: async () => {
           a.enabled ? await api.disableAgent(a.id) : await api.enableAgent(a.id);
