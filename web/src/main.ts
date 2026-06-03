@@ -46,9 +46,6 @@ function sidebar(): HTMLElement {
   return el("aside", { class: "sidebar" }, [
     el("div", { class: "brand" }, ["fabrika"]),
     el("div", { class: "nav-group" }, NAV.map(navItem)),
-    el("div", { class: "sidebar-foot" }, [
-      el("span", { id: "conn", class: "pill off" }, ["connecting…"]),
-    ]),
   ]);
 }
 

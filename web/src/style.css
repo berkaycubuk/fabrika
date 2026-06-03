@@ -98,7 +98,6 @@ code { font-family: var(--mono); font-size: 12.5px; }
   width: 6px; height: 6px; border-radius: 0;
   background: var(--amber);
 }
-.sidebar-foot { margin-top: auto; padding: 8px; }
 
 /* Content */
 .content { flex: 1; min-width: 0; padding: 28px 36px; max-width: 920px; }
