@@ -127,6 +127,10 @@ h1 + .muted, .view-header .muted { margin-top: 0; }
 .card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .card-actions { display: flex; gap: 8px; margin-top: 14px; }
 .agent-card { display: flex; flex-direction: column; }
+.agent-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.avatar-preview { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.photo-row { display: flex; align-items: center; gap: 12px; }
+.photo-row input { flex: 1; }
 
 /* Forms */
 form.card { display: flex; flex-direction: column; gap: 12px; }

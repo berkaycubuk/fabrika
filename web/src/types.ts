@@ -12,6 +12,7 @@ export interface Agent {
   timeout: string;
   maxAttempts: number;
   enabled: boolean;
+  photo: string;
 }
 
 export interface Contract {
