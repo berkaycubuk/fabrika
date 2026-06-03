@@ -8,6 +8,7 @@ import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
+import { DEFAULT_AVATAR } from "../avatar.js";
 import type { Plan, Decision, ReviewItem, Task, Agent, Metrics, AgentMetrics, BigTask, Evidence, Attempt } from "../types.js";
 
 type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
@@ -195,7 +196,7 @@ function auditCard(it: ReviewItem): HTMLElement {
 
 function taskCard(t: Task, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
-  if (t.agentId) meta.push(el("span", { class: "tag agent" }, [agentName(agents, t.agentId)]));
+  if (t.agentId) meta.push(agentPhoto(agents, t.agentId));
   meta.push(el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier]));
   meta.push(el("span", { class: `tag priority-${t.priority}` }, [`priority: ${t.priority}`]));
   for (const tag of t.tags ?? []) meta.push(el("span", { class: "tag" }, [tag]));
@@ -602,6 +603,13 @@ function openCreateTask(): void {
 
 function agentName(agents: Agent[], id: string): string {
   return agents.find((a) => a.id === id)?.name ?? "—";
+}
+
+// Agent avatar for task cards: photo stands in for the name, name shows on hover.
+function agentPhoto(agents: Agent[], id: string): HTMLElement {
+  const a = agents.find((x) => x.id === id);
+  const name = a?.name ?? "—";
+  return el("img", { class: "card-agent-photo", src: a?.photo || DEFAULT_AVATAR, alt: name, title: name });
 }
 
 function field(label: string, control: HTMLElement): HTMLElement {

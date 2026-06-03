@@ -449,6 +449,7 @@ button.option:hover { border-color: var(--accent); }
 .needs-card .tag.status-blocked, .needs-card .tag.status-failed { color: var(--red); border-color: rgba(229, 104, 122, 0.5); }
 .needs-card .tag.status-review { color: var(--green); border-color: rgba(70, 201, 139, 0.4); }
 .needs-card .tag.agent { color: var(--accent); border-color: rgba(109, 139, 255, 0.4); }
+.card-agent-photo { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 
 /* Gate columns (the ones that need you) get a marker dot. */
 .gate-dot {
