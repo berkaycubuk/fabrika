@@ -103,6 +103,7 @@ type Task struct {
 type Agent struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`        // "Claude Code", "Aider", "Reviewer-GPT"
+	Photo       string   `json:"photo"`       // profile photo as a data URI string; empty = none
 	Command     string   `json:"command"`     // template: substitutes {prompt_file} {worktree} {model}
 	Model       string   `json:"model"`       // program-specific model id (e.g. "claude-sonnet-4-6"); empty = no explicit model
 	Roles       []string `json:"roles"`       // implementer|planner|reviewer
