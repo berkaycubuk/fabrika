@@ -27,13 +27,13 @@ type Runner interface {
 // CommandRunner is the default Runner: it executes each verb as a shell command
 // in workdir. It satisfies Runner.
 type CommandRunner struct {
-	// Shell is the shell used to run verb command strings. Defaults to "sh -c".
+	// Shell is the shell used to run verb command strings. Defaults to "bash -c".
 	Shell []string
 }
 
 // New returns a CommandRunner with sensible defaults.
 func New() *CommandRunner {
-	return &CommandRunner{Shell: []string{"sh", "-c"}}
+	return &CommandRunner{Shell: []string{"bash", "-c"}}
 }
 
 // Run executes the gate stages in order against workdir. The map of verbs comes

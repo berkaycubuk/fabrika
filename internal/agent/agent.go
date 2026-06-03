@@ -52,13 +52,13 @@ type Runner interface {
 // Subprocess is the default Runner: it executes the agent's Command template as
 // a subprocess. It satisfies Runner.
 type Subprocess struct {
-	// Shell runs the substituted command string. Defaults to "sh -c".
+	// Shell runs the substituted command string. Defaults to "bash -c".
 	Shell []string
 }
 
 // NewSubprocess returns a Subprocess runner with defaults.
 func NewSubprocess() *Subprocess {
-	return &Subprocess{Shell: []string{"sh", "-c"}}
+	return &Subprocess{Shell: []string{"bash", "-c"}}
 }
 
 // RenderCommand substitutes {prompt_file}, {worktree}, and {model} into the
