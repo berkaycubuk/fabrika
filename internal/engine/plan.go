@@ -243,6 +243,12 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 		return
 	}
 
+	// Persist the planner's reported usage now, before parsing — the tokens were
+	// consumed by the run regardless of whether the plan output parses cleanly.
+	if uerr := e.store.BigTasks.SetUsage(bt.ID, res.Usage); uerr != nil {
+		log.Printf("engine: set bigtask usage %s: %v", bt.ID, uerr)
+	}
+
 	// Prefer the plan file; fall back to the agent's stdout.
 	output := res.Stdout
 	if data, rerr := os.ReadFile(planFile); rerr == nil && len(data) > 0 {
