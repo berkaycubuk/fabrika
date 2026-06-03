@@ -6,15 +6,69 @@ import { ROLES, type Agent } from "../types.js";
 
 // Supported local coding agents. Picking one wires the invocation for you — the
 // run command is fixed per kind (Fabrika runs it inside the task's worktree and
-// passes the rendered prompt as {prompt_file}). The same command serves the
-// implementer/planner/reviewer roles.
-const AGENT_KINDS = [
-  { id: "claude-code", label: "Claude Code", command: `claude -p "$(cat {prompt_file})" --dangerously-skip-permissions` },
-  { id: "opencode", label: "OpenCode", command: `opencode run "$(cat {prompt_file})"` },
-  { id: "pi", label: "Pi", command: `pi "$(cat {prompt_file})"` },
+// passes the rendered prompt as {prompt_file}, and the selected model as
+// {model}). The same command serves the implementer/planner/reviewer roles.
+//
+// Each kind also carries a hardcoded model catalog scoped to that program, with
+// the CLI's model flag pinned to its verified syntax. Claude Code takes bare
+// Anthropic model ids; OpenCode and Pi take provider/model ids (so they also
+// offer DeepSeek). The model id is rendered into the command at {model}.
+interface ModelOption {
+  id: string;
+  label: string;
+}
+
+interface AgentKind {
+  id: string;
+  label: string;
+  command: string;
+  models: ModelOption[];
+}
+
+const ANTHROPIC_BARE: ModelOption[] = [
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+];
+
+// OpenCode/Pi expect provider/model ids; they add DeepSeek alongside Anthropic.
+const PROVIDER_MODELS: ModelOption[] = [
+  { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8" },
+  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  { id: "deepseek/deepseek-chat", label: "DeepSeek Chat" },
+  { id: "deepseek/deepseek-reasoner", label: "DeepSeek Reasoner" },
+];
+
+const AGENT_KINDS: AgentKind[] = [
+  {
+    id: "claude-code",
+    label: "Claude Code",
+    command: `claude -p "$(cat {prompt_file})" --dangerously-skip-permissions --model {model}`,
+    models: ANTHROPIC_BARE,
+  },
+  {
+    id: "opencode",
+    label: "OpenCode",
+    command: `opencode run "$(cat {prompt_file})" --model {model}`,
+    models: PROVIDER_MODELS,
+  },
+  {
+    id: "pi",
+    label: "Pi",
+    command: `pi "$(cat {prompt_file})" --model {model}`,
+    models: PROVIDER_MODELS,
+  },
 ];
 
 const kindFor = (command: string) => AGENT_KINDS.find((k) => k.command === command);
+
+// First model in a kind's catalog is the recommended default. Falls back to ""
+// for a back-compat kind that lists no models (command without a {model} token).
+const defaultModel = (kind: AgentKind) => kind.models[0]?.id ?? "";
+
+const labelForModel = (kind: AgentKind | undefined, id: string) =>
+  kind?.models.find((m) => m.id === id)?.label ?? id;
 
 export function renderAgents(root: HTMLElement): void {
   clear(root);
@@ -41,6 +95,19 @@ function agentForm(): HTMLElement {
     {},
     AGENT_KINDS.map((k) => el("option", { value: k.id }, [k.label])),
   ) as HTMLSelectElement;
+  const model = el("select", {}) as HTMLSelectElement;
+
+  // Repopulate the model options for the given kind, selecting `selected` if it
+  // belongs to the catalog and otherwise the program's default model.
+  const populateModels = (kindId: string, selected?: string) => {
+    const k = AGENT_KINDS.find((x) => x.id === kindId) ?? AGENT_KINDS[0];
+    clear(model);
+    model.append(...k.models.map((m) => el("option", { value: m.id }, [m.label])));
+    model.value = selected && k.models.some((m) => m.id === selected) ? selected : defaultModel(k);
+  };
+  kind.addEventListener("change", () => populateModels(kind.value));
+  populateModels(kind.value);
+
   const tags = el("input", { placeholder: "Tags, comma-separated (go, frontend)" }) as HTMLInputElement;
   const concurrency = el("input", { type: "number", value: "1", min: "1" }) as HTMLInputElement;
   const timeout = el("input", { placeholder: "20m", value: "20m" }) as HTMLInputElement;
@@ -63,6 +130,7 @@ function agentForm(): HTMLElement {
       const payload: Partial<Agent> = {
         name: name.value.trim() || selectedKind.label,
         command: selectedKind.command,
+        model: model.value,
         roles: roleBoxes.filter((b) => b.cb.checked).map((b) => b.role),
         tags: tags.value.split(",").map((s) => s.trim()).filter(Boolean),
         concurrency: parseInt(concurrency.value, 10) || 1,
@@ -85,6 +153,7 @@ function agentForm(): HTMLElement {
   }, [
     el("div", { class: "field" }, [el("label", {}, ["Name"]), name]),
     el("div", { class: "field" }, [el("label", {}, ["Agent"]), kind]),
+    el("div", { class: "field" }, [el("label", {}, ["Model"]), model]),
     el("div", { class: "field-row" }, [
       el("div", { class: "field" }, [el("label", {}, ["Tags"]), tags]),
       el("div", { class: "field" }, [el("label", {}, ["Concurrency"]), concurrency]),
@@ -105,6 +174,7 @@ function agentForm(): HTMLElement {
     form.reset();
     roleBoxes.forEach((b) => (b.cb.checked = b.role === "implementer"));
     kind.value = AGENT_KINDS[0].id;
+    populateModels(kind.value);
     concurrency.value = "1";
     timeout.value = "20m";
     submitBtn.textContent = "Add agent";
@@ -115,6 +185,7 @@ function agentForm(): HTMLElement {
     editingId = a.id;
     name.value = a.name;
     kind.value = (kindFor(a.command) ?? AGENT_KINDS[0]).id;
+    populateModels(kind.value, a.model);
     tags.value = a.tags?.join(", ") ?? "";
     concurrency.value = String(a.concurrency);
     timeout.value = a.timeout;
@@ -151,6 +222,7 @@ function agentCard(a: Agent): HTMLElement {
       ]),
       el("code", { class: "card-cmd" }, [kindFor(a.command)?.label ?? a.command]),
       el("div", { class: "card-meta" }, [
+        ...(a.model ? [el("span", { class: "tag model" }, [labelForModel(kindFor(a.command), a.model)])] : []),
         ...(a.roles ?? []).map((r) => el("span", { class: "tag role" }, [r])),
         ...(a.tags ?? []).map((t) => el("span", { class: "tag" }, [t])),
         el("span", { class: "muted" }, [`×${a.concurrency} · ${a.timeout || "no timeout"}`]),
