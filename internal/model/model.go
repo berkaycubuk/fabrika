@@ -11,6 +11,7 @@ const (
 	BigTaskPlanned  = "planned"
 	BigTaskRunning  = "running"
 	BigTaskDone     = "done"
+	BigTaskError    = "error" // planning failed; Error holds a human-readable reason
 
 	// Plan.Status
 	PlanProposed = "proposed"
@@ -56,7 +57,8 @@ type BigTask struct {
 	Intent      string   `json:"intent"`      // the why + desired outcome
 	Constraints []string `json:"constraints"` // e.g. "PCI-compliant", "works on mobile"
 	RepoPath    string   `json:"repoPath"`
-	Status      string   `json:"status"` // draft|planning|planned|running|done
+	Status      string   `json:"status"` // draft|planning|planned|running|done|error
+	Error       string   `json:"error"`  // failure reason when Status == error; cleared on retry
 }
 
 // Plan is a proposed decomposition of a BigTask into Tasks.

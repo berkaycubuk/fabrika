@@ -140,6 +140,9 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 .pill.off { background: rgba(138, 144, 160, 0.16); color: var(--muted); }
 .pill.soon { background: rgba(224, 166, 74, 0.16); color: var(--amber); }
 .pill[class*="status-"] { background: rgba(109, 139, 255, 0.16); color: var(--accent); }
+.pill.status-error { background: rgba(229, 83, 75, 0.16); color: var(--red); }
+.pill.status-planning { background: rgba(224, 166, 74, 0.16); color: var(--amber); }
+.bigtask-error { margin-top: 8px; }
 .tag {
   font-size: 11px;
   padding: 2px 8px;

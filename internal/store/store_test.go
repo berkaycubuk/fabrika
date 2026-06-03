@@ -85,6 +85,36 @@ func TestAgentRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBigTaskErrorRoundTrip(t *testing.T) {
+	s := openTest(t)
+
+	bt := &model.BigTask{Title: "Ship login", Intent: "y"}
+	if err := s.BigTasks.Create(bt); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// A failure is recorded as status 'error' + a reason, and survives a reload.
+	if err := s.BigTasks.SetError(bt.ID, "repo has no commits yet"); err != nil {
+		t.Fatalf("set error: %v", err)
+	}
+	got, err := s.BigTasks.Get(bt.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.BigTaskError || got.Error != "repo has no commits yet" {
+		t.Fatalf("after SetError = %q / %q", got.Status, got.Error)
+	}
+
+	// A successful transition supersedes the failure: the reason is cleared.
+	if err := s.BigTasks.UpdateStatus(bt.ID, model.BigTaskPlanned); err != nil {
+		t.Fatalf("update status: %v", err)
+	}
+	got, _ = s.BigTasks.Get(bt.ID)
+	if got.Status != model.BigTaskPlanned || got.Error != "" {
+		t.Fatalf("after UpdateStatus = %q / %q (error should be cleared)", got.Status, got.Error)
+	}
+}
+
 func TestTaskRoundTrip(t *testing.T) {
 	s := openTest(t)
 

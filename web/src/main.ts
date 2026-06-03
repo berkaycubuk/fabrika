@@ -8,7 +8,7 @@ import { renderTasks, onTaskEvent } from "./views/tasks.js";
 import { renderAccept, onReviewEvent } from "./views/accept.js";
 import { renderAudit, onAuditEvent } from "./views/audit.js";
 import { renderEngine, onEngineEvent } from "./views/engine.js";
-import { renderDefine } from "./views/define.js";
+import { renderDefine, onBigTaskEvent } from "./views/define.js";
 import { renderApprove, onPlanEvent } from "./views/approve.js";
 import { renderDecide, onDecisionEvent } from "./views/decide.js";
 import { api } from "./api.js";
@@ -103,6 +103,9 @@ function main(): void {
     }
     if (e.type.startsWith("decision.") || e.type.startsWith("convention.")) {
       onDecisionEvent();
+    }
+    if (e.type.startsWith("bigtask.")) {
+      onBigTaskEvent();
     }
     if (e.type.startsWith("task.") || e.type.startsWith("bigtask.")) {
       onTaskEvent();

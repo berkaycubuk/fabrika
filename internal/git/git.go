@@ -33,6 +33,15 @@ func Open(ctx context.Context, root string) (*Repo, error) {
 	return r, nil
 }
 
+// HasCommits reports whether HEAD resolves to a commit. A freshly `git init`'d
+// repo with no commits still passes is-inside-work-tree, but has no HEAD — which
+// breaks CurrentBranch and worktree creation. Callers preflight with this to
+// give an actionable error instead of a raw "ambiguous argument 'HEAD'".
+func (r *Repo) HasCommits(ctx context.Context) bool {
+	_, err := r.run(ctx, "rev-parse", "--verify", "--quiet", "HEAD")
+	return err == nil
+}
+
 // CurrentBranch returns the checked-out branch name.
 func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 	out, err := r.run(ctx, "rev-parse", "--abbrev-ref", "HEAD")

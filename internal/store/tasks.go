@@ -12,7 +12,7 @@ import (
 // BigTaskRepo persists BigTasks in the per-project store.
 type BigTaskRepo struct{ db *sql.DB }
 
-const bigTaskCols = `id, title, intent, constraints, repo_path, status`
+const bigTaskCols = `id, title, intent, constraints, repo_path, status, error`
 
 // Create inserts a BigTask, assigning an ID and default status if absent.
 func (r *BigTaskRepo) Create(b *model.BigTask) error {
@@ -23,8 +23,8 @@ func (r *BigTaskRepo) Create(b *model.BigTask) error {
 		b.Status = model.BigTaskDraft
 	}
 	_, err := r.db.Exec(
-		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?)`,
-		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), b.RepoPath, b.Status,
+		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), b.RepoPath, b.Status, b.Error,
 	)
 	return err
 }
@@ -34,7 +34,7 @@ func (r *BigTaskRepo) Get(id string) (*model.BigTask, error) {
 	row := r.db.QueryRow(`SELECT `+bigTaskCols+` FROM bigtasks WHERE id=?`, id)
 	var b model.BigTask
 	var constraints string
-	err := row.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status)
+	err := row.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -56,7 +56,7 @@ func (r *BigTaskRepo) List() ([]model.BigTask, error) {
 	for rows.Next() {
 		var b model.BigTask
 		var constraints string
-		if err := rows.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status); err != nil {
+		if err := rows.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &b.RepoPath, &b.Status, &b.Error); err != nil {
 			return nil, err
 		}
 		b.Constraints = scanStrings(constraints)
@@ -65,9 +65,20 @@ func (r *BigTaskRepo) List() ([]model.BigTask, error) {
 	return out, rows.Err()
 }
 
-// UpdateStatus sets a big task's lifecycle status.
+// UpdateStatus sets a big task's lifecycle status, clearing any prior error
+// reason (a successful transition supersedes a past failure).
 func (r *BigTaskRepo) UpdateStatus(id, status string) error {
-	res, err := r.db.Exec(`UPDATE bigtasks SET status=? WHERE id=?`, status, id)
+	res, err := r.db.Exec(`UPDATE bigtasks SET status=?, error='' WHERE id=?`, status, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
+// SetError marks a big task as failed (status 'error') with a human-readable
+// reason, so the failure is visible in the UI instead of silently lost.
+func (r *BigTaskRepo) SetError(id, reason string) error {
+	res, err := r.db.Exec(`UPDATE bigtasks SET status=?, error=? WHERE id=?`, model.BigTaskError, reason, id)
 	if err != nil {
 		return err
 	}

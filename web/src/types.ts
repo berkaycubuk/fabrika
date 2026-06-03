@@ -72,7 +72,8 @@ export interface BigTask {
   intent: string;
   constraints: string[];
   repoPath: string;
-  status: string;
+  status: string; // draft|planning|planned|running|done|error
+  error: string; // failure reason when status === "error"
 }
 
 export interface Decision {

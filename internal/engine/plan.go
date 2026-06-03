@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,6 +12,22 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/berkaycubuk/fabrika/internal/planner"
 )
+
+// Preflight validates the target repo is ready to plan and dispatch work: it
+// must be a git work tree with at least one commit (worktrees fork off HEAD).
+// It returns a human-actionable error so callers can reject up front rather
+// than failing asynchronously deep in the planner. See SPECS.md §7.
+func (e *Engine) Preflight(ctx context.Context) error {
+	repo, err := git.Open(ctx, e.repoRoot)
+	if err != nil {
+		return err
+	}
+	if !repo.HasCommits(ctx) {
+		return fmt.Errorf("repo at %s has no commits yet — make an initial commit "+
+			"(e.g. `git commit --allow-empty -m init`) before defining tasks", e.repoRoot)
+	}
+	return nil
+}
 
 // settingRolePlanner names the agent that holds the planner role (optional
 // override; otherwise any enabled agent with the planner role is used).
@@ -58,7 +76,7 @@ func (e *Engine) PlanBigTask(bt model.BigTask) {
 func (e *Engine) planBigTask(bt model.BigTask) {
 	ag, ok := e.PlannerAgent()
 	if !ok {
-		log.Printf("engine: no planner agent for big task %q", bt.Title)
+		e.failBigTask(bt.ID, "no planner agent enabled — enable an agent with the planner role under Agents")
 		return
 	}
 
@@ -67,14 +85,17 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 	// A clean worktree gives the planner repo context without touching main.
 	repo, err := git.Open(e.ctx, e.repoRoot)
 	if err != nil {
-		log.Printf("engine: planner open repo: %v", err)
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		e.failBigTask(bt.ID, "open repo: %v", err)
+		return
+	}
+	if !repo.HasCommits(e.ctx) {
+		e.failBigTask(bt.ID, "repo at %s has no commits yet — make an initial commit "+
+			"(e.g. `git commit --allow-empty -m init`) before defining tasks", e.repoRoot)
 		return
 	}
 	base, err := repo.CurrentBranch(e.ctx)
 	if err != nil {
-		log.Printf("engine: planner current branch: %v", err)
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		e.failBigTask(bt.ID, "determine current branch: %v", err)
 		return
 	}
 	branch := "fabrika/plan-" + shortID(bt.ID)
@@ -84,15 +105,13 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 	_ = os.RemoveAll(wt)
 	if mkErr := os.MkdirAll(filepath.Dir(wt), 0o755); mkErr != nil {
 		e.mu.Unlock()
-		log.Printf("engine: planner mkdir: %v", mkErr)
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		e.failBigTask(bt.ID, "create worktree dir: %v", mkErr)
 		return
 	}
 	addErr := repo.AddWorktree(e.ctx, wt, branch, base)
 	e.mu.Unlock()
 	if addErr != nil {
-		log.Printf("engine: planner worktree: %v", addErr)
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		e.failBigTask(bt.ID, "create planner worktree: %v", addErr)
 		return
 	}
 	defer func() {
@@ -106,8 +125,7 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 	prompt := planner.RenderPrompt(bt, conventions, planFile)
 	promptFile, cleanup, err := writeTempPrompt(prompt)
 	if err != nil {
-		log.Printf("engine: planner write prompt: %v", err)
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		e.failBigTask(bt.ID, "write planner prompt: %v", err)
 		return
 	}
 	defer cleanup()
@@ -115,8 +133,7 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 	synthetic := model.Task{ID: bt.ID, Title: "plan: " + bt.Title}
 	res, err := e.agent.Run(e.ctx, ag, synthetic, wt, promptFile)
 	if err != nil {
-		log.Printf("engine: planner run: %v", err)
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		e.failBigTask(bt.ID, "run planner agent: %v", err)
 		return
 	}
 
@@ -127,8 +144,7 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 	}
 	raw, err := planner.Parse(output)
 	if err != nil {
-		log.Printf("engine: planner parse: %v", err)
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		e.failBigTask(bt.ID, "parse planner output: %v", err)
 		return
 	}
 
@@ -169,6 +185,21 @@ func (e *Engine) persistPlan(bt model.BigTask, raw planner.RawPlan) {
 	plan.Tasks, plan.OpenDecisions = tasks, decisions
 	e.emit("plan.ready", *plan)
 	log.Printf("engine: planned %q -> %d task(s), %d decision(s)", bt.Title, len(tasks), len(decisions))
+}
+
+// failBigTask records a planning failure on the big task (status 'error' + a
+// human-readable reason) and notifies the UI, so failures surface instead of
+// silently reverting to draft. The reason is also logged.
+func (e *Engine) failBigTask(id, format string, args ...any) {
+	reason := fmt.Sprintf(format, args...)
+	log.Printf("engine: planner failed for big task %s: %s", id, reason)
+	if err := e.store.BigTasks.SetError(id, reason); err != nil {
+		log.Printf("engine: set bigtask error %s: %v", id, err)
+		return
+	}
+	if bt, err := e.store.BigTasks.Get(id); err == nil {
+		e.emit("bigtask.updated", *bt)
+	}
 }
 
 func (e *Engine) setBigTaskStatus(id, status string) {

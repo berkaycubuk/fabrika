@@ -71,6 +71,20 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, t)
 }
 
+// listBigTasks returns every big task newest-first, so the Define surface can
+// show their planning status (and any error reason) live.
+func (s *Server) listBigTasks(w http.ResponseWriter, r *http.Request) {
+	bts, err := s.store.BigTasks.List()
+	if err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	if bts == nil {
+		bts = []model.BigTask{}
+	}
+	writeJSON(w, http.StatusOK, bts)
+}
+
 // createBigTask stores the BigTask and decomposes it into work. When a planner
 // agent is configured, planning runs asynchronously (the BigTask goes to
 // `planning`; a proposed Plan with `planned` tasks + open decisions appears via
@@ -84,6 +98,13 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if bt.Title == "" {
 		writeErr(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	// Preflight the repo synchronously so a missing initial commit (or non-repo)
+	// surfaces here as a clear 400, instead of failing silently in the async
+	// planner with a raw git error the UI never sees.
+	if err := s.engine.Preflight(r.Context()); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	bt.ID = ""
@@ -110,6 +131,14 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 		}
 		s.hub.Broadcast(Event{Type: "task.created", Payload: t})
 	}
+	// Advance the big task out of draft so it isn't a dead-end in the UI: its
+	// task is already ready, mirroring ApprovePlan's transition to running.
+	if err := s.store.BigTasks.UpdateStatus(bt.ID, model.BigTaskRunning); err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	bt.Status = model.BigTaskRunning
+	s.hub.Broadcast(Event{Type: "bigtask.updated", Payload: bt})
 	s.engine.Wake()
 
 	writeJSON(w, http.StatusCreated, bt)

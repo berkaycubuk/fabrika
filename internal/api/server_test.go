@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -14,9 +16,37 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
+// initRepo makes dir a git repo with one commit, so createBigTask's preflight
+// (which requires a resolvable HEAD for worktrees) passes.
+func initRepo(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-qm", "init")
+}
+
 func newTestServer(t *testing.T) http.Handler {
 	t.Helper()
 	dir := t.TempDir()
+	initRepo(t, dir)
 	s, err := store.Open(filepath.Join(dir, "g"), filepath.Join(dir, "p"))
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
@@ -139,6 +169,15 @@ func TestBigTaskCreatesPassthroughTask(t *testing.T) {
 	if tasks[0].Title != "Ship login" {
 		t.Fatalf("passthrough task title = %q", tasks[0].Title)
 	}
+
+	// The big task must advance out of draft — its task is already ready, so
+	// leaving it in draft makes it a dead-end in the Define UI.
+	rec = do(t, h, "GET", "/api/bigtasks", nil)
+	var bts []model.BigTask
+	json.Unmarshal(rec.Body.Bytes(), &bts)
+	if len(bts) != 1 || bts[0].Status != model.BigTaskRunning {
+		t.Fatalf("passthrough big task status = %+v, want running", bts)
+	}
 }
 
 func TestBigTaskWithPlannerSkipsPassthrough(t *testing.T) {
@@ -163,6 +202,60 @@ func TestBigTaskWithPlannerSkipsPassthrough(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &tasks)
 	if len(tasks) != 0 {
 		t.Fatalf("expected no passthrough task when a planner exists, got %d", len(tasks))
+	}
+}
+
+// TestBigTaskPreflightRejectsRepoWithoutCommits is the regression for the
+// silent failure: a repo with no commits (unresolvable HEAD) used to pass
+// is-inside-work-tree, then fail deep in the planner and revert to draft with
+// no UI feedback. createBigTask now preflights and returns a clear 400.
+func TestBigTaskPreflightRejectsRepoWithoutCommits(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	cmd := exec.Command("git", "init", "-q", "-b", "main")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	s, err := store.Open(filepath.Join(dir, "g"), filepath.Join(dir, "p"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	srv := NewServer(s, &config.Config{}, dir, nil)
+	srv.Start(context.Background())
+	h := srv.Handler()
+
+	rec := do(t, h, "POST", "/api/bigtasks", model.BigTask{Title: "X", Intent: "y"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for repo without commits, got %d %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("no commits")) {
+		t.Fatalf("error should mention missing commits, got %s", rec.Body.String())
+	}
+	// Nothing should have been persisted.
+	rec = do(t, h, "GET", "/api/bigtasks", nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != "[]\n" {
+		t.Fatalf("bigtasks should be empty: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestListBigTasks confirms defined big tasks are listable (the Define UI reads
+// this to show planning status / failures).
+func TestListBigTasks(t *testing.T) {
+	h := newTestServer(t)
+
+	rec := do(t, h, "POST", "/api/bigtasks", model.BigTask{Title: "Ship login", Intent: "y"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create bigtask: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, h, "GET", "/api/bigtasks", nil)
+	var bts []model.BigTask
+	json.Unmarshal(rec.Body.Bytes(), &bts)
+	if len(bts) != 1 || bts[0].Title != "Ship login" {
+		t.Fatalf("list bigtasks = %+v", bts)
 	}
 }
 
