@@ -127,6 +127,18 @@ func (r *TaskRepo) UpdateStatus(id, status string) error {
 	return mustAffect(res)
 }
 
+// SetRun records the agent + branch a task is running on and sets its status.
+func (r *TaskRepo) SetRun(id, agentID, branch, status string) error {
+	res, err := r.db.Exec(
+		`UPDATE tasks SET agent_id=?, branch=?, status=? WHERE id=?`,
+		agentID, branch, status, id,
+	)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
 // SetPreferredAgent pins a task to a specific agent (steer/route).
 func (r *TaskRepo) SetPreferredAgent(id, agentID string) error {
 	res, err := r.db.Exec(`UPDATE tasks SET preferred_agent_id=? WHERE id=?`, agentID, id)

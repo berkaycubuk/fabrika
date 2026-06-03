@@ -26,6 +26,7 @@ const (
 	TaskMerged    = "merged"
 	TaskBlocked   = "blocked"
 	TaskFailed    = "failed"
+	TaskClosed    = "closed" // human dismissed without merging (engine extension)
 
 	// Risk tiers
 	RiskLow    = "low"

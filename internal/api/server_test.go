@@ -2,12 +2,14 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
+	"github.com/berkaycubuk/fabrika/internal/config"
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
@@ -20,7 +22,9 @@ func newTestServer(t *testing.T) http.Handler {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return NewServer(s, nil).Handler()
+	srv := NewServer(s, &config.Config{}, dir, nil)
+	srv.Start(context.Background())
+	return srv.Handler()
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {

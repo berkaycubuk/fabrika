@@ -5,10 +5,11 @@ define tasks and make decisions; agents do the work; the tool handles
 build/test/verify and only surfaces what needs your judgment. See
 [SPECS.md](SPECS.md) for the full design.
 
-> **Status: Phase 0 foundation (skeleton + plumbing).** The binary boots, serves
-> the cockpit UI, and supports agent + task CRUD across the two-store
-> architecture. The live `worktree → run agent → gate → evidence → merge` loop is
-> scaffolded behind interfaces and lands in the next pass.
+> **Status: Phase 0 complete (the live loop works).** The binary boots, serves
+> the cockpit UI, and runs the full loop: define a task → an agent runs it in an
+> isolated git worktree → the verification gate checks it → evidence + diff land
+> in the **Accept** queue → you merge (to `main`) or kick back. Dispatch is
+> single-flight; parallel scheduling (Phase 1) and a planner (Phase 2) are next.
 
 ## Build
 
@@ -34,12 +35,18 @@ fabrika --port 8080 --no-open
   build/verify verbs, risk globs, autonomy tiers).
 - **Agents** screen — create/edit/enable/disable registered agents. Persisted in
   the **global store** (`~/.fabrika/fabrika.db`), reusable across repos.
-- **Tasks** screen — create a task (spec + verify commands) and watch the list.
-  Persisted in the **per-project store** (`<repo>/.fabrika/fabrika.db`).
-- Live updates over WebSocket (`/api/events`).
-- The remaining cockpit surfaces (Define / Approve / Decide / Accept / Engine
-  room) are present as placeholders; their API endpoints return `501` until the
-  live loop is built.
+- **Tasks** screen — create a task (spec + verify commands). The engine
+  automatically routes it to an enabled implementer agent, runs the agent in a
+  fresh git worktree (`.fabrika/worktrees/<id>` on a `fabrika/task-*` branch),
+  captures its work, and runs the verification gate.
+- **Accept** screen — the review queue. Each item shows the gate's per-stage
+  results and the branch diff. **Merge** green work (it merges to your current
+  branch) or **kick back** the rest. Failing runs surface as `failed` with their
+  red output; escalations (`fabrika_DECISION:`) surface as `blocked`.
+- Live updates over WebSocket (`/api/events`), including a pending-count badge on
+  Accept.
+- The remaining cockpit surfaces (Define / Approve / Decide / Engine room) are
+  placeholders; their endpoints return `501` until later phases.
 
 ## Layout
 
@@ -53,6 +60,6 @@ fabrika --port 8080 --no-open
 | `internal/git`      | git-CLI wrappers (worktree/branch/diff/merge) — plumbing    |
 | `internal/gate`     | verb runner + Evidence normalization — plumbing             |
 | `internal/agent`    | registry + subprocess adapter + routing — plumbing          |
-| `internal/engine`   | task lifecycle + scheduler — stub (next pass)               |
+| `internal/engine`   | dispatch loop: route → worktree → agent → gate → merge      |
 | `internal/planner`  | BigTask → Tasks (Phase 0 passthrough)                       |
 | `web`               | vanilla-TS UI, built with esbuild, embedded via `go:embed`  |

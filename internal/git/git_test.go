@@ -92,3 +92,44 @@ func TestWorktreeAndDiff(t *testing.T) {
 		t.Fatalf("RemoveWorktree: %v", err)
 	}
 }
+
+func TestAddAllAndCommit(t *testing.T) {
+	ctx := context.Background()
+	root := initRepo(t)
+	r, err := Open(ctx, root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	wt := filepath.Join(t.TempDir(), "wt")
+	if err := r.AddWorktree(ctx, wt, "task/auto", "main"); err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	// Clean tree -> no commit.
+	committed, err := r.AddAllAndCommit(ctx, wt, "noop")
+	if err != nil {
+		t.Fatalf("AddAllAndCommit (clean): %v", err)
+	}
+	if committed {
+		t.Fatal("expected no commit on clean tree")
+	}
+
+	// Uncommitted change -> commit happens and shows in the diff.
+	if err := os.WriteFile(filepath.Join(wt, "new.txt"), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	committed, err = r.AddAllAndCommit(ctx, wt, "capture agent work")
+	if err != nil {
+		t.Fatalf("AddAllAndCommit (dirty): %v", err)
+	}
+	if !committed {
+		t.Fatal("expected a commit for the new file")
+	}
+
+	files, _ := r.ChangedFiles(ctx, "main", "task/auto")
+	if len(files) != 1 || files[0] != "new.txt" {
+		t.Fatalf("changed files = %v", files)
+	}
+	_ = r.RemoveWorktree(ctx, wt)
+}

@@ -132,6 +132,69 @@ func TestTaskRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAttemptRoundTrip(t *testing.T) {
+	s := openTest(t)
+
+	task := &model.Task{Title: "t"}
+	if err := s.Tasks.Create(task); err != nil {
+		t.Fatalf("Create task: %v", err)
+	}
+
+	if _, err := s.Attempts.LatestForTask(task.ID); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+
+	a1 := &model.Attempt{
+		TaskID:  task.ID,
+		AgentID: "agent-1",
+		Result:  model.ResultFail,
+		Evidence: model.Evidence{
+			Stages: map[string]model.StageResult{"build": {Pass: false, Output: "boom", ExitCode: 1}},
+			Diff:   "diff --git a b",
+		},
+		Log: "first try",
+	}
+	if err := s.Attempts.Create(a1); err != nil {
+		t.Fatalf("Create attempt: %v", err)
+	}
+	a2 := &model.Attempt{TaskID: task.ID, AgentID: "agent-1", Result: model.ResultPass}
+	if err := s.Attempts.Create(a2); err != nil {
+		t.Fatalf("Create attempt 2: %v", err)
+	}
+
+	latest, err := s.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("LatestForTask: %v", err)
+	}
+	if latest.Result != model.ResultPass {
+		t.Fatalf("latest result = %q, want pass", latest.Result)
+	}
+
+	all, err := s.Attempts.ListForTask(task.ID)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("ListForTask = %d (err %v)", len(all), err)
+	}
+	// Evidence preserved on the first attempt.
+	if all[1].Evidence.Stages["build"].Output != "boom" {
+		t.Fatalf("evidence not preserved: %+v", all[1].Evidence)
+	}
+}
+
+func TestTaskSetRun(t *testing.T) {
+	s := openTest(t)
+	task := &model.Task{Title: "t"}
+	if err := s.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Tasks.SetRun(task.ID, "agent-9", "fabrika/task-abc", model.TaskRunning); err != nil {
+		t.Fatalf("SetRun: %v", err)
+	}
+	got, _ := s.Tasks.Get(task.ID)
+	if got.AgentID != "agent-9" || got.Branch != "fabrika/task-abc" || got.Status != model.TaskRunning {
+		t.Fatalf("SetRun not applied: %+v", got)
+	}
+}
+
 func TestSettingsRoundTrip(t *testing.T) {
 	s := openTest(t)
 

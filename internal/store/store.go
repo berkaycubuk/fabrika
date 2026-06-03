@@ -31,6 +31,7 @@ type Store struct {
 	Settings    *SettingsRepo
 	BigTasks    *BigTaskRepo
 	Tasks       *TaskRepo
+	Attempts    *AttemptRepo
 }
 
 // Open opens (creating if needed) both databases and applies migrations.
@@ -70,6 +71,7 @@ func Open(globalDir, projectDir string) (*Store, error) {
 	s.Settings = &SettingsRepo{db: global}
 	s.BigTasks = &BigTaskRepo{db: project}
 	s.Tasks = &TaskRepo{db: project}
+	s.Attempts = &AttemptRepo{db: project}
 	return s, nil
 }
 

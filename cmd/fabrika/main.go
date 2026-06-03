@@ -97,7 +97,14 @@ func cmdServe(port int, openBrowser bool) error {
 		return fmt.Errorf("load embedded UI: %w", err)
 	}
 
-	srv := api.NewServer(st, assets)
+	// Lifecycle context: cancelled on interrupt, also stops the engine loop and
+	// any in-flight agent subprocess.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	srv := api.NewServer(st, cfg, cwd, assets)
+	srv.Start(ctx) // launch the dispatch loop
+
 	addr := fmt.Sprintf("localhost:%d", port)
 	httpServer := &http.Server{
 		Addr:    addr,
@@ -129,9 +136,6 @@ func cmdServe(port int, openBrowser bool) error {
 	}
 
 	// Wait for interrupt or server error.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	select {
 	case err := <-errCh:
 		return err

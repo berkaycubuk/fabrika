@@ -84,10 +84,33 @@ func (r *Repo) Merge(ctx context.Context, base, branch string) error {
 	return nil
 }
 
+// AddAllAndCommit stages everything in a worktree and commits it on the
+// worktree's branch. It reports whether a commit was actually made (false when
+// the tree was already clean) so callers can tell apart "agent did nothing".
+// This guards the loop against agents that leave changes uncommitted.
+func (r *Repo) AddAllAndCommit(ctx context.Context, worktreeDir, msg string) (bool, error) {
+	if _, err := runIn(ctx, worktreeDir, "add", "-A"); err != nil {
+		return false, err
+	}
+	// `diff --cached --quiet` exits non-zero when there are staged changes.
+	if _, err := runIn(ctx, worktreeDir, "diff", "--cached", "--quiet"); err == nil {
+		return false, nil // nothing staged -> clean tree
+	}
+	if _, err := runIn(ctx, worktreeDir, "commit", "-m", msg); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // run executes a git command in the repo root and returns combined stdout.
 func (r *Repo) run(ctx context.Context, args ...string) (string, error) {
+	return runIn(ctx, r.Root, args...)
+}
+
+// runIn executes a git command in dir and returns combined stdout.
+func runIn(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = r.Root
+	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -5,25 +5,39 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
 	"net/http"
 
+	"github.com/berkaycubuk/fabrika/internal/config"
+	"github.com/berkaycubuk/fabrika/internal/engine"
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
 // Server holds the dependencies shared across handlers.
 type Server struct {
-	store *store.Store
-	hub   *Hub
-	web   fs.FS // embedded static UI assets (may be nil in tests)
+	store  *store.Store
+	hub    *Hub
+	web    fs.FS // embedded static UI assets (may be nil in tests)
+	engine *engine.Engine
 }
 
-// NewServer constructs a Server. web is the embedded UI filesystem rooted at the
-// built assets; pass nil to disable static serving.
-func NewServer(s *store.Store, web fs.FS) *Server {
-	return &Server{store: s, hub: newHub(), web: web}
+// NewServer constructs a Server and its engine. cfg + repoRoot configure the
+// dispatch loop; web is the embedded UI filesystem (nil disables static
+// serving). The engine emits UI events through the WebSocket hub.
+func NewServer(s *store.Store, cfg *config.Config, repoRoot string, web fs.FS) *Server {
+	srv := &Server{store: s, hub: newHub(), web: web}
+	srv.engine = engine.New(s, cfg, repoRoot, func(t string, p any) {
+		srv.hub.Broadcast(Event{Type: t, Payload: p})
+	})
+	return srv
+}
+
+// Start launches the engine dispatch loop until ctx is cancelled.
+func (s *Server) Start(ctx context.Context) {
+	s.engine.Start(ctx)
 }
 
 // Handler builds the full HTTP routing tree.
@@ -44,6 +58,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	mux.HandleFunc("POST /api/bigtasks", s.createBigTask)
 
+	// --- Accept queue (live loop) ---
+	mux.HandleFunc("GET /api/reviews", s.listReviews)
+	mux.HandleFunc("POST /api/tasks/{id}/accept", s.acceptTask)
+	mux.HandleFunc("POST /api/tasks/{id}/reject", s.rejectTask)
+
 	// --- Settings (global store) ---
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
@@ -58,9 +77,6 @@ func (s *Server) Handler() http.Handler {
 		"POST /api/plans/{id}/reject",
 		"GET /api/decisions",
 		"POST /api/decisions/{id}/answer",
-		"GET /api/reviews",
-		"POST /api/tasks/{id}/accept",
-		"POST /api/tasks/{id}/reject",
 		"POST /api/tasks/{id}/assign",
 		"POST /api/steer",
 		"GET /api/metrics",

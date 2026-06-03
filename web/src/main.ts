@@ -5,6 +5,8 @@ import { el, clear } from "./dom.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderTasks, onTaskEvent } from "./views/tasks.js";
+import { renderAccept, onReviewEvent } from "./views/accept.js";
+import { api } from "./api.js";
 import type { FabrikaEvent } from "./types.js";
 
 interface Nav {
@@ -18,8 +20,8 @@ interface Nav {
 const NAV: Nav[] = [
   { id: "tasks", label: "Tasks", group: "factory", render: renderTasks },
   { id: "agents", label: "Agents", group: "factory", render: renderAgents },
+  { id: "accept", label: "Accept", group: "needs-you", render: renderAccept },
   { id: "decide", label: "Decide", group: "needs-you", render: placeholder("Decide", "The decision queue — answer questions agents can't resolve. Arrives with the planner (Phase 2)."), soon: true },
-  { id: "accept", label: "Accept", group: "needs-you", render: placeholder("Accept", "The review queue — each item a task with its evidence + diff. Arrives with the live agent loop."), soon: true },
   { id: "approve", label: "Approve", group: "needs-you", render: placeholder("Approve", "Review a proposed plan before work starts. Arrives with the planner (Phase 2)."), soon: true },
   { id: "engine", label: "Engine room", group: "factory", render: placeholder("Engine room", "Live task DAG, per-agent activity, and metrics. Arrives with the scheduler (Phase 1)."), soon: true },
 ];
@@ -58,7 +60,11 @@ function sidebar(): HTMLElement {
         e.preventDefault();
         location.hash = n.id;
       },
-    }, [n.label, n.soon ? el("span", { class: "dot" }, []) : el("span", {})]);
+    }, [
+      n.label,
+      n.id === "accept" ? el("span", { class: "count" }, []) : el("span", {}),
+      n.soon ? el("span", { class: "dot" }, []) : el("span", {}),
+    ]);
 
   const group = (label: string, g: Nav["group"]) =>
     el("div", { class: "nav-group" }, [
@@ -85,6 +91,7 @@ function main(): void {
   window.addEventListener("hashchange", go);
   go();
 
+  updateBadge();
   connectEvents((e: FabrikaEvent) => {
     const conn = document.getElementById("conn");
     if (conn) {
@@ -92,8 +99,23 @@ function main(): void {
       conn.className = "pill on";
     }
     if (e.type.startsWith("agent.")) onAgentEvent();
-    if (e.type.startsWith("task.") || e.type.startsWith("bigtask.")) onTaskEvent();
+    if (e.type.startsWith("task.") || e.type.startsWith("bigtask.")) {
+      onTaskEvent();
+      onReviewEvent();
+      updateBadge();
+    }
   });
+}
+
+// updateBadge shows the count of items awaiting acceptance on the Accept nav.
+async function updateBadge(): Promise<void> {
+  try {
+    const items = await api.listReviews();
+    const nav = document.querySelector('.nav-item[data-id="accept"] .count');
+    if (nav) nav.textContent = items.length > 0 ? String(items.length) : "";
+  } catch {
+    /* ignore */
+  }
 }
 
 main();

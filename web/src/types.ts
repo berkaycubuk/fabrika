@@ -36,9 +36,39 @@ export interface Task {
   preferredAgentId: string;
 }
 
+export interface StageResult {
+  pass: boolean;
+  output: string;
+  skipped: boolean;
+  exitCode: number;
+}
+
+export interface Evidence {
+  stages: Record<string, StageResult>;
+  diff: string;
+  artifacts: string[];
+}
+
+export interface Attempt {
+  id: string;
+  taskId: string;
+  agentId: string;
+  result: string; // pass|fail|escalated
+  evidence: Evidence;
+  log: string;
+}
+
+export interface ReviewItem {
+  task: Task;
+  attempt: Attempt | null;
+}
+
 export interface FabrikaEvent {
   type: string;
   payload: unknown;
 }
+
+// Fixed gate stage order (mirrors internal/gate stageOrder) for stable display.
+export const STAGE_ORDER = ["setup", "typecheck", "lint", "build", "test", "verify", "e2e"];
 
 export const ROLES = ["implementer", "planner", "reviewer"];
