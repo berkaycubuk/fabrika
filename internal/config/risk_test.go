@@ -32,6 +32,19 @@ func TestTierFor(t *testing.T) {
 	}
 }
 
+func TestAutoMerges(t *testing.T) {
+	c := &Config{Autonomy: Autonomy{AutoMerge: []string{"low", " medium "}}}
+	cases := map[string]bool{"low": true, "medium": true, "high": false, "": false}
+	for tier, want := range cases {
+		if got := c.AutoMerges(tier); got != want {
+			t.Errorf("AutoMerges(%q) = %v, want %v", tier, got, want)
+		}
+	}
+	if (&Config{}).AutoMerges("low") {
+		t.Error("empty autonomy should not auto-merge anything")
+	}
+}
+
 func TestMatchGlob(t *testing.T) {
 	cases := []struct {
 		pattern, name string

@@ -1,77 +1,69 @@
-// Accept screen: the review queue. Each item is a task that has run through the
-// gate, shown with its stage results + branch diff. Merge green work or kick it
-// back. (SPECS.md §10 "Accept", §9 merge gate.)
+// Audit screen: the post-merge audit queue. A random sample of auto-merged work
+// (governed by the audit rate) lands here for an after-the-fact eyeball, so trust
+// in autonomy stays calibrated without re-inserting a human in the common path.
+// "Looks good" clears it; "Revert" records a change-failure. (SPECS §13, §14.)
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { STAGE_ORDER, type ReviewItem, type Evidence } from "../types.js";
 
-export function renderAccept(root: HTMLElement): void {
+export function renderAudit(root: HTMLElement): void {
   clear(root);
   root.append(
     el("div", { class: "view-header" }, [
-      el("h1", {}, ["Accept"]),
+      el("h1", {}, ["Audit"]),
       el("p", { class: "muted" }, [
-        "Work that ran through the gate and needs your judgment. Merge what's right; kick back the rest.",
+        "Auto-merged work, sampled for a spot-check. Already on main — confirm it was right, or flag it as a change-failure.",
       ]),
     ]),
-    el("div", { id: "review-list", class: "card-list" }, ["Loading…"]),
+    el("div", { id: "audit-list", class: "card-list" }, ["Loading…"]),
   );
   refresh();
 }
 
 async function refresh(): Promise<void> {
-  const list = document.getElementById("review-list");
+  const list = document.getElementById("audit-list");
   if (!list) return;
   try {
-    const items = await api.listReviews();
+    const items = await api.listAudits();
     clear(list);
     if (items.length === 0) {
-      list.append(el("p", { class: "muted" }, ["Nothing waiting on you. 🎉"]));
+      list.append(el("p", { class: "muted" }, ["No auto-merges to audit. 🎉"]));
       return;
     }
-    for (const it of items) list.append(reviewCard(it));
+    for (const it of items) list.append(auditCard(it));
   } catch (e) {
     list.textContent = (e as Error).message;
   }
 }
 
-function reviewCard(it: ReviewItem): HTMLElement {
+function auditCard(it: ReviewItem): HTMLElement {
   const { task, attempt } = it;
-  const green = task.status === "review";
-
   const stages = attempt ? stageRow(attempt.evidence) : el("span", { class: "muted" }, ["no evidence"]);
   const diff = attempt?.evidence?.diff?.trim();
-  const blockedReason =
-    task.status === "blocked" && attempt ? firstLine(attempt.log) : "";
-  // A reviewer-role agent's first-pass verdict, when it kicked the work up to you.
-  const review = attempt?.evidence?.stages?.review;
-  const reviewNote = review && !review.pass ? `Reviewer: ${review.output}` : "";
 
   const actions = el("div", { class: "card-actions" }, [
     el("button", {
       class: "primary",
-      disabled: !green,
-      title: green ? "" : "Only green runs can be merged",
-      onclick: green ? () => act(() => api.acceptTask(task.id)) : undefined,
-    }, ["Merge"]),
+      title: "Acknowledge — this auto-merge looks correct",
+      onclick: () => act(() => api.ackAudit(task.id)),
+    }, ["Looks good"]),
     el("button", {
       class: "danger",
+      title: "Record this as a change-failure (revert the merge in git yourself)",
       onclick: () => {
-        const reason = prompt("Reason for kicking this back? (optional)") ?? "";
-        act(() => api.rejectTask(task.id, reason));
+        if (!confirm(`Mark “${task.title}” as a change-failure? Revert it in git separately.`)) return;
+        act(() => api.revertTask(task.id));
       },
-    }, ["Kick back"]),
+    }, ["Revert"]),
   ]);
 
   return el("div", { class: "card review-card" }, [
     el("div", { class: "card-main" }, [
       el("div", { class: "card-title" }, [
         task.title,
-        el("span", { class: `pill status-${task.status}` }, [task.status]),
+        el("span", { class: "pill status-merged" }, ["auto-merged"]),
         task.branch ? el("code", { class: "branch" }, [task.branch]) : el("span", {}),
       ]),
-      blockedReason ? el("p", { class: "blocked-q" }, [blockedReason]) : el("span", {}),
-      reviewNote ? el("p", { class: "blocked-q" }, [reviewNote]) : el("span", {}),
       stages,
       diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     ]),
@@ -85,8 +77,7 @@ function stageRow(ev: Evidence): HTMLElement {
     const r = stages[s];
     const cls = r.skipped ? "stage skip" : r.pass ? "stage pass" : "stage fail";
     const mark = r.skipped ? "–" : r.pass ? "✓" : "✗";
-    const chip = el("span", { class: cls, title: r.output ? r.output.slice(-4000) : "" }, [`${mark} ${s}`]);
-    return chip;
+    return el("span", { class: cls, title: r.output ? r.output.slice(-4000) : "" }, [`${mark} ${s}`]);
   });
   if (chips.length === 0) return el("div", { class: "stage-row" }, [el("span", { class: "muted" }, ["no gate stages"])]);
   return el("div", { class: "stage-row" }, chips);
@@ -94,7 +85,6 @@ function stageRow(ev: Evidence): HTMLElement {
 
 function diffBlock(diff: string): HTMLElement {
   const pre = el("pre", { class: "diff" });
-  // Lightweight diff coloring by line prefix.
   for (const line of diff.split("\n")) {
     let cls = "";
     if (line.startsWith("+") && !line.startsWith("+++")) cls = "add";
@@ -102,15 +92,7 @@ function diffBlock(diff: string): HTMLElement {
     else if (line.startsWith("@@")) cls = "hunk";
     pre.append(el("span", { class: `dl ${cls}` }, [line + "\n"]));
   }
-  const wrap = el("details", { class: "diff-wrap" }, [
-    el("summary", {}, ["Diff"]),
-    pre,
-  ]);
-  return wrap;
-}
-
-function firstLine(s: string): string {
-  return (s || "").split("\n")[0];
+  return el("details", { class: "diff-wrap" }, [el("summary", {}, ["Diff"]), pre]);
 }
 
 async function act(fn: () => Promise<unknown>): Promise<void> {
@@ -122,6 +104,6 @@ async function act(fn: () => Promise<unknown>): Promise<void> {
   }
 }
 
-export function onReviewEvent(): void {
-  if (document.getElementById("review-list")) refresh();
+export function onAuditEvent(): void {
+  if (document.getElementById("audit-list")) refresh();
 }

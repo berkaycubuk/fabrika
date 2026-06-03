@@ -34,6 +34,9 @@ export interface Task {
   branch: string;
   agentId: string;
   preferredAgentId: string;
+  autoMerged: boolean;
+  auditFlagged: boolean;
+  reverted: boolean;
 }
 
 export interface StageResult {
@@ -113,6 +116,16 @@ export interface Metrics {
   blocked: number;
   merged: number;
   throughput: number;
+  // Trust + autonomy (Phase 3).
+  autoMerged: number;
+  manualMerged: number;
+  reverted: number;
+  auditQueue: number;
+  autoMergeShare: number;
+  touchesPerUnit: number;
+  changeFailRate: number;
+  auditRate: number;
+  mutationTesting: boolean;
 }
 
 export interface FabrikaEvent {
@@ -120,7 +133,8 @@ export interface FabrikaEvent {
   payload: unknown;
 }
 
-// Fixed gate stage order (mirrors internal/gate stageOrder) for stable display.
-export const STAGE_ORDER = ["setup", "typecheck", "lint", "build", "test", "verify", "e2e"];
+// Fixed gate stage order (mirrors internal/gate stageOrder) for stable display,
+// followed by the Phase 3 advisory stages (reviewer verdict + mutation testing).
+export const STAGE_ORDER = ["setup", "typecheck", "lint", "build", "test", "verify", "e2e", "review", "mutation"];
 
 export const ROLES = ["implementer", "planner", "reviewer"];

@@ -11,9 +11,11 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
 )
@@ -21,6 +23,17 @@ import (
 // DecisionMarker is the stdout sentinel an agent emits to escalate a question
 // instead of failing. The remainder of the line is a JSON Decision payload.
 const DecisionMarker = "fabrika_DECISION:"
+
+// ReviewMarker is the stdout sentinel a reviewer agent emits with its verdict on
+// a finished branch. The remainder of the line is a JSON ReviewVerdict payload.
+const ReviewMarker = "fabrika_REVIEW:"
+
+// ReviewVerdict is a reviewer agent's first-pass judgment on a branch (SPECS §7,
+// §13). Approve gates auto-merge; Notes surface to the human when it's kicked up.
+type ReviewVerdict struct {
+	Approve bool   `json:"approve"`
+	Notes   string `json:"notes"`
+}
 
 // AgentResult is the normalized outcome of one agent subprocess run.
 type AgentResult struct {
@@ -97,6 +110,63 @@ func RenderPrompt(t model.Task, conventions []model.Convention) string {
 	return b.String()
 }
 
+// RenderReviewPrompt builds the prompt for a reviewer agent's first-pass review
+// of a finished branch (SPECS §7 reviewer role). It gets the task intent, the
+// acceptance contract, and the branch diff, and must end with a verdict line.
+func RenderReviewPrompt(t model.Task, diff string, conventions []model.Convention) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Review: %s\n\n", t.Title)
+	b.WriteString("You are a reviewer agent doing a first-pass review before a human sees this work. ")
+	b.WriteString("Judge whether the change correctly and safely satisfies the task.\n\n")
+	if t.Spec != "" {
+		fmt.Fprintf(&b, "## Task specification\n%s\n\n", t.Spec)
+	}
+	if len(t.Acceptance.VerifyCmds) > 0 {
+		b.WriteString("## Acceptance (already passed the gate)\n")
+		for _, c := range t.Acceptance.VerifyCmds {
+			fmt.Fprintf(&b, "  - `%s`\n", c)
+		}
+		b.WriteString("\n")
+	}
+	if len(conventions) > 0 {
+		b.WriteString("## Conventions to enforce\n")
+		for _, c := range conventions {
+			fmt.Fprintf(&b, "  - %s\n", c.Rule)
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("## Diff under review\n```diff\n")
+	b.WriteString(diff)
+	b.WriteString("\n```\n\n")
+	b.WriteString("## Verdict\n")
+	b.WriteString("Do NOT modify any files. End your output with a single line:\n")
+	fmt.Fprintf(&b, "`%s {\"approve\": true|false, \"notes\": \"...\"}`\n", ReviewMarker)
+	b.WriteString("Approve only if the change is correct, scoped, and safe to merge.\n")
+	return b.String()
+}
+
+// ParseReview scans output for the last ReviewMarker line and decodes its verdict.
+// Missing or malformed verdicts are treated as a non-approval (ok=false) so the
+// work falls back to a human rather than auto-merging on an ambiguous review.
+func ParseReview(out string) (ReviewVerdict, bool) {
+	var payload string
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		if idx := strings.Index(line, ReviewMarker); idx >= 0 {
+			payload = strings.TrimSpace(line[idx+len(ReviewMarker):])
+			found = true
+		}
+	}
+	if !found {
+		return ReviewVerdict{}, false
+	}
+	var v ReviewVerdict
+	if err := json.Unmarshal([]byte(payload), &v); err != nil {
+		return ReviewVerdict{}, false
+	}
+	return v, true
+}
+
 // Run executes the agent command in the worktree and parses any escalation.
 func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, worktree, promptFile string) (AgentResult, error) {
 	command := RenderCommand(a.Command, promptFile, worktree)
@@ -111,6 +181,11 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	cmd.Dir = worktree
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	// When ctx is cancelled (in-flight steer), the agent's process is killed; but a
+	// grandchild (e.g. a `sleep` under `sh -c`) can inherit the output pipe and
+	// keep Run blocked. WaitDelay bounds that: after the kill, exec force-closes
+	// the pipes and returns rather than hanging on the orphan.
+	cmd.WaitDelay = 3 * time.Second
 	runErr := cmd.Run()
 
 	res := AgentResult{Stdout: stdout.String(), Stderr: stderr.String()}

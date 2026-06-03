@@ -6,6 +6,7 @@ import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderTasks, onTaskEvent } from "./views/tasks.js";
 import { renderAccept, onReviewEvent } from "./views/accept.js";
+import { renderAudit, onAuditEvent } from "./views/audit.js";
 import { renderEngine, onEngineEvent } from "./views/engine.js";
 import { renderDefine } from "./views/define.js";
 import { renderApprove, onPlanEvent } from "./views/approve.js";
@@ -25,6 +26,7 @@ const NAV: Nav[] = [
   { id: "approve", label: "Approve", group: "needs-you", render: renderApprove },
   { id: "decide", label: "Decide", group: "needs-you", render: renderDecide },
   { id: "accept", label: "Accept", group: "needs-you", render: renderAccept },
+  { id: "audit", label: "Audit", group: "needs-you", render: renderAudit },
   { id: "tasks", label: "Tasks", group: "factory", render: renderTasks },
   { id: "agents", label: "Agents", group: "factory", render: renderAgents },
   { id: "engine", label: "Engine room", group: "factory", render: renderEngine },
@@ -53,7 +55,7 @@ function sidebar(): HTMLElement {
       },
     }, [
       n.label,
-      ["accept", "approve", "decide"].includes(n.id)
+      ["accept", "approve", "decide", "audit"].includes(n.id)
         ? el("span", { class: "count", "data-badge": n.id }, [])
         : el("span", {}),
     ]);
@@ -105,6 +107,7 @@ function main(): void {
     if (e.type.startsWith("task.") || e.type.startsWith("bigtask.")) {
       onTaskEvent();
       onReviewEvent();
+      onAuditEvent();
       onPlanEvent();
       onDecisionEvent();
       onEngineEvent();
@@ -120,14 +123,16 @@ async function updateBadges(): Promise<void> {
     if (nav) nav.textContent = n > 0 ? String(n) : "";
   };
   try {
-    const [reviews, plans, decisions] = await Promise.all([
+    const [reviews, plans, decisions, audits] = await Promise.all([
       api.listReviews(),
       api.listPlans(),
       api.listDecisions(),
+      api.listAudits(),
     ]);
     set("accept", reviews.length);
     set("approve", plans.filter((p) => p.status === "proposed").length);
     set("decide", decisions.length);
+    set("audit", audits.length);
   } catch {
     /* ignore */
   }

@@ -41,7 +41,7 @@ func mkTask(t *testing.T, st *store.Store, title string, mod func(*model.Task)) 
 // claimID is a test helper: claim one task and report (taskID, agentID, ok)
 // without running it, so scheduler placement can be asserted deterministically.
 func (e *Engine) claimID() (string, string, bool) {
-	task, ag, _, ok := e.claim()
+	task, ag, _, _, ok := e.claim()
 	return task.ID, ag.ID, ok
 }
 

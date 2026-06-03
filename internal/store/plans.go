@@ -128,6 +128,14 @@ func (r *DecisionRepo) ListForTask(taskID string) ([]model.Decision, error) {
 	return r.query(`SELECT `+decisionCols+` FROM decisions WHERE task_id=? ORDER BY created_at, rowid`, taskID)
 }
 
+// CountAnswered returns how many decisions have been answered (a human-touch
+// signal for the touches-per-shipped-unit metric, SPECS §14).
+func (r *DecisionRepo) CountAnswered() (int, error) {
+	var n int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM decisions WHERE status=?`, model.DecisionAnswered).Scan(&n)
+	return n, err
+}
+
 // Answer records an answer (+ promote flag) and marks the decision answered.
 func (r *DecisionRepo) Answer(id, answer string, promote bool) error {
 	res, err := r.db.Exec(

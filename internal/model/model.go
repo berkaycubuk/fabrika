@@ -83,6 +83,11 @@ type Task struct {
 	Branch           string   `json:"branch"`     // git worktree/branch
 	AgentID          string   `json:"agentId"`    // which registered agent picked it up
 	PreferredAgentID string   `json:"preferredAgentId"`
+
+	// Phase 3 autonomy/trust annotations.
+	AutoMerged   bool `json:"autoMerged"`   // merged by the machine (risk-tier auto-merge), no human accept
+	AuditFlagged bool `json:"auditFlagged"` // auto-merged but sampled for post-merge human audit
+	Reverted     bool `json:"reverted"`     // recorded as a change-failure (merged, then reverted/fixed)
 }
 
 // Agent is a registered worker, defined and managed in the UI, persisted in the

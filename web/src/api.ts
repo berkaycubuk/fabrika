@@ -55,6 +55,11 @@ export const api = {
   rejectTask: (id: string, reason: string) =>
     req<{ status: string }>("POST", `/api/tasks/${id}/reject`, { reason }),
 
+  // Audit queue (Phase 3: post-merge sampling of auto-merged work)
+  listAudits: () => req<ReviewItem[]>("GET", "/api/audits"),
+  ackAudit: (id: string) => req<{ status: string }>("POST", `/api/tasks/${id}/audit-ok`),
+  revertTask: (id: string) => req<{ status: string }>("POST", `/api/tasks/${id}/revert`),
+
   // Scheduling / steering (Phase 1)
   metrics: () => req<Metrics>("GET", "/api/metrics"),
   assignTask: (id: string, agentId: string) =>

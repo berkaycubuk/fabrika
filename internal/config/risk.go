@@ -37,6 +37,18 @@ func (c *Config) TierFor(touchPaths []string) string {
 	return tier
 }
 
+// AutoMerges reports whether a task of the given risk tier may merge without a
+// human, per the manifest's [autonomy] auto_merge list (SPECS.md §6, §9). With
+// no [autonomy] configured nothing auto-merges — everything escalates to Accept.
+func (c *Config) AutoMerges(tier string) bool {
+	for _, t := range c.Autonomy.AutoMerge {
+		if strings.TrimSpace(t) == tier {
+			return true
+		}
+	}
+	return false
+}
+
 // MatchGlob reports whether name matches a path glob that may contain `**`
 // (matching zero or more path segments). Exported for reuse (e.g. the engine's
 // locked-glob enforcement). See matchGlob.

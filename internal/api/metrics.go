@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
 )
@@ -19,7 +20,8 @@ type AgentMetrics struct {
 	KickbackRate float64 `json:"kickbackRate"` // kicked / (merged + kicked)
 }
 
-// Metrics is the engine-room snapshot: per-agent activity plus board totals.
+// Metrics is the engine-room snapshot: per-agent activity plus board totals and
+// the Phase 3 trust numbers (SPECS §14).
 type Metrics struct {
 	Agents     []AgentMetrics `json:"agents"`
 	WIP        int            `json:"wip"`        // tasks currently running/verifying
@@ -29,6 +31,17 @@ type Metrics struct {
 	Blocked    int            `json:"blocked"`    // escalated/blocked
 	Merged     int            `json:"merged"`     // total shipped
 	Throughput int            `json:"throughput"` // total merged (lifetime)
+
+	// Trust + autonomy (Phase 3).
+	AutoMerged      int     `json:"autoMerged"`      // merged by the machine, no human accept
+	ManualMerged    int     `json:"manualMerged"`    // merged via human Accept
+	Reverted        int     `json:"reverted"`        // merged then marked a change-failure
+	AuditQueue      int     `json:"auditQueue"`      // auto-merges awaiting a post-merge audit
+	AutoMergeShare  float64 `json:"autoMergeShare"`  // autoMerged / merged — "merges without you"
+	TouchesPerUnit  float64 `json:"touchesPerUnit"`  // human interventions per shipped unit (drive down)
+	ChangeFailRate  float64 `json:"changeFailRate"`  // reverted / merged — keep flat as autonomy widens
+	AuditRate       float64 `json:"auditRate"`       // configured post-merge audit sampling rate
+	MutationTesting bool    `json:"mutationTesting"` // mutation-testing validator enabled
 }
 
 // getMetrics computes activity and trust metrics from task state. Counts are
@@ -56,6 +69,7 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m := Metrics{}
+	kickedBack := 0
 	for _, t := range tasks {
 		switch t.Status {
 		case model.TaskRunning, model.TaskVerifying, model.TaskClaimed:
@@ -69,6 +83,19 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		case model.TaskMerged:
 			m.Merged++
 			m.Throughput++
+			if t.AutoMerged {
+				m.AutoMerged++
+			} else {
+				m.ManualMerged++
+			}
+			if t.Reverted {
+				m.Reverted++
+			}
+			if t.AuditFlagged && !t.Reverted {
+				m.AuditQueue++
+			}
+		case model.TaskClosed:
+			kickedBack++
 		}
 		am := per[t.AgentID]
 		if am == nil {
@@ -82,6 +109,17 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		case model.TaskClosed:
 			am.KickedBack++
 		}
+	}
+
+	// Trust ratios. Touches = every human intervention in the pipeline (manual
+	// accepts + kick-backs + answered decisions + reverts) per shipped unit.
+	answered, _ := s.store.Decisions.CountAnswered()
+	if m.Merged > 0 {
+		denom := float64(m.Merged)
+		m.AutoMergeShare = float64(m.AutoMerged) / denom
+		m.ChangeFailRate = float64(m.Reverted) / denom
+		touches := m.ManualMerged + kickedBack + answered + m.Reverted
+		m.TouchesPerUnit = float64(touches) / denom
 	}
 
 	for _, id := range order {
@@ -99,6 +137,14 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		if n, err := strconv.Atoi(v); err == nil {
 			m.WIPCap = n
 		}
+	}
+	if v, _ := s.store.Settings.Get("audit_rate"); v != "" {
+		if r, err := strconv.ParseFloat(v, 64); err == nil {
+			m.AuditRate = r
+		}
+	}
+	if v, _ := s.store.Settings.Get("mutation_testing"); v != "" {
+		m.MutationTesting = strings.EqualFold(v, "on")
 	}
 
 	writeJSON(w, http.StatusOK, m)

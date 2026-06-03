@@ -25,6 +25,8 @@ export function renderEngine(root: HTMLElement): void {
       ]),
     ]),
     el("div", { id: "engine-metrics", class: "metrics-bar" }, []),
+    el("h2", { class: "section-h" }, ["Trust & autonomy"]),
+    el("div", { id: "engine-trust", class: "metrics-bar" }, []),
     el("h2", { class: "section-h" }, ["Agents"]),
     el("div", { id: "engine-agents", class: "card-list" }, ["Loading…"]),
     el("h2", { class: "section-h" }, ["Board"]),
@@ -42,6 +44,7 @@ async function refresh(): Promise<void> {
       api.listTasks(),
     ]);
     renderMetrics(metrics);
+    renderTrust(metrics);
     renderAgents(metrics);
     renderBoard(tasks, agents);
   } catch (e) {
@@ -95,6 +98,73 @@ function wipCapControl(current: number): HTMLElement {
     el("label", {}, ["WIP cap"]),
     input,
     el("button", { class: "primary", type: "submit" }, ["Set"]),
+  ]);
+}
+
+// renderTrust shows the Phase 3 trust numbers and the autonomy controls. The
+// headline pairing is touches-per-unit (drive down) vs change-failure-rate (keep
+// flat) as auto-merge share widens (SPECS §13, §14).
+function renderTrust(m: Metrics): void {
+  const bar = document.getElementById("engine-trust");
+  if (!bar) return;
+  clear(bar);
+
+  const stat = (label: string, value: string, title = "") =>
+    el("div", { class: "metric", title }, [
+      el("span", { class: "metric-value" }, [value]),
+      el("span", { class: "metric-label" }, [label]),
+    ]);
+  const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+  bar.append(
+    stat("Touches / unit", m.merged > 0 ? m.touchesPerUnit.toFixed(2) : "—",
+      "Human interventions per shipped unit. The anti-bottleneck number — drive it down."),
+    stat("Change-fail rate", m.merged > 0 ? pct(m.changeFailRate) : "—",
+      "Share of merges later reverted. The trust number — keep it flat as autonomy widens."),
+    stat("Auto-merged", m.merged > 0 ? `${m.autoMerged} (${pct(m.autoMergeShare)})` : "0",
+      "Merged by the machine without you."),
+    stat("Audit queue", String(m.auditQueue), "Auto-merges sampled for a post-merge spot-check."),
+    autonomyControls(m),
+  );
+}
+
+function autonomyControls(m: Metrics): HTMLElement {
+  const rate = el("input", {
+    type: "number", min: "0", max: "1", step: "0.05",
+    value: String(m.auditRate ?? 0),
+    title: "Fraction of auto-merges to sample for audit (0–1)",
+  }) as HTMLInputElement;
+
+  const mutation = el("input", {
+    type: "checkbox",
+    title: "Run mutation testing on green branches before auto-merge",
+  }) as HTMLInputElement;
+  mutation.checked = m.mutationTesting;
+  mutation.onchange = async () => {
+    try {
+      await api.putSettings({ mutation_testing: mutation.checked ? "on" : "off" });
+      refresh();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
+  return el("form", {
+    class: "wip-cap",
+    onsubmit: async (e: Event) => {
+      e.preventDefault();
+      try {
+        await api.putSettings({ audit_rate: String(parseFloat(rate.value) || 0) });
+        refresh();
+      } catch (err) {
+        alert((err as Error).message);
+      }
+    },
+  }, [
+    el("label", {}, ["Audit rate"]),
+    rate,
+    el("button", { class: "primary", type: "submit" }, ["Set"]),
+    el("label", { class: "checkbox" }, [mutation, "mutation testing"]),
   ]);
 }
 

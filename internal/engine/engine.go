@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,15 +36,21 @@ type EventFunc func(eventType string, payload any)
 
 // Settings keys read from the global store to tune the scheduler at runtime.
 const (
-	settingWIPCap = "wip_cap"     // global max concurrently-running tasks (0 = unlimited)
-	settingRoute  = "route_tier_" // + tier -> agentID: per-risk-tier routing override
+	settingWIPCap   = "wip_cap"          // global max concurrently-running tasks (0 = unlimited)
+	settingRoute    = "route_tier_"      // + tier -> agentID: per-risk-tier routing override
+	settingAuditPct = "audit_rate"       // 0..1: share of auto-merged PRs sampled for human audit
+	settingMutation = "mutation_testing" // "on" enables the mutation-testing gate validator
 )
 
 // runInfo records what an in-flight task is doing, for slot accounting and
-// TouchPaths collision avoidance. Held in Engine.running under mu.
+// TouchPaths collision avoidance. Held in Engine.running under mu. cancel stops
+// the task's subprocess for in-flight steering; cancelReason carries the human's
+// note so the run goroutine can finalize the task as closed (not failed).
 type runInfo struct {
-	agentID    string
-	touchPaths []string
+	agentID      string
+	touchPaths   []string
+	cancel       context.CancelFunc
+	cancelReason string
 }
 
 // Engine coordinates dispatch, verification, and merge.
@@ -60,6 +67,10 @@ type Engine struct {
 	mu      sync.Mutex         // guards running + serializes git worktree/state writes
 	running map[string]runInfo // taskID -> in-flight info
 	wg      sync.WaitGroup     // tracks dispatched goroutines
+
+	// sample decides, per auto-merge, whether to flag a PR for post-merge audit.
+	// Overridable in tests for determinism; defaults to a rate-based RNG.
+	sample func(rate float64) bool
 }
 
 // New constructs an Engine rooted at repoRoot (the target repo). emit may be nil.
@@ -76,6 +87,15 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		emit:     emit,
 		wake:     make(chan struct{}, 1),
 		running:  map[string]runInfo{},
+		sample: func(rate float64) bool {
+			if rate <= 0 {
+				return false
+			}
+			if rate >= 1 {
+				return true
+			}
+			return rand.Float64() < rate
+		},
 	}
 }
 
@@ -116,14 +136,14 @@ func (e *Engine) dispatchReady() {
 		if e.ctx.Err() != nil {
 			return
 		}
-		task, ag, base, ok := e.claim()
+		task, ag, base, taskCtx, ok := e.claim()
 		if !ok {
 			return
 		}
 		e.wg.Add(1)
 		go func() {
 			defer e.wg.Done()
-			e.run(task, ag, base)
+			e.run(taskCtx, task, ag, base)
 			e.markDone(task.ID)
 			e.Wake()
 		}()
@@ -134,11 +154,11 @@ func (e *Engine) dispatchReady() {
 // for tests and as the single-flight building block; the live loop uses
 // dispatchReady for parallelism. Returns false when nothing could be dispatched.
 func (e *Engine) dispatchOnce() bool {
-	task, ag, base, ok := e.claim()
+	task, ag, base, taskCtx, ok := e.claim()
 	if !ok {
 		return false
 	}
-	e.run(task, ag, base)
+	e.run(taskCtx, task, ag, base)
 	e.markDone(task.ID)
 	return true
 }
@@ -154,24 +174,24 @@ func (e *Engine) markDone(taskID string) {
 // work to do. It enforces the Phase 1 scheduling rules: per-agent free slots, a
 // global WIP cap, TouchPaths collision avoidance, and DependsOn gating. The slow
 // agent/gate work happens outside the lock (see run).
-func (e *Engine) claim() (model.Task, model.Agent, string, bool) {
+func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	tasks, err := e.store.Tasks.List()
 	if err != nil {
 		log.Printf("engine: list tasks: %v", err)
-		return model.Task{}, model.Agent{}, "", false
+		return model.Task{}, model.Agent{}, "", nil, false
 	}
 	agents, err := e.store.Agents.List()
 	if err != nil {
 		log.Printf("engine: list agents: %v", err)
-		return model.Task{}, model.Agent{}, "", false
+		return model.Task{}, model.Agent{}, "", nil, false
 	}
 
 	// Global WIP cap: stop dispatching once the configured ceiling is reached.
 	if wip := e.wipCap(); wip > 0 && len(e.running) >= wip {
-		return model.Task{}, model.Agent{}, "", false
+		return model.Task{}, model.Agent{}, "", nil, false
 	}
 
 	// Free slots per agent = Concurrency minus tasks it's currently running.
@@ -218,12 +238,12 @@ func (e *Engine) claim() (model.Task, model.Agent, string, bool) {
 		repo, err := git.Open(e.ctx, e.repoRoot)
 		if err != nil {
 			log.Printf("engine: open repo: %v", err)
-			return model.Task{}, model.Agent{}, "", false
+			return model.Task{}, model.Agent{}, "", nil, false
 		}
 		base, err := repo.CurrentBranch(e.ctx)
 		if err != nil {
 			log.Printf("engine: current branch: %v", err)
-			return model.Task{}, model.Agent{}, "", false
+			return model.Task{}, model.Agent{}, "", nil, false
 		}
 
 		branch := "fabrika/task-" + shortID(t.ID)
@@ -235,25 +255,28 @@ func (e *Engine) claim() (model.Task, model.Agent, string, bool) {
 		_ = repo.DeleteBranch(e.ctx, branch)
 		if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
 			log.Printf("engine: mkdir worktrees: %v", err)
-			return model.Task{}, model.Agent{}, "", false
+			return model.Task{}, model.Agent{}, "", nil, false
 		}
 		if err := repo.AddWorktree(e.ctx, wt, branch, base); err != nil {
 			log.Printf("engine: add worktree for %s: %v", t.ID, err)
 			e.setStatus(t.ID, model.TaskFailed)
-			return model.Task{}, model.Agent{}, "", false
+			return model.Task{}, model.Agent{}, "", nil, false
 		}
 
 		if err := e.store.Tasks.SetRun(t.ID, ag.ID, branch, model.TaskRunning); err != nil {
 			log.Printf("engine: set run: %v", err)
-			return model.Task{}, model.Agent{}, "", false
+			return model.Task{}, model.Agent{}, "", nil, false
 		}
 		t.AgentID, t.Branch, t.Status = ag.ID, branch, model.TaskRunning
-		e.running[t.ID] = runInfo{agentID: ag.ID, touchPaths: t.TouchPaths}
+		// Per-task context so in-flight steering can cancel this run's subprocess
+		// without disturbing the rest of the pool.
+		taskCtx, cancel := context.WithCancel(e.ctx)
+		e.running[t.ID] = runInfo{agentID: ag.ID, touchPaths: t.TouchPaths, cancel: cancel}
 		e.emitTask(t.ID)
 		log.Printf("engine: dispatch task %q -> agent %q on %s", t.Title, ag.Name, branch)
-		return t, *ag, base, true
+		return t, *ag, base, taskCtx, true
 	}
-	return model.Task{}, model.Agent{}, "", false
+	return model.Task{}, model.Agent{}, "", nil, false
 }
 
 // wipCap reads the global work-in-progress ceiling from settings (0/unset =
@@ -324,8 +347,9 @@ func pathsOverlap(a, b []string) bool {
 }
 
 // run executes the agent then the gate (both unlocked, as they are slow), and
-// records the attempt + resulting status.
-func (e *Engine) run(task model.Task, ag model.Agent, base string) {
+// records the attempt + resulting status. ctx is the task's own context: it is
+// cancelled when a human steers the task mid-flight, killing the subprocess.
+func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base string) {
 	wt := e.worktreePath(task.ID)
 
 	// Render the prompt to a temp file the agent command can read.
@@ -338,7 +362,13 @@ func (e *Engine) run(task model.Task, ag model.Agent, base string) {
 	}
 	defer cleanup()
 
-	agentRes, err := e.agent.Run(e.ctx, ag, task, wt, promptFile)
+	agentRes, err := e.agent.Run(ctx, ag, task, wt, promptFile)
+	// A cancelled context means the human stopped this task in flight (steer).
+	// Finalize as closed with their reason rather than treating it as a failure.
+	if reason, cancelled := e.cancellation(task.ID); cancelled {
+		e.finalizeCancelled(task, ag, reason)
+		return
+	}
 	if err != nil {
 		log.Printf("engine: agent run %q: %v", ag.Name, err)
 		e.finish(task, ag, model.Evidence{}, model.ResultFail, "agent error: "+err.Error(), model.TaskFailed)
@@ -391,18 +421,90 @@ func (e *Engine) run(task model.Task, ag model.Agent, base string) {
 	// Verification gate (slow; unlocked). Held-out checks run here too — they are
 	// never shown to the implementer (RenderPrompt omits them) but must pass.
 	gateCmds := append(append([]string{}, task.Acceptance.VerifyCmds...), task.Acceptance.HeldOut...)
-	ev, err := e.gate.Run(e.ctx, wt, e.cfg.Verbs, gateCmds)
+	ev, err := e.gate.Run(ctx, wt, e.cfg.Verbs, gateCmds)
 	if err != nil {
 		log.Printf("engine: gate: %v", err)
 	}
 	ev.Diff = diff
 
-	result, status := model.ResultPass, model.TaskReview
+	// A red gate fails the task outright. The green path runs the Phase 3 trust
+	// checks (reviewer + mutation testing) and decides auto-merge vs human review.
 	if !gatePassed(ev) {
-		result, status = model.ResultFail, model.TaskFailed
+		e.finish(task, ag, ev, model.ResultFail, logText, model.TaskFailed)
+		log.Printf("engine: task %q -> failed (gate red)", task.Title)
+		return
 	}
-	e.finish(task, ag, ev, result, logText, status)
-	log.Printf("engine: task %q -> %s (%s)", task.Title, status, result)
+	e.finishGreen(ctx, task, ag, ev, logText, base, changed, conventions)
+}
+
+// finishGreen handles a task whose gate passed: it runs the optional reviewer
+// agent and mutation-testing validator (recording each as an advisory evidence
+// stage), then either auto-merges low-risk, reviewer-approved work or surfaces it
+// to the human Accept queue. A random sample of auto-merges is flagged for a
+// post-merge audit so trust can be calibrated without re-introducing a human in
+// the common path (SPECS.md §9, §13 Phase 3).
+func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agent, ev model.Evidence, logText, base string, changed []string, conventions []model.Convention) {
+	wt := e.worktreePath(task.ID)
+	if ev.Stages == nil {
+		ev.Stages = map[string]model.StageResult{}
+	}
+
+	// First-pass review by a reviewer-role agent, if one is configured. A missing
+	// or non-approving verdict blocks auto-merge (work falls back to the human).
+	reviewApproved := true
+	if rev, ok := e.ReviewerAgent(); ok && rev.ID != ag.ID {
+		verdict, notes := e.runReviewer(ctx, rev, task, ev.Diff, conventions)
+		reviewApproved = verdict
+		ev.Stages["review"] = model.StageResult{Pass: verdict, Output: notes}
+	}
+
+	// Mutation testing (opt-in): perturb changed source and confirm the suite
+	// catches it. Survivors mean the tests are too weak to trust autonomously.
+	mutationOK := true
+	if e.mutationEnabled() && e.cfg != nil && e.cfg.Verbs.Test != "" {
+		res := e.runMutation(ctx, wt, changed, task.Acceptance.LockedGlobs)
+		mutationOK = res.Pass()
+		ev.Stages["mutation"] = model.StageResult{Pass: mutationOK, Output: mutationSummary(res)}
+	}
+
+	tier := e.effectiveTier(task, changed)
+	eligible := e.cfg != nil && e.cfg.AutoMerges(tier) && reviewApproved && mutationOK
+
+	if !eligible {
+		e.finish(task, ag, ev, model.ResultPass, logText, model.TaskReview)
+		log.Printf("engine: task %q -> review (tier=%s autoMerge=%v review=%v mutation=%v)",
+			task.Title, tier, e.cfg != nil && e.cfg.AutoMerges(tier), reviewApproved, mutationOK)
+		return
+	}
+
+	// Auto-merge: record the attempt, merge the branch, mark it machine-merged.
+	// A sampled fraction is flagged for post-merge audit (merge still proceeds).
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.recordAttempt(task, ag, ev, model.ResultPass, logText)
+
+	repo, err := git.Open(e.ctx, e.repoRoot)
+	if err != nil {
+		e.setStatus(task.ID, model.TaskReview)
+		e.emitTask(task.ID)
+		log.Printf("engine: auto-merge open repo: %v (-> review)", err)
+		return
+	}
+	if err := repo.Merge(e.ctx, base, task.Branch); err != nil {
+		// Conflict or merge error: don't fail the work — hand it to the human.
+		e.setStatus(task.ID, model.TaskReview)
+		e.emitTask(task.ID)
+		log.Printf("engine: auto-merge %q conflict: %v (-> review)", task.Title, err)
+		return
+	}
+	_ = repo.RemoveWorktree(e.ctx, wt)
+
+	audit := e.sample(e.auditRate())
+	if err := e.store.Tasks.MarkMerged(task.ID, true, audit); err != nil {
+		log.Printf("engine: mark auto-merged: %v", err)
+	}
+	e.emitTask(task.ID)
+	log.Printf("engine: task %q -> auto-merged (tier=%s, audit=%v)", task.Title, tier, audit)
 }
 
 // finish persists the attempt and sets the terminal-for-now status, emitting an
@@ -410,6 +512,13 @@ func (e *Engine) run(task model.Task, ag model.Agent, base string) {
 func (e *Engine) finish(task model.Task, ag model.Agent, ev model.Evidence, result, logText, status string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.recordAttempt(task, ag, ev, result, logText)
+	e.setStatus(task.ID, status)
+	e.emitTask(task.ID)
+}
+
+// recordAttempt persists one attempt row. The caller must hold e.mu.
+func (e *Engine) recordAttempt(task model.Task, ag model.Agent, ev model.Evidence, result, logText string) {
 	att := &model.Attempt{
 		TaskID:   task.ID,
 		AgentID:  ag.ID,
@@ -420,8 +529,42 @@ func (e *Engine) finish(task model.Task, ag model.Agent, ev model.Evidence, resu
 	if err := e.store.Attempts.Create(att); err != nil {
 		log.Printf("engine: create attempt: %v", err)
 	}
-	e.setStatus(task.ID, status)
+}
+
+// cancellation reports whether the task was steered (cancelled) mid-flight and
+// the human's reason, reading the in-flight record under the lock.
+func (e *Engine) cancellation(taskID string) (string, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	ri, ok := e.running[taskID]
+	if !ok || ri.cancel == nil {
+		return "", false
+	}
+	// cancelReason is only set by Reject when it cancels an in-flight task.
+	if ri.cancelReason == "" {
+		// Distinguish a steer-cancel from engine shutdown: only steer sets a reason.
+		// No reason -> not a deliberate per-task cancel.
+		return "", false
+	}
+	return ri.cancelReason, true
+}
+
+// finalizeCancelled records a steered (stopped) in-flight task as closed and
+// cleans up its worktree, mirroring Reject's terminal handling.
+func (e *Engine) finalizeCancelled(task model.Task, ag model.Agent, reason string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if repo, rerr := git.Open(e.ctx, e.repoRoot); rerr == nil {
+		_ = repo.RemoveWorktree(e.ctx, e.worktreePath(task.ID))
+	}
+	note := "STOPPED in flight"
+	if reason != "" {
+		note += ": " + reason
+	}
+	e.recordAttempt(task, ag, model.Evidence{}, model.ResultFail, note)
+	e.setStatus(task.ID, model.TaskClosed)
 	e.emitTask(task.ID)
+	log.Printf("engine: task %q stopped in flight", task.Title)
 }
 
 // Accept merges a reviewed task's branch into the base branch and marks it
@@ -456,17 +599,34 @@ func (e *Engine) Accept(taskID string) error {
 	return nil
 }
 
-// Reject dismisses a surfaced task (review/failed/blocked) without merging,
-// cleaning up its worktree. Terminal for this phase; rework/retry arrives with
-// decisions (Phase 2).
+// Reject dismisses a task without merging, cleaning up its worktree. For an
+// in-flight (running) task it steers it to a stop: it cancels the task's context
+// to kill the subprocess and lets that run's goroutine finalize it as closed with
+// the reason. For a surfaced task (review/failed/blocked) it closes it directly.
 func (e *Engine) Reject(taskID, reason string) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	t, err := e.store.Tasks.Get(taskID)
 	if err != nil {
+		e.mu.Unlock()
 		return err
 	}
+
+	// In-flight: signal the running goroutine to stop and finalize. Done under the
+	// lock so the reason is visible to cancellation() before the cancel lands.
+	if ri, ok := e.running[taskID]; ok && ri.cancel != nil {
+		if reason == "" {
+			reason = "stopped by steer"
+		}
+		ri.cancelReason = reason
+		e.running[taskID] = ri
+		cancel := ri.cancel
+		e.mu.Unlock()
+		cancel()
+		return nil
+	}
+	defer e.mu.Unlock()
+
 	if repo, rerr := git.Open(e.ctx, e.repoRoot); rerr == nil {
 		_ = repo.RemoveWorktree(e.ctx, e.worktreePath(taskID))
 	}
@@ -478,6 +638,39 @@ func (e *Engine) Reject(taskID, reason string) error {
 	}
 	e.setStatus(taskID, model.TaskClosed)
 	e.emitTask(taskID)
+	return nil
+}
+
+// AckAudit acknowledges a sampled post-merge audit as acceptable, removing it
+// from the audit queue (SPECS.md §13 Phase 3).
+func (e *Engine) AckAudit(taskID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if err := e.store.Tasks.ClearAuditFlag(taskID); err != nil {
+		return err
+	}
+	e.emitTask(taskID)
+	return nil
+}
+
+// Revert records a merged task as a change-failure (it feeds change-failure-rate)
+// and clears any audit flag. The git revert itself stays with the human — Fabrika
+// won't rewrite main on its own.
+func (e *Engine) Revert(taskID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t, err := e.store.Tasks.Get(taskID)
+	if err != nil {
+		return err
+	}
+	if t.Status != model.TaskMerged {
+		return fmt.Errorf("task is %s, not merged", t.Status)
+	}
+	if err := e.store.Tasks.SetReverted(taskID); err != nil {
+		return err
+	}
+	e.emitTask(taskID)
+	log.Printf("engine: task %q marked reverted (change-failure)", t.Title)
 	return nil
 }
 

@@ -77,7 +77,7 @@ func (r *BigTaskRepo) UpdateStatus(id, status string) error {
 // TaskRepo persists Tasks in the per-project store.
 type TaskRepo struct{ db *sql.DB }
 
-const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, risk_tier, status, branch, agent_id, preferred_agent_id`
+const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, risk_tier, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted`
 
 // Create inserts a Task, assigning an ID and defaults if absent.
 func (r *TaskRepo) Create(t *model.Task) error {
@@ -95,10 +95,11 @@ func (r *TaskRepo) Create(t *model.Task) error {
 		return err
 	}
 	_, err = r.db.Exec(
-		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.BigTaskID, t.Title, t.Spec, string(acc),
 		jsonStrings(t.DependsOn), jsonStrings(t.TouchPaths), jsonStrings(t.Tags),
 		t.RiskTier, t.Status, t.Branch, t.AgentID, t.PreferredAgentID,
+		boolToInt(t.AutoMerged), boolToInt(t.AuditFlagged), boolToInt(t.Reverted),
 	)
 	return err
 }
@@ -208,11 +209,46 @@ func (r *TaskRepo) SetPreferredAgent(id, agentID string) error {
 	return mustAffect(res)
 }
 
+// MarkMerged flips a task to merged, recording whether the machine auto-merged it
+// (no human accept) and whether it was sampled for a post-merge audit (Phase 3).
+func (r *TaskRepo) MarkMerged(id string, auto, auditFlagged bool) error {
+	res, err := r.db.Exec(
+		`UPDATE tasks SET status=?, auto_merged=?, audit_flagged=? WHERE id=?`,
+		model.TaskMerged, boolToInt(auto), boolToInt(auditFlagged), id,
+	)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
+// ClearAuditFlag acknowledges a sampled audit ("looks good"), removing it from
+// the audit queue without changing the merge.
+func (r *TaskRepo) ClearAuditFlag(id string) error {
+	res, err := r.db.Exec(`UPDATE tasks SET audit_flagged=0 WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
+// SetReverted records a merged task as a change-failure and clears its audit
+// flag. The actual git revert is left to the human (the flag drives metrics).
+func (r *TaskRepo) SetReverted(id string) error {
+	res, err := r.db.Exec(`UPDATE tasks SET reverted=1, audit_flagged=0 WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
 func scanTask(s scanner) (*model.Task, error) {
 	var t model.Task
 	var acc, dependsOn, touchPaths, tags string
+	var autoMerged, auditFlagged, reverted int
 	err := s.Scan(&t.ID, &t.BigTaskID, &t.Title, &t.Spec, &acc, &dependsOn, &touchPaths, &tags,
-		&t.RiskTier, &t.Status, &t.Branch, &t.AgentID, &t.PreferredAgentID)
+		&t.RiskTier, &t.Status, &t.Branch, &t.AgentID, &t.PreferredAgentID,
+		&autoMerged, &auditFlagged, &reverted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -225,5 +261,8 @@ func scanTask(s scanner) (*model.Task, error) {
 	t.DependsOn = scanStrings(dependsOn)
 	t.TouchPaths = scanStrings(touchPaths)
 	t.Tags = scanStrings(tags)
+	t.AutoMerged = autoMerged != 0
+	t.AuditFlagged = auditFlagged != 0
+	t.Reverted = reverted != 0
 	return &t, nil
 }
