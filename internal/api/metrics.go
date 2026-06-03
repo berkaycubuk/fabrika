@@ -165,6 +165,23 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fold planner token usage into the same per-agent and board totals. A failed
+	// read is non-critical — planning tokens stay at zero, like the block above.
+	if planByAgent, err := s.store.BigTasks.PlanningTokensByAgent(); err != nil {
+		log.Printf("getMetrics: PlanningTokensByAgent: %v", err)
+	} else {
+		for agentID, u := range planByAgent {
+			am := per[agentID]
+			if am == nil {
+				continue
+			}
+			am.InputTokens += u.InputTokens
+			am.OutputTokens += u.OutputTokens
+			am.TotalTokens += u.TotalTokens
+			m.TotalTokens += u.TotalTokens
+		}
+	}
+
 	// Trust ratios. Touches = every human intervention in the pipeline (manual
 	// accepts + kick-backs + answered decisions + reverts) per shipped unit.
 	answered, _ := s.store.Decisions.CountAnswered()
