@@ -5,6 +5,7 @@ export interface Agent {
   id: string;
   name: string;
   command: string;
+  model: string;
   roles: string[];
   tags: string[];
   concurrency: number;
