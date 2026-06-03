@@ -78,6 +78,44 @@ func (r *BigTaskRepo) SetPlannerAgent(id, agentID string) error {
 	return mustAffect(res)
 }
 
+// SetUsage records the token usage the planner agent self-reported for a big
+// task, so planning tokens fold into the same per-agent totals as task attempts.
+func (r *BigTaskRepo) SetUsage(id string, u model.Usage) error {
+	res, err := r.db.Exec(
+		`UPDATE bigtasks SET input_tokens=?, output_tokens=?, total_tokens=? WHERE id=?`,
+		u.InputTokens, u.OutputTokens, u.TotalTokens, id,
+	)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
+// PlanningTokensByAgent returns per-planner token totals summed across all big
+// tasks, keyed by planner agent ID. Rows with an empty planner_agent_id are skipped.
+func (r *BigTaskRepo) PlanningTokensByAgent() (map[string]model.Usage, error) {
+	rows, err := r.db.Query(
+		`SELECT planner_agent_id, SUM(input_tokens), SUM(output_tokens), SUM(total_tokens) FROM bigtasks GROUP BY planner_agent_id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]model.Usage)
+	for rows.Next() {
+		var agentID string
+		var u model.Usage
+		if err := rows.Scan(&agentID, &u.InputTokens, &u.OutputTokens, &u.TotalTokens); err != nil {
+			return nil, err
+		}
+		if agentID == "" {
+			continue
+		}
+		out[agentID] = u
+	}
+	return out, rows.Err()
+}
+
 // UpdateStatus sets a big task's lifecycle status, clearing any prior error
 // reason (a successful transition supersedes a past failure).
 func (r *BigTaskRepo) UpdateStatus(id, status string) error {
