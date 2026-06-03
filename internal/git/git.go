@@ -51,6 +51,13 @@ func (r *Repo) RemoveWorktree(ctx context.Context, path string) error {
 	return err
 }
 
+// DeleteBranch force-deletes a branch. Used to clear a stale branch before
+// re-creating a worktree for a retried/resumed task.
+func (r *Repo) DeleteBranch(ctx context.Context, branch string) error {
+	_, err := r.run(ctx, "branch", "-D", branch)
+	return err
+}
+
 // Diff returns the unified diff of branch relative to base (base...branch).
 func (r *Repo) Diff(ctx context.Context, base, branch string) (string, error) {
 	return r.run(ctx, "diff", base+"..."+branch)

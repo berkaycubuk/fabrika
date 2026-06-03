@@ -63,6 +63,36 @@ export interface ReviewItem {
   attempt: Attempt | null;
 }
 
+export interface BigTask {
+  id: string;
+  title: string;
+  intent: string;
+  constraints: string[];
+  repoPath: string;
+  status: string;
+}
+
+export interface Decision {
+  id: string;
+  planId: string;
+  taskId: string;
+  question: string;
+  options: string[];
+  context: string;
+  answer: string;
+  promote: boolean;
+  status: string; // open|answered
+}
+
+export interface Plan {
+  id: string;
+  bigTaskId: string;
+  status: string; // proposed|approved|rejected
+  tasks: Task[];
+  openDecisions: Decision[];
+  bigTask: BigTask | null;
+}
+
 export interface AgentMetrics {
   agentId: string;
   name: string;

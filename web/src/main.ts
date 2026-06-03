@@ -1,12 +1,15 @@
 // Fabrika cockpit shell. Phase 0 surfaces Tasks + Agents live; the remaining
 // surfaces (Define/Approve/Decide/Accept/Engine room) are placeholders wired to
 // the same nav so the layout is real before their backends land (SPECS.md §10).
-import { el, clear } from "./dom.js";
+import { el } from "./dom.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderTasks, onTaskEvent } from "./views/tasks.js";
 import { renderAccept, onReviewEvent } from "./views/accept.js";
 import { renderEngine, onEngineEvent } from "./views/engine.js";
+import { renderDefine } from "./views/define.js";
+import { renderApprove, onPlanEvent } from "./views/approve.js";
+import { renderDecide, onDecisionEvent } from "./views/decide.js";
 import { api } from "./api.js";
 import type { FabrikaEvent } from "./types.js";
 
@@ -15,32 +18,19 @@ interface Nav {
   label: string;
   group: "needs-you" | "factory";
   render: (root: HTMLElement) => void;
-  soon?: boolean;
 }
 
 const NAV: Nav[] = [
+  { id: "define", label: "Define", group: "needs-you", render: renderDefine },
+  { id: "approve", label: "Approve", group: "needs-you", render: renderApprove },
+  { id: "decide", label: "Decide", group: "needs-you", render: renderDecide },
+  { id: "accept", label: "Accept", group: "needs-you", render: renderAccept },
   { id: "tasks", label: "Tasks", group: "factory", render: renderTasks },
   { id: "agents", label: "Agents", group: "factory", render: renderAgents },
-  { id: "accept", label: "Accept", group: "needs-you", render: renderAccept },
-  { id: "decide", label: "Decide", group: "needs-you", render: placeholder("Decide", "The decision queue — answer questions agents can't resolve. Arrives with the planner (Phase 2)."), soon: true },
-  { id: "approve", label: "Approve", group: "needs-you", render: placeholder("Approve", "Review a proposed plan before work starts. Arrives with the planner (Phase 2)."), soon: true },
   { id: "engine", label: "Engine room", group: "factory", render: renderEngine },
 ];
 
-function placeholder(title: string, body: string) {
-  return (root: HTMLElement) => {
-    clear(root);
-    root.append(
-      el("div", { class: "view-header" }, [el("h1", {}, [title])]),
-      el("div", { class: "card placeholder" }, [
-        el("span", { class: "pill soon" }, ["coming soon"]),
-        el("p", {}, [body]),
-      ]),
-    );
-  };
-}
-
-let current = "tasks";
+let current = "define";
 
 function route(content: HTMLElement, id: string): void {
   const nav = NAV.find((n) => n.id === id) ?? NAV[0];
@@ -63,8 +53,9 @@ function sidebar(): HTMLElement {
       },
     }, [
       n.label,
-      n.id === "accept" ? el("span", { class: "count" }, []) : el("span", {}),
-      n.soon ? el("span", { class: "dot" }, []) : el("span", {}),
+      ["accept", "approve", "decide"].includes(n.id)
+        ? el("span", { class: "count", "data-badge": n.id }, [])
+        : el("span", {}),
     ]);
 
   const group = (label: string, g: Nav["group"]) =>
@@ -88,11 +79,11 @@ function main(): void {
   const content = el("main", { class: "content" });
   app.append(el("div", { class: "layout" }, [sidebar(), content]));
 
-  const go = () => route(content, location.hash.replace("#", "") || "tasks");
+  const go = () => route(content, location.hash.replace("#", "") || "define");
   window.addEventListener("hashchange", go);
   go();
 
-  updateBadge();
+  updateBadges();
   connectEvents((e: FabrikaEvent) => {
     const conn = document.getElementById("conn");
     if (conn) {
@@ -103,21 +94,40 @@ function main(): void {
       onAgentEvent();
       onEngineEvent();
     }
+    if (e.type.startsWith("plan.")) {
+      onPlanEvent();
+      onTaskEvent();
+      onEngineEvent();
+    }
+    if (e.type.startsWith("decision.") || e.type.startsWith("convention.")) {
+      onDecisionEvent();
+    }
     if (e.type.startsWith("task.") || e.type.startsWith("bigtask.")) {
       onTaskEvent();
       onReviewEvent();
+      onPlanEvent();
+      onDecisionEvent();
       onEngineEvent();
-      updateBadge();
     }
+    updateBadges();
   });
 }
 
-// updateBadge shows the count of items awaiting acceptance on the Accept nav.
-async function updateBadge(): Promise<void> {
+// updateBadges refreshes the counts on the Needs-you nav items (work waiting).
+async function updateBadges(): Promise<void> {
+  const set = (id: string, n: number) => {
+    const nav = document.querySelector(`.nav-item .count[data-badge="${id}"]`);
+    if (nav) nav.textContent = n > 0 ? String(n) : "";
+  };
   try {
-    const items = await api.listReviews();
-    const nav = document.querySelector('.nav-item[data-id="accept"] .count');
-    if (nav) nav.textContent = items.length > 0 ? String(items.length) : "";
+    const [reviews, plans, decisions] = await Promise.all([
+      api.listReviews(),
+      api.listPlans(),
+      api.listDecisions(),
+    ]);
+    set("accept", reviews.length);
+    set("approve", plans.filter((p) => p.status === "proposed").length);
+    set("decide", decisions.length);
   } catch {
     /* ignore */
   }

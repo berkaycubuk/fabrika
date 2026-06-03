@@ -1,7 +1,7 @@
 // Package api exposes Fabrika's REST + WebSocket surface (SPECS.md §11) over the
-// store. Agents, tasks, reviews, settings, and the Phase 1 scheduling surface
-// (assign, steer, metrics) are fully wired; the planner/decision endpoints
-// remain present but return 501 until Phase 2.
+// store. Agents, tasks, reviews, settings, the Phase 1 scheduling surface
+// (assign, steer, metrics), and the Phase 2 planner surface (plans, approve, and
+// the decision queue) are all wired.
 package api
 
 import (
@@ -69,23 +69,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/steer", s.steer)
 	mux.HandleFunc("GET /api/metrics", s.getMetrics)
 
+	// --- Planner: plans + decisions (Phase 2) ---
+	mux.HandleFunc("GET /api/plans", s.listPlans)
+	mux.HandleFunc("GET /api/plans/{id}", s.getPlan)
+	mux.HandleFunc("POST /api/plans/{id}/approve", s.approvePlan)
+	mux.HandleFunc("POST /api/plans/{id}/reject", s.rejectPlan)
+	mux.HandleFunc("GET /api/decisions", s.listDecisions)
+	mux.HandleFunc("POST /api/decisions/{id}/answer", s.answerDecision)
+
 	// --- Settings (global store) ---
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 
 	// --- WebSocket events ---
 	mux.HandleFunc("GET /api/events", s.hub.serveWS)
-
-	// --- Deferred surface (present but not yet implemented) ---
-	for _, p := range []string{
-		"GET /api/plans/{id}",
-		"POST /api/plans/{id}/approve",
-		"POST /api/plans/{id}/reject",
-		"GET /api/decisions",
-		"POST /api/decisions/{id}/answer",
-	} {
-		mux.HandleFunc(p, notImplemented)
-	}
 
 	// --- Static UI (SPA) ---
 	if s.web != nil {
@@ -123,8 +120,4 @@ func mapStoreErr(w http.ResponseWriter, err error) {
 		return
 	}
 	writeErr(w, http.StatusInternalServerError, err.Error())
-}
-
-func notImplemented(w http.ResponseWriter, r *http.Request) {
-	writeErr(w, http.StatusNotImplemented, "not implemented in this phase")
 }

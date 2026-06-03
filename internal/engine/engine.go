@@ -228,9 +228,11 @@ func (e *Engine) claim() (model.Task, model.Agent, string, bool) {
 
 		branch := "fabrika/task-" + shortID(t.ID)
 		wt := e.worktreePath(t.ID)
-		// Defensive cleanup of any stale worktree from a previous crashed run.
+		// Defensive cleanup of any stale worktree/branch from a previous crashed
+		// run or a resumed task (so AddWorktree's -b doesn't hit an existing branch).
 		_ = repo.RemoveWorktree(e.ctx, wt)
 		_ = os.RemoveAll(wt)
+		_ = repo.DeleteBranch(e.ctx, branch)
 		if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
 			log.Printf("engine: mkdir worktrees: %v", err)
 			return model.Task{}, model.Agent{}, "", false
@@ -345,16 +347,19 @@ func (e *Engine) run(task model.Task, ag model.Agent, base string) {
 
 	logText := combineLog(agentRes.Stdout, agentRes.Stderr)
 
-	// Agent escalated a question it couldn't resolve -> block (no decision queue
-	// until Phase 2; surface the question in the attempt log).
+	// Agent escalated a question it couldn't resolve -> record a Decision for the
+	// queue and block the task. Answering it (AnswerDecision) resumes the task.
 	if agentRes.Escalated {
+		e.recordEscalation(task, agentRes.Decision)
 		e.finish(task, ag, model.Evidence{}, model.ResultEscalated,
 			"DECISION: "+agentRes.Decision+"\n\n"+logText, model.TaskBlocked)
 		return
 	}
 
-	// Capture whatever the agent produced and compute the branch diff.
+	// Capture whatever the agent produced and compute the branch diff + the set
+	// of files it changed (for locked-glob enforcement).
 	var diff string
+	var changed []string
 	e.mu.Lock()
 	if repo, rerr := git.Open(e.ctx, e.repoRoot); rerr == nil {
 		if _, cerr := repo.AddAllAndCommit(e.ctx, wt, "fabrika: "+task.Title); cerr != nil {
@@ -363,13 +368,30 @@ func (e *Engine) run(task model.Task, ag model.Agent, base string) {
 		if d, derr := repo.Diff(e.ctx, base, task.Branch); derr == nil {
 			diff = d
 		}
+		if files, ferr := repo.ChangedFiles(e.ctx, base, task.Branch); ferr == nil {
+			changed = files
+		}
 	}
 	e.setStatus(task.ID, model.TaskVerifying)
 	e.mu.Unlock()
 	e.emitTask(task.ID)
 
-	// Verification gate (slow; unlocked).
-	ev, err := e.gate.Run(e.ctx, wt, e.cfg.Verbs, task.Acceptance.VerifyCmds)
+	// Integrity: the implementer may not touch locked test files. A violation
+	// fails the task before the gate even runs — its acceptance can't be trusted.
+	if viol := lockedViolations(changed, task.Acceptance.LockedGlobs); len(viol) > 0 {
+		ev := model.Evidence{Stages: map[string]model.StageResult{
+			"locked": {Pass: false, Output: "branch edits protected files: " + strings.Join(viol, ", ")},
+		}, Diff: diff}
+		e.finish(task, ag, ev, model.ResultFail,
+			"LOCKED GLOB VIOLATION: "+strings.Join(viol, ", ")+"\n\n"+logText, model.TaskFailed)
+		log.Printf("engine: task %q failed: locked globs touched (%v)", task.Title, viol)
+		return
+	}
+
+	// Verification gate (slow; unlocked). Held-out checks run here too — they are
+	// never shown to the implementer (RenderPrompt omits them) but must pass.
+	gateCmds := append(append([]string{}, task.Acceptance.VerifyCmds...), task.Acceptance.HeldOut...)
+	ev, err := e.gate.Run(e.ctx, wt, e.cfg.Verbs, gateCmds)
 	if err != nil {
 		log.Printf("engine: gate: %v", err)
 	}

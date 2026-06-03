@@ -308,3 +308,41 @@ button.link {
 }
 button.link:hover { color: var(--text); }
 button.link.danger:hover { color: var(--red); }
+
+/* Phase 2: Define / Approve / Decide */
+.form-ok { color: var(--green); font-size: 13px; min-height: 1em; }
+.card-spec.sm { font-size: 13px; }
+.section-h.sm { margin: 14px 0 6px; }
+
+/* Approve: plan cards */
+.plan-tasks { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.plan-task {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-task-title { font-weight: 600; font-size: 14px; }
+.plan-decisions { margin-top: 14px; }
+.plan-decision { font-size: 13px; padding: 4px 0; }
+.plan-decision .q { color: var(--text); font-weight: 500; }
+.plan-decision .hint { font-style: italic; }
+
+/* Decide: decision cards */
+.option-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+button.option {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+button.option:hover { border-color: var(--accent); }
+.decision-answer { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.decision-answer input { flex: 1; }
+.decision-card .checkbox { font-weight: 400; color: var(--muted); font-size: 13px; }

@@ -71,9 +71,11 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, t)
 }
 
-// createBigTask stores the BigTask and, via the Phase 0 passthrough planner,
-// also materializes its task(s) so the board has work to show. The planner agent
-// (Phase 2) will replace the passthrough.
+// createBigTask stores the BigTask and decomposes it into work. When a planner
+// agent is configured, planning runs asynchronously (the BigTask goes to
+// `planning`; a proposed Plan with `planned` tasks + open decisions appears via
+// events for the human to Approve). With no planner, it falls back to the Phase 0
+// passthrough: a single ready task mirroring the intent. (SPECS §13 Phase 2.)
 func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 	var bt model.BigTask
 	if err := decodeJSON(r, &bt); err != nil {
@@ -91,8 +93,15 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 	}
 	s.hub.Broadcast(Event{Type: "bigtask.created", Payload: bt})
 
-	// Phase 0 passthrough: one task mirroring the intent.
-	plan := planner.Plan(bt)
+	// Planner agent available -> decompose asynchronously into a proposed plan.
+	if _, ok := s.engine.PlannerAgent(); ok {
+		s.engine.PlanBigTask(bt)
+		writeJSON(w, http.StatusCreated, bt)
+		return
+	}
+
+	// Fallback: no planner registered -> one ready task mirroring the intent.
+	plan := planner.Passthrough(bt)
 	for i := range plan.Tasks {
 		t := plan.Tasks[i]
 		if err := s.store.Tasks.Create(&t); err != nil {

@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, ReviewItem, Metrics } from "./types.js";
+import type { Agent, Task, ReviewItem, Metrics, Plan, Decision } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -36,8 +36,18 @@ export const api = {
   createTask: (t: Partial<Task>) => req<Task>("POST", "/api/tasks", t),
 
   // BigTask (define)
-  createBigTask: (b: { title: string; intent: string }) =>
+  createBigTask: (b: { title: string; intent: string; constraints?: string[] }) =>
     req<unknown>("POST", "/api/bigtasks", b),
+
+  // Plans (approve flow, Phase 2)
+  listPlans: () => req<Plan[]>("GET", "/api/plans"),
+  approvePlan: (id: string) => req<{ status: string }>("POST", `/api/plans/${id}/approve`),
+  rejectPlan: (id: string) => req<{ status: string }>("POST", `/api/plans/${id}/reject`),
+
+  // Decisions (decide queue, Phase 2)
+  listDecisions: () => req<Decision[]>("GET", "/api/decisions"),
+  answerDecision: (id: string, answer: string, promote: boolean) =>
+    req<{ status: string }>("POST", `/api/decisions/${id}/answer`, { answer, promote }),
 
   // Accept queue (live loop)
   listReviews: () => req<ReviewItem[]>("GET", "/api/reviews"),

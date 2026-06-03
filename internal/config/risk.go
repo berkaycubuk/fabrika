@@ -37,6 +37,11 @@ func (c *Config) TierFor(touchPaths []string) string {
 	return tier
 }
 
+// MatchGlob reports whether name matches a path glob that may contain `**`
+// (matching zero or more path segments). Exported for reuse (e.g. the engine's
+// locked-glob enforcement). See matchGlob.
+func MatchGlob(pattern, name string) bool { return matchGlob(pattern, name) }
+
 // matchGlob reports whether name matches a path glob that may contain `**`
 // (matching zero or more path segments). Single-segment wildcards (`*`, `?`,
 // character classes) within a segment use path.Match semantics. The stdlib

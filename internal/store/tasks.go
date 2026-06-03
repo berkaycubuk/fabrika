@@ -65,6 +65,15 @@ func (r *BigTaskRepo) List() ([]model.BigTask, error) {
 	return out, rows.Err()
 }
 
+// UpdateStatus sets a big task's lifecycle status.
+func (r *BigTaskRepo) UpdateStatus(id, status string) error {
+	res, err := r.db.Exec(`UPDATE bigtasks SET status=? WHERE id=?`, status, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
 // TaskRepo persists Tasks in the per-project store.
 type TaskRepo struct{ db *sql.DB }
 
@@ -100,6 +109,24 @@ func (r *TaskRepo) Get(id string) (*model.Task, error) {
 	return scanTask(row)
 }
 
+// ListByBigTask returns the tasks belonging to a big task, newest-first.
+func (r *TaskRepo) ListByBigTask(bigTaskID string) ([]model.Task, error) {
+	rows, err := r.db.Query(`SELECT `+taskCols+` FROM tasks WHERE big_task_id=? ORDER BY created_at DESC`, bigTaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}
+
 // List returns all Tasks newest-first.
 func (r *TaskRepo) List() ([]model.Task, error) {
 	rows, err := r.db.Query(`SELECT ` + taskCols + ` FROM tasks ORDER BY created_at DESC`)
@@ -125,6 +152,39 @@ func (r *TaskRepo) UpdateStatus(id, status string) error {
 		return err
 	}
 	return mustAffect(res)
+}
+
+// SetSpec overwrites a task's spec (used to inject resolved decisions on resume).
+func (r *TaskRepo) SetSpec(id, spec string) error {
+	res, err := r.db.Exec(`UPDATE tasks SET spec=? WHERE id=?`, spec, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
+// MarkReadyByBigTask flips every planned task of a big task to ready, returning
+// how many were promoted. Called on plan approval so the scheduler can pick them.
+func (r *TaskRepo) MarkReadyByBigTask(bigTaskID string) (int, error) {
+	res, err := r.db.Exec(
+		`UPDATE tasks SET status=? WHERE big_task_id=? AND status=?`,
+		model.TaskReady, bigTaskID, model.TaskPlanned,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
+
+// SetStatusByBigTask sets every task of a big task to status, returning the count.
+func (r *TaskRepo) SetStatusByBigTask(bigTaskID, status string) (int, error) {
+	res, err := r.db.Exec(`UPDATE tasks SET status=? WHERE big_task_id=?`, status, bigTaskID)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
 }
 
 // SetRun records the agent + branch a task is running on and sets its status.

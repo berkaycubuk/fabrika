@@ -141,11 +141,48 @@ func TestBigTaskCreatesPassthroughTask(t *testing.T) {
 	}
 }
 
-func TestDeferredEndpointReturns501(t *testing.T) {
+func TestBigTaskWithPlannerSkipsPassthrough(t *testing.T) {
 	h := newTestServer(t)
+
+	// Register an enabled planner agent.
+	rec := do(t, h, "POST", "/api/agents", model.Agent{
+		Name: "Planner", Command: "true", Roles: []string{model.RolePlanner}, Enabled: true,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create planner: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Defining a big task routes to the (async) planner, not the passthrough — so
+	// no task is materialized synchronously the way the no-planner path does.
+	rec = do(t, h, "POST", "/api/bigtasks", model.BigTask{Title: "X", Intent: "y"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create bigtask: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, h, "GET", "/api/tasks", nil)
+	var tasks []model.Task
+	json.Unmarshal(rec.Body.Bytes(), &tasks)
+	if len(tasks) != 0 {
+		t.Fatalf("expected no passthrough task when a planner exists, got %d", len(tasks))
+	}
+}
+
+func TestPlanAndDecisionEndpointsLive(t *testing.T) {
+	h := newTestServer(t)
+
+	// Empty decision queue and plan list are arrays, not 501s.
 	rec := do(t, h, "GET", "/api/decisions", nil)
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("decisions should be 501, got %d", rec.Code)
+	if rec.Code != http.StatusOK || rec.Body.String() != "[]\n" {
+		t.Fatalf("decisions: %d %q", rec.Code, rec.Body.String())
+	}
+	rec = do(t, h, "GET", "/api/plans", nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != "[]\n" {
+		t.Fatalf("plans: %d %q", rec.Code, rec.Body.String())
+	}
+
+	// Answering a missing decision is a 404.
+	rec = do(t, h, "POST", "/api/decisions/nope/answer", map[string]any{"answer": "x"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("answer missing decision: %d", rec.Code)
 	}
 }
 

@@ -18,6 +18,7 @@ const (
 	PlanRejected = "rejected"
 
 	// Task.Status
+	TaskPlanned   = "planned" // belongs to a proposed plan; not dispatchable until approved (Phase 2)
 	TaskReady     = "ready"
 	TaskClaimed   = "claimed"
 	TaskRunning   = "running"
@@ -27,6 +28,10 @@ const (
 	TaskBlocked   = "blocked"
 	TaskFailed    = "failed"
 	TaskClosed    = "closed" // human dismissed without merging (engine extension)
+
+	// Decision.Status (engine extension; the spec models answer presence only)
+	DecisionOpen     = "open"
+	DecisionAnswered = "answered"
 
 	// Risk tiers
 	RiskLow    = "low"
@@ -127,15 +132,19 @@ type StageResult struct {
 	ExitCode int    `json:"exitCode"`
 }
 
-// Decision is a question an agent or the planner couldn't resolve.
+// Decision is a question an agent or the planner couldn't resolve. PlanID and
+// Status are engine extensions: PlanID ties a plan-level decision to its plan
+// (TaskID empty), and Status tracks open|answered for the decision queue.
 type Decision struct {
 	ID       string   `json:"id"`
-	TaskID   string   `json:"taskId"` // empty if plan-level
+	PlanID   string   `json:"planId"` // set for plan-level decisions (TaskID empty)
+	TaskID   string   `json:"taskId"` // set for task-level escalations (PlanID empty)
 	Question string   `json:"question"`
 	Options  []string `json:"options"`
 	Context  string   `json:"context"`
 	Answer   string   `json:"answer"`
 	Promote  bool     `json:"promote"` // promote answer to a standing Convention
+	Status   string   `json:"status"`  // open|answered
 }
 
 // Convention is standing context injected into future specs + agent runs.
