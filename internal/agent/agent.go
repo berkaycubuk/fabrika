@@ -61,11 +61,14 @@ func NewSubprocess() *Subprocess {
 	return &Subprocess{Shell: []string{"sh", "-c"}}
 }
 
-// RenderCommand substitutes {prompt_file} and {worktree} into the template.
-func RenderCommand(template, promptFile, worktree string) string {
+// RenderCommand substitutes {prompt_file}, {worktree}, and {model} into the
+// template. An empty model substitutes to an empty string; templates with no
+// {model} token are unaffected.
+func RenderCommand(template, promptFile, worktree, model string) string {
 	r := strings.NewReplacer(
 		"{prompt_file}", promptFile,
 		"{worktree}", worktree,
+		"{model}", model,
 	)
 	return r.Replace(template)
 }
@@ -170,7 +173,7 @@ func ParseReview(out string) (ReviewVerdict, bool) {
 
 // Run executes the agent command in the worktree and parses any escalation.
 func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, worktree, promptFile string) (AgentResult, error) {
-	command := RenderCommand(a.Command, promptFile, worktree)
+	command := RenderCommand(a.Command, promptFile, worktree, a.Model)
 	shell := s.Shell
 	if len(shell) == 0 {
 		shell = []string{"sh", "-c"}
