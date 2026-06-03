@@ -112,7 +112,7 @@ async function refresh(): Promise<void> {
     // running/done its tasks carry it forward — so only draft/planning/error
     // land here.
     fillColumn("planning", bigTasks.filter((b) => PRE_PLAN.includes(b.status)).map((b) => bigTaskCard(b, agents)));
-    fillColumn("approve", plans.filter((p) => p.status === "proposed").map(planCard));
+    fillColumn("approve", plans.filter((p) => p.status === "proposed").map((p) => planCard(p, agents)));
     fillColumn("decide", decisions.map(decideCard));
     fillColumn("ready", byStatus("ready").map((t) => taskCard(t, agents)));
     fillColumn("running", tasks.filter((t) => IN_FLIGHT.includes(t.status)).map((t) => taskCard(t, agents)));
@@ -148,8 +148,10 @@ function card(title: string, meta: (Node | string)[], onClick: () => void): HTML
   ]);
 }
 
-function planCard(p: Plan): HTMLElement {
-  const meta: (Node | string)[] = [el("span", { class: "tag" }, [`${p.tasks.length} tasks`])];
+function planCard(p: Plan, agents: Agent[]): HTMLElement {
+  const meta: (Node | string)[] = [];
+  if (p.bigTask?.plannerAgentId) meta.push(agentPhoto(agents, p.bigTask.plannerAgentId));
+  meta.push(el("span", { class: "tag" }, [`${p.tasks.length} tasks`]));
   if (p.openDecisions.length) meta.push(el("span", { class: "tag dep" }, [`${p.openDecisions.length} open Q`]));
   return card(p.bigTask?.title ?? "Plan", meta, () => openPlanDetail(p));
 }
@@ -158,13 +160,13 @@ function planCard(p: Plan): HTMLElement {
 // planning errored), so a Define submission is visible immediately instead of
 // silently churning in the background. The status pill carries the live state;
 // errored cards read red and open to the failure reason. When a planner agent is
-// assigned, its name appears on the card as well.
+// assigned, its photo appears on the card as well.
 function bigTaskCard(b: BigTask, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
   const label = b.status === "planning" ? "planning…" : b.status;
   meta.push(el("span", { class: `pill status-${b.status}` }, [label]));
   if (b.status === "planning" && b.plannerAgentId) {
-    meta.push(el("span", { class: "tag agent" }, [agentName(agents, b.plannerAgentId)]));
+    meta.push(agentPhoto(agents, b.plannerAgentId));
   }
   return card(b.title, meta, () => openBigTaskDetail(b, agents));
 }
