@@ -9,7 +9,7 @@ import { el, clear } from "../dom.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Comment, FabrikaEvent } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent } from "../types.js";
 
 type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -296,6 +296,7 @@ function openReviewDetail(it: ReviewItem): void {
     blockedReason ? el("p", { class: "blocked-q" }, [blockedReason]) : el("span", {}),
     reviewNote ? el("p", { class: "blocked-q" }, [reviewNote]) : el("span", {}),
     attempt ? stageRow(attempt.evidence) : el("span", { class: "muted" }, ["no evidence"]),
+    attempt ? usageLine(attempt.usage) : el("span", {}),
     !green && attempt ? failureBlock(attempt) : el("span", {}),
     evidenceArtifacts(attempt?.evidence),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
@@ -328,6 +329,7 @@ function openAuditDetail(it: ReviewItem): void {
       task.branch ? el("code", { class: "branch" }, [task.branch]) : el("span", {}),
     ]),
     attempt ? stageRow(attempt.evidence) : el("span", { class: "muted" }, ["no evidence"]),
+    attempt ? usageLine(attempt.usage) : el("span", {}),
     evidenceArtifacts(attempt?.evidence),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     actionRow([
@@ -561,6 +563,7 @@ async function loadEvidence(id: string): Promise<void> {
     const a = attempts && attempts.length ? attempts[attempts.length - 1] : null;
     if (!a) return;
     slot.append(stageRow(a.evidence));
+    slot.append(usageLine(a.usage));
     if (a.result !== "pass") slot.append(failureBlock(a));
     if (a.evidence?.artifacts?.length) slot.append(evidenceArtifacts(a.evidence));
     const diff = a.evidence?.diff?.trim();
@@ -728,6 +731,27 @@ function stageRow(ev: Evidence): HTMLElement {
   });
   if (chips.length === 0) return el("div", { class: "stage-row" }, [el("span", { class: "muted" }, ["no gate stages"])]);
   return el("div", { class: "stage-row" }, chips);
+}
+
+// formatTokens renders a token count with thousands separators (12345 → "12,345").
+function formatTokens(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+// formatTokensShort abbreviates a count for the compact in/out breakdown
+// (8200 → "8k", 950 → "950").
+function formatTokensShort(n: number): string {
+  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+}
+
+// usageLine surfaces an attempt's self-reported token usage as a small muted
+// line, or nothing when usage is absent or zero (older payloads / runs that
+// captured none).
+function usageLine(usage: Usage | undefined): HTMLElement {
+  if (!usage || !usage.totalTokens) return el("span", {});
+  return el("div", { class: "muted sm token-usage" }, [
+    `tokens: ${formatTokens(usage.totalTokens)} (in ${formatTokensShort(usage.inputTokens)} / out ${formatTokensShort(usage.outputTokens)})`,
+  ]);
 }
 
 // failureBlock surfaces *why* a run failed, in the panel body rather than a
