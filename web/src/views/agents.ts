@@ -3,6 +3,7 @@
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { ROLES, type Agent } from "../types.js";
+import { DEFAULT_AVATAR } from "../avatar.js";
 
 // Supported local coding agents. Picking one wires the invocation for you — the
 // run command is fixed per kind (Fabrika runs it inside the task's worktree and
@@ -120,6 +121,34 @@ function agentForm(): HTMLElement {
     return { role: r, cb };
   });
 
+  const photoInput = el("input", { type: "file", accept: "image/*" }) as HTMLInputElement;
+  const photoPreview = el("img", { class: "avatar-preview" }) as HTMLImageElement;
+  let photoDataUrl = "";
+
+  photoInput.addEventListener("change", () => {
+    const file = photoInput.files?.[0];
+    if (!file) { photoPreview.src = ""; photoDataUrl = ""; return; }
+    if (!file.type.startsWith("image/")) {
+      err.textContent = "File must be an image.";
+      photoInput.value = "";
+      photoDataUrl = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      err.textContent = "Image must be under 2 MiB.";
+      photoInput.value = "";
+      photoDataUrl = "";
+      return;
+    }
+    err.textContent = "";
+    const reader = new FileReader();
+    reader.onload = () => {
+      photoDataUrl = reader.result as string;
+      photoPreview.src = photoDataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+
   const err = el("div", { class: "form-error" });
   const submitBtn = el("button", { class: "primary", type: "submit" }, ["Add agent"]);
 
@@ -139,6 +168,7 @@ function agentForm(): HTMLElement {
         timeout: timeout.value.trim(),
         maxAttempts: 1,
         enabled: true,
+        photo: photoDataUrl,
       };
       try {
         if (editingId) {
@@ -167,6 +197,10 @@ function agentForm(): HTMLElement {
         el("label", { class: "checkbox" }, [b.cb, b.role]),
       ])),
     ]),
+    el("div", { class: "field" }, [
+      el("label", {}, ["Photo"]),
+      el("div", { class: "photo-row" }, [photoInput, photoPreview]),
+    ]),
     err,
     el("div", { class: "form-actions" }, [submitBtn]),
   ]) as HTMLFormElement;
@@ -179,6 +213,8 @@ function agentForm(): HTMLElement {
     populateModels(kind.value);
     concurrency.value = "1";
     timeout.value = "20m";
+    photoDataUrl = "";
+    photoPreview.src = "";
     submitBtn.textContent = "Add agent";
   }
 
@@ -192,6 +228,8 @@ function agentForm(): HTMLElement {
     concurrency.value = String(a.concurrency);
     timeout.value = a.timeout;
     roleBoxes.forEach((b) => (b.cb.checked = a.roles?.includes(b.role) ?? false));
+    photoDataUrl = a.photo || "";
+    photoPreview.src = photoDataUrl;
     submitBtn.textContent = "Save changes";
     form.scrollIntoView({ behavior: "smooth" });
   };
@@ -218,6 +256,7 @@ async function refresh(): Promise<void> {
 function agentCard(a: Agent): HTMLElement {
   return el("div", { class: "card agent-card" }, [
     el("div", { class: "card-main" }, [
+      el("img", { class: "agent-avatar", src: a.photo || DEFAULT_AVATAR, alt: "" }),
       el("div", { class: "card-title" }, [
         a.name,
         el("span", { class: a.enabled ? "pill on" : "pill off" }, [a.enabled ? "enabled" : "disabled"]),
