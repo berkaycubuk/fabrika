@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -137,6 +138,54 @@ func (r *Repo) AddAllAndCommit(ctx context.Context, worktreeDir, msg string) (bo
 		return false, err
 	}
 	return true, nil
+}
+
+// NormalizeCommitTrailers rewrites every commit unique to branch (the range
+// base..branch) so that each carries exactly one fabrika co-author trailer and
+// no other co-author trailers. Any pre-existing "Co-authored-by:" trailers
+// (matched case-insensitively, so "Co-Authored-By:" too) are stripped first,
+// then the fabrika trailer (see [CoAuthorTrailer]) is appended in its own
+// trailer block. Each commit's subject and body are otherwise preserved.
+//
+// Only the branch's own range is rewritten: commits reachable from base are
+// never touched, and base itself is left unchanged. It is a no-op when the
+// range is empty.
+func (r *Repo) NormalizeCommitTrailers(ctx context.Context, base, branch string) error {
+	rng := base + ".." + branch
+
+	// Skip cleanly when the branch adds nothing on top of base — filter-branch
+	// errors out ("Found nothing to rewrite") on an empty range otherwise.
+	count, err := r.run(ctx, "rev-list", "--count", rng)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(count) == "0" {
+		return nil
+	}
+
+	// awk message filter (portable across BSD/GNU awk): drop every
+	// co-authored-by line regardless of casing, trim trailing blank lines, then
+	// re-attach exactly one fabrika trailer in its own block. Mirrors the
+	// formatting of [WithCoAuthor]. The program contains no single quotes, so it
+	// embeds safely inside the single-quoted shell argument git eval's.
+	const awkProg = `tolower($0) ~ /^co-authored-by:/ {next} {out[++n]=$0} ` +
+		`END {while(n>0 && out[n] ~ /^[ \t]*$/)n--; for(i=1;i<=n;i++)print out[i]; if(n>0)print ""; print trailer}`
+	msgFilter := `awk -v trailer="` + CoAuthorTrailer + `" '` + awkProg + `'`
+
+	// --force lets repeated runs reuse the refs/original backup; the trailing
+	// "base..branch" rev-range scopes the rewrite to (and updates only) branch.
+	cmd := exec.CommandContext(ctx, "git",
+		"filter-branch", "--force", "--msg-filter", msgFilter, "--", rng)
+	cmd.Dir = r.Root
+	cmd.Env = append(os.Environ(), "FILTER_BRANCH_SQUELCH_WARNING=1")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("normalize trailers on %s: %w: %s",
+			rng, err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
 }
 
 // run executes a git command in the repo root and returns combined stdout.
