@@ -162,6 +162,16 @@ type Decision struct {
 	Status   string   `json:"status"`  // open|answered
 }
 
+// Comment is a note on a Task, authored by a human or an agent.
+type Comment struct {
+	ID         string `json:"id"`
+	TaskID     string `json:"taskId"`
+	AuthorType string `json:"authorType"` // user|agent
+	AuthorID   string `json:"authorId"`   // agent id; empty for user
+	Body       string `json:"body"`
+	CreatedAt  string `json:"createdAt"`
+}
+
 // Convention is standing context injected into future specs + agent runs.
 type Convention struct {
 	ID   string `json:"id"`
