@@ -135,6 +135,31 @@ func TestDispatchProducesGreenReview(t *testing.T) {
 	}
 }
 
+func TestDispatchRecordsAgentUsage(t *testing.T) {
+	eng, st, _ := setup(t)
+	// Agent does work and reports its token usage via the fabrika_USAGE marker;
+	// the engine must thread that into the persisted attempt.
+	registerAgent(t, st, "printf 'done' > out.txt && "+
+		`echo 'fabrika_USAGE: {"inputTokens":120,"outputTokens":45,"totalTokens":165}'`)
+
+	task := &model.Task{Title: "report usage", Spec: "create out.txt"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected a task to be dispatched")
+	}
+
+	att, err := st.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	want := model.Usage{InputTokens: 120, OutputTokens: 45, TotalTokens: 165}
+	if att.Usage != want {
+		t.Fatalf("usage = %+v, want %+v", att.Usage, want)
+	}
+}
+
 func TestDispatchNormalizesCommitTrailers(t *testing.T) {
 	eng, st, repo := setup(t)
 	// The agent makes its own commit carrying a foreign co-author trailer; the
