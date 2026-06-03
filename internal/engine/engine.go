@@ -395,6 +395,11 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 		if _, cerr := repo.AddAllAndCommit(e.ctx, wt, "fabrika: "+task.Title); cerr != nil {
 			log.Printf("engine: auto-commit: %v", cerr)
 		}
+		// Rewrite the branch's commits so each carries the fabrika co-author and
+		// no foreign attribution before the diff/gate verify and any merge.
+		if nerr := repo.NormalizeCommitTrailers(e.ctx, base, task.Branch); nerr != nil {
+			log.Printf("engine: normalize trailers: %v", nerr)
+		}
 		if d, derr := repo.Diff(e.ctx, base, task.Branch); derr == nil {
 			diff = d
 		}
