@@ -111,6 +111,7 @@ export interface AgentMetrics {
   running: number;
   planning: number;
   merged: number;
+  planned: number;
   kickedBack: number;
   kickbackRate: number;
 }
