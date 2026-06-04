@@ -128,6 +128,8 @@ func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile str
     { "question": "...", "options": ["A", "B"], "context": "why this is ambiguous" }
   ]
 }` + "\n```\n")
+	b.WriteString("\n")
+	b.WriteString("- On completion, print your token usage: `fabrika_USAGE: {\"inputTokens\":N,\"outputTokens\":N,\"totalTokens\":N}`.\n")
 	return b.String()
 }
 
