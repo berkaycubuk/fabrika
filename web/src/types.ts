@@ -11,6 +11,8 @@ export interface Agent {
   concurrency: number;
   timeout: string;
   maxAttempts: number;
+  // Higher number = higher routing priority; 0 = normal (default).
+  priority: number;
   enabled: boolean;
   photo: string;
 }

@@ -67,6 +67,15 @@ const AGENT_KINDS: AgentKind[] = [
 
 const kindFor = (command: string) => AGENT_KINDS.find((k) => k.command === command);
 
+// Routing priority levels. Higher number = higher routing priority; 0 = normal.
+// A higher-priority agent is chosen even if a lower-priority agent's tags match.
+const PRIORITY_OPTIONS = [
+  { value: -1, label: "Low" },
+  { value: 0, label: "Normal" },
+  { value: 1, label: "High" },
+];
+const priorityLabel = (p: number) => PRIORITY_OPTIONS.find((o) => o.value === p)?.label ?? "Normal";
+
 // First model in a kind's catalog is the recommended default. Falls back to ""
 // for a back-compat kind that lists no models (command without a {model} token).
 const defaultModel = (kind: AgentKind) => kind.models[0]?.id ?? "";
@@ -118,6 +127,14 @@ function agentForm(): HTMLElement {
   // Retry budget: the engine auto-requeues a failed task (with the failure
   // summary in the next prompt) until this many attempts have failed.
   const maxAttempts = el("input", { type: "number", value: "3", min: "1" }) as HTMLInputElement;
+  // Routing priority: higher = preferred first; a higher-priority agent wins
+  // even if a lower-priority agent's tags match the task (dominates tag matching).
+  const priority = el(
+    "select",
+    {},
+    PRIORITY_OPTIONS.map((p) => el("option", { value: String(p.value) }, [p.label])),
+  ) as HTMLSelectElement;
+  priority.value = "0";
 
   const roleBoxes = ROLES.map((r) => {
     const cb = el("input", { type: "checkbox", value: r }) as HTMLInputElement;
@@ -176,6 +193,7 @@ function agentForm(): HTMLElement {
         concurrency: parseInt(concurrency.value, 10) || 1,
         timeout: timeout.value.trim(),
         maxAttempts: parseInt(maxAttempts.value, 10) || 1,
+        priority: parseInt(priority.value, 10) || 0,
         enabled: true,
         photo: photoDataUrl,
       };
@@ -200,6 +218,7 @@ function agentForm(): HTMLElement {
       field("Concurrency", concurrency),
       field("Timeout", timeout),
       field("Max attempts", maxAttempts),
+      field("Priority", priority),
     ]),
     field("Roles", el("div", { class: "checkbox-row" }, roleBoxes.flatMap((b) => [
       el("label", { class: "checkbox" }, [b.cb, b.role]),
@@ -218,6 +237,7 @@ function agentForm(): HTMLElement {
     concurrency.value = "1";
     timeout.value = "20m";
     maxAttempts.value = "3";
+    priority.value = "0";
     photoDataUrl = "";
     photoPreview.src = DEFAULT_AVATAR;
     photoHint.textContent = "Optional — default avatar otherwise.";
@@ -234,6 +254,7 @@ function agentForm(): HTMLElement {
     concurrency.value = String(a.concurrency);
     timeout.value = a.timeout;
     maxAttempts.value = String(a.maxAttempts || 1);
+    priority.value = String(a.priority ?? 0);
     roleBoxes.forEach((b) => (b.cb.checked = a.roles?.includes(b.role) ?? false));
     photoDataUrl = a.photo || "";
     photoPreview.src = photoDataUrl || DEFAULT_AVATAR;
@@ -274,7 +295,7 @@ function agentCard(a: Agent): HTMLElement {
         ...(a.model ? [tag(labelForModel(kindFor(a.command), a.model), "model")] : []),
         ...(a.roles ?? []).map((r) => tag(r, "role")),
         ...(a.tags ?? []).map((t) => tag(t)),
-        el("span", { class: "muted" }, [`×${a.concurrency} · ${a.timeout || "no timeout"}`]),
+        el("span", { class: "muted" }, [`×${a.concurrency} · ${a.timeout || "no timeout"} · priority: ${priorityLabel(a.priority ?? 0)}`]),
       ]),
     ]),
     el("div", { class: "card-actions" }, [
