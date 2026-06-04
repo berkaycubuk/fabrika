@@ -270,6 +270,69 @@ pre.diff {
 .dl.del { color: var(--red); }
 .dl.hunk { color: var(--accent); }
 
+/* Per-file structured diff view */
+.diff-view { margin: 10px 0 0; font-family: var(--mono); font-size: 12px; }
+.diff-summary { color: var(--muted); font-size: 12px; margin: 0 0 6px; }
+.diff-file {
+  border: 1px solid var(--border);
+  background: #0a0c10;
+  margin-bottom: 4px;
+}
+.diff-file > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.diff-file > summary::-webkit-details-marker { display: none; }
+.diff-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
+}
+.diff-badge-added    { background: rgba(127,185,138,0.18); color: var(--green); }
+.diff-badge-deleted  { background: rgba(217,105,90,0.18);  color: var(--red); }
+.diff-badge-modified { background: rgba(91,140,255,0.15);  color: var(--accent); }
+.diff-badge-renamed  { background: rgba(201,162,106,0.18); color: var(--tan); }
+.diff-path { flex: 1; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-stats { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+.diff-body { overflow-x: auto; }
+.diff-binary { padding: 8px 12px; color: var(--muted); font-style: italic; }
+
+/* Structured diff lines — override base .dl for rows that have gutter spans */
+.dl.add, .dl.del, .dl.context { display: flex; align-items: stretch; color: var(--text); }
+.ln-old, .ln-new {
+  min-width: 44px;
+  padding: 0 6px;
+  text-align: right;
+  color: rgba(131,124,112,0.55);
+  user-select: none;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+.ln-txt { padding: 0 0 0 10px; flex: 1; min-width: 0; }
+.dl.add { background: rgba(127,185,138,0.08); }
+.dl.add .ln-old, .dl.add .ln-new { background: rgba(127,185,138,0.06); }
+.dl.add .ln-txt { color: var(--green); }
+.dl.del { background: rgba(217,105,90,0.08); }
+.dl.del .ln-old, .dl.del .ln-new { background: rgba(217,105,90,0.06); }
+.dl.del .ln-txt { color: var(--red); }
+.dl.context .ln-txt { color: var(--text); }
+.dl.hunk { padding: 1px 10px; background: rgba(91,140,255,0.05); }
+
 /* Failure detail: why a run went red, in the panel body (not just a tooltip). */
 .failure { margin-top: 10px; }
 .fail-head { color: var(--red); font-weight: 600; font-size: 13px; margin: 0 0 6px; }
