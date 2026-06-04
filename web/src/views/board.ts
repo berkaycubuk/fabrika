@@ -308,7 +308,7 @@ export function openDecideDetail(d: Decision): void {
   openModal(d.question, body, { sidebar: side });
 }
 
-export function openReviewDetail(it: ReviewItem, agents: Agent[]): void {
+export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
   const { task, attempt } = it;
   const green = task.status === "review";
   const diff = attempt?.evidence?.diff?.trim();
