@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -159,11 +158,7 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteBigTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.engine.DeleteBigTask(id); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeErr(w, http.StatusConflict, err.Error())
+		mapEngineErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -200,11 +195,7 @@ func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) acceptTask(w http.ResponseWriter, r *http.Request) {
 	if err := s.engine.Accept(r.PathValue("id")); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeErr(w, http.StatusConflict, err.Error())
+		mapEngineErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "merged"})
@@ -212,11 +203,7 @@ func (s *Server) acceptTask(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) retryTask(w http.ResponseWriter, r *http.Request) {
 	if err := s.engine.Retry(r.PathValue("id")); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeErr(w, http.StatusConflict, err.Error())
+		mapEngineErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})

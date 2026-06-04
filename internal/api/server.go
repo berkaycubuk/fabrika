@@ -146,3 +146,14 @@ func mapStoreErr(w http.ResponseWriter, err error) {
 	}
 	writeErr(w, http.StatusInternalServerError, err.Error())
 }
+
+// mapEngineErr translates engine/store action errors into HTTP responses,
+// mapping a NotFound to 404 and any other error to 409 Conflict (the action
+// was rejected by the current state, not an internal fault).
+func mapEngineErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	writeErr(w, http.StatusConflict, err.Error())
+}
