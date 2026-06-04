@@ -74,11 +74,7 @@ func (s *Server) getPlan(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) approvePlan(w http.ResponseWriter, r *http.Request) {
 	if err := s.engine.ApprovePlan(r.PathValue("id")); err != nil {
-		if err == store.ErrNotFound {
-			writeErr(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeErr(w, http.StatusConflict, err.Error())
+		mapEngineErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})
@@ -119,11 +115,7 @@ func (s *Server) answerDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.engine.AnswerDecision(r.PathValue("id"), body.Answer, body.Promote); err != nil {
-		if err == store.ErrNotFound {
-			writeErr(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeErr(w, http.StatusConflict, err.Error())
+		mapEngineErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "answered"})

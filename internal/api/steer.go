@@ -2,8 +2,6 @@ package api
 
 import (
 	"net/http"
-
-	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
 // assignTask pins a task to a specific agent (SPECS §7 routing, §10 steer). A
@@ -75,11 +73,7 @@ func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
 		s.engine.Wake()
 	case "cancel":
 		if err := s.engine.Reject(body.TaskID, body.Reason); err != nil {
-			if err == store.ErrNotFound {
-				writeErr(w, http.StatusNotFound, "not found")
-				return
-			}
-			writeErr(w, http.StatusConflict, err.Error())
+			mapEngineErr(w, err)
 			return
 		}
 	default:

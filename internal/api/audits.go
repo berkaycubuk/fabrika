@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -47,11 +46,7 @@ func (s *Server) ackAudit(w http.ResponseWriter, r *http.Request) {
 // change-failure-rate metric). The git revert itself is left to the human.
 func (s *Server) revertTask(w http.ResponseWriter, r *http.Request) {
 	if err := s.engine.Revert(r.PathValue("id")); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeErr(w, http.StatusConflict, err.Error())
+		mapEngineErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reverted"})
