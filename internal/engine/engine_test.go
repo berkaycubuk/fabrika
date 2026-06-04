@@ -284,6 +284,59 @@ func TestRetryRequeuesFailedTask(t *testing.T) {
 	}
 }
 
+func TestRecoverOrphansRequeuesStrandedWork(t *testing.T) {
+	eng, st, repo := setup(t)
+
+	// Simulate a previous process that dispatched a task and died: status
+	// `running` in the DB, branch + worktree on disk, nothing in memory.
+	task := &model.Task{Title: "orphan"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	branch := "fabrika/task-orphan"
+	wt := eng.worktreePath(task.ID)
+	gitRun(t, repo, "worktree", "add", "-q", "-b", branch, wt)
+	if err := st.Tasks.SetRun(task.ID, "agent-x", branch, model.TaskRunning); err != nil {
+		t.Fatal(err)
+	}
+
+	// A task in a terminal state must stay put.
+	merged := &model.Task{Title: "done"}
+	if err := st.Tasks.Create(merged); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Tasks.UpdateStatus(merged.ID, model.TaskMerged); err != nil {
+		t.Fatal(err)
+	}
+
+	// A big task stranded mid-planning goes back to draft for a fresh claim.
+	bt := &model.BigTask{Title: "big"}
+	if err := st.BigTasks.Create(bt); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.BigTasks.UpdateStatus(bt.ID, model.BigTaskPlanning); err != nil {
+		t.Fatal(err)
+	}
+
+	eng.recoverOrphans()
+
+	if got, _ := st.Tasks.Get(task.ID); got.Status != model.TaskReady {
+		t.Fatalf("orphan status = %q, want ready", got.Status)
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Fatalf("stale worktree should be removed, stat err = %v", err)
+	}
+	if out := gitOut(t, repo, "branch", "--list", branch); strings.TrimSpace(out) != "" {
+		t.Fatalf("stale branch should be deleted, got %q", out)
+	}
+	if got, _ := st.Tasks.Get(merged.ID); got.Status != model.TaskMerged {
+		t.Fatalf("merged task status = %q, want merged", got.Status)
+	}
+	if got, _ := st.BigTasks.Get(bt.ID); got.Status != model.BigTaskDraft {
+		t.Fatalf("bigtask status = %q, want draft", got.Status)
+	}
+}
+
 func TestEscalationBlocks(t *testing.T) {
 	eng, st, _ := setup(t)
 	registerAgent(t, st, `echo 'fabrika_DECISION: {"question":"which db?"}'`)

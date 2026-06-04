@@ -110,7 +110,55 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 // Start launches the dispatch loop until ctx is cancelled.
 func (e *Engine) Start(ctx context.Context) {
 	e.ctx = ctx
+	e.recoverOrphans()
 	go e.loop()
+}
+
+// recoverOrphans re-queues work stranded by a previous process. In-flight state
+// (the running map, planning counts) lives only in memory, so after a restart a
+// task can sit at claimed/running/verifying — and a big task at planning — in
+// the DB with nothing driving it; the scheduler only claims `ready`/`draft`, so
+// it would show as in-flight in the UI forever. Runs once from Start, before
+// the dispatch loop, when the in-memory maps are necessarily empty. Stale
+// worktrees/branches are dropped so the next claim rebuilds clean, same as
+// Retry.
+func (e *Engine) recoverOrphans() {
+	tasks, err := e.store.Tasks.List()
+	if err != nil {
+		log.Printf("engine: recover orphans: list tasks: %v", err)
+	}
+	repo, rerr := git.Open(e.ctx, e.repoRoot)
+	for _, t := range tasks {
+		switch t.Status {
+		case model.TaskClaimed, model.TaskRunning, model.TaskVerifying:
+		default:
+			continue
+		}
+		if rerr == nil {
+			wt := e.worktreePath(t.ID)
+			_ = repo.RemoveWorktree(e.ctx, wt)
+			_ = os.RemoveAll(wt)
+			if t.Branch != "" {
+				_ = repo.DeleteBranch(e.ctx, t.Branch)
+			}
+		}
+		e.setStatus(t.ID, model.TaskReady)
+		e.emitTask(t.ID)
+		log.Printf("engine: task %q was orphaned by a restart — re-queued", t.Title)
+	}
+
+	bts, err := e.store.BigTasks.List()
+	if err != nil {
+		log.Printf("engine: recover orphans: list bigtasks: %v", err)
+		return
+	}
+	for _, bt := range bts {
+		if bt.Status != model.BigTaskPlanning {
+			continue
+		}
+		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+		log.Printf("engine: big task %q planning was orphaned by a restart — re-queued", bt.Title)
+	}
 }
 
 // Wake nudges the loop to re-scan for ready work (called after a task is created).

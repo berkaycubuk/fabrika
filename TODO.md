@@ -2,6 +2,6 @@
 - [ ] How agent pooling works? Which agents chosen for which work?
 - [ ] More visual diff
 - [ ] Git viewer for more git integration
-- [ ] plan request becomes draft after getting rejected. We need to delete it.
+- [ ] when agents work there is no way to validate they're really working. They might get stuck.
 - [ ] Mobile app for mobile usage
 - [ ] Desktop app for increased experience ? (question and tinkering)
