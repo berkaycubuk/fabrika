@@ -4,6 +4,7 @@
 // (WIP cap, audit rate, mutation testing) and the per-agent share of work.
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
+import { button, pill, formatTokens } from "../components.js";
 import type { Metrics, AgentMetrics } from "../types.js";
 
 const BARS = ["var(--accent)", "var(--tan)", "var(--teal)", "var(--green)", "var(--amber)", "var(--red)"];
@@ -66,7 +67,7 @@ function autonomyControls(m: Metrics): HTMLElement {
   }, [
     el("label", {}, ["WIP cap"]),
     wip,
-    el("button", { class: "primary", type: "submit" }, ["Set"]),
+    button("Set", { variant: "primary", type: "submit" }),
     el("span", { class: "muted sm" }, ["0 = unlimited"]),
   ]);
 
@@ -87,7 +88,7 @@ function autonomyControls(m: Metrics): HTMLElement {
   }, [
     el("label", {}, ["Audit rate"]),
     rate,
-    el("button", { class: "primary", type: "submit" }, ["Set"]),
+    button("Set", { variant: "primary", type: "submit" }),
     el("label", { class: "checkbox" }, [mutation, "mutation testing"]),
   ]);
 
@@ -123,11 +124,11 @@ function shareTable(m: Metrics): HTMLElement {
     const share = total > 0 ? w / total : 0;
     const planning = (a.planning ?? 0) > 0;
     const busy = a.running > 0 || planning;
-    const pill = busy ? (a.running > 0 ? "working" : "planning") : "idle";
+    const pillLabel = busy ? (a.running > 0 ? "working" : "planning") : "idle";
     tbody.append(
       el("tr", {}, [
         el("td", { class: "who" }, [
-          el("span", { class: busy ? "pill busy" : "pill idle" }, [pill]),
+          pill(pillLabel, busy ? "busy" : "idle"),
           " " + a.name,
         ]),
         el("td", {}, [
@@ -154,11 +155,6 @@ function shareTable(m: Metrics): HTMLElement {
     ]),
     tbody,
   ]);
-}
-
-// formatTokens renders a token count with thousands separators (12345 → "12,345").
-function formatTokens(n: number): string {
-  return n.toLocaleString("en-US");
 }
 
 function stat(label: string, value: string, unit?: string): HTMLElement {

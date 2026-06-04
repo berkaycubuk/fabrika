@@ -6,6 +6,7 @@
 // view. (SPECS §10.)
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
+import { button, pill, tag, field, formatTokens, formatTokensShort } from "../components.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
@@ -50,8 +51,8 @@ export function renderBoard(root: HTMLElement): void {
           style: "display:none",
           onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
         }, ["Push"]),
-        el("button", { onclick: openCreateTask }, ["Create task"]),
-        el("button", { class: "primary", onclick: openDefine }, ["Define big task"]),
+        button("Create task", { onclick: openCreateTask }),
+        button("Define big task", { variant: "primary", onclick: openDefine }),
       ]),
     ]),
     el("div", { id: "board-err", class: "form-error" }, []),
@@ -156,9 +157,9 @@ function card(title: string, meta: (Node | string)[], onClick: () => void): HTML
 function planCard(p: Plan, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
   if (p.bigTask?.plannerAgentId) meta.push(agentPhoto(agents, p.bigTask.plannerAgentId));
-  meta.push(el("span", { class: "tag" }, [`${p.tasks.length} tasks`]));
+  meta.push(tag(`${p.tasks.length} tasks`));
   const openQ = p.openDecisions.filter((d) => d.status === "open").length;
-  if (openQ) meta.push(el("span", { class: "tag dep" }, [`${openQ} open Q`]));
+  if (openQ) meta.push(tag(`${openQ} open Q`, "dep"));
   return card(p.bigTask?.title ?? "Plan", meta, () => openPlanDetail(p));
 }
 
@@ -170,7 +171,7 @@ function planCard(p: Plan, agents: Agent[]): HTMLElement {
 function bigTaskCard(b: BigTask, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
   const label = b.status === "planning" ? "planning…" : b.status;
-  meta.push(el("span", { class: `pill status-${b.status}` }, [label]));
+  meta.push(pill(label, `status-${b.status}`));
   if (b.status === "planning" && b.plannerAgentId) {
     meta.push(agentPhoto(agents, b.plannerAgentId));
   }
@@ -193,17 +194,17 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
   if (b.status === "draft" || b.status === "error") {
     children.push(actionRow([
       b.status === "error"
-        ? primaryBtn("Retry planning", () => act(() => api.replanBigTask(b.id)))
+        ? button("Retry planning", { variant: "primary", onclick: () => act(() => api.replanBigTask(b.id)) })
         : el("span", {}),
-      dangerBtn("Delete request", () => {
+      button("Delete request", { variant: "danger", onclick: () => {
         if (!confirm(`Delete "${b.title}"? This removes the plan request and its proposed tasks.`)) return;
         act(() => api.deleteBigTask(b.id));
-      }),
+      }}),
     ]));
   }
   const side = buildSidebar([
-    asideField("Status", [el("span", { class: `pill status-${b.status}` }, [b.status])]),
-    b.plannerAgentId ? asideField("Planner", [el("span", { class: "tag agent" }, [agentName(agents, b.plannerAgentId)])]) : null,
+    asideField("Status", [pill(b.status, `status-${b.status}`)]),
+    b.plannerAgentId ? asideField("Planner", [tag(agentName(agents, b.plannerAgentId), "agent")]) : null,
     (b.constraints?.length)
       ? asideField("Constraints", b.constraints.map((c) => el("code", { class: "verify-cmd" }, [c])))
       : null,
@@ -212,14 +213,14 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
 }
 
 function decideCard(d: Decision): HTMLElement {
-  return card(d.question, [el("span", { class: "tag" }, [d.taskId ? "task" : "plan"])], () => openDecideDetail(d));
+  return card(d.question, [tag(d.taskId ? "task" : "plan")], () => openDecideDetail(d));
 }
 
 function reviewCard(it: ReviewItem, agents: Agent[]): HTMLElement {
   const t = it.task;
   return card(
     t.title,
-    [el("span", { class: `tag status-${t.status}` }, [t.status]), el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier])],
+    [tag(t.status, `status-${t.status}`), tag(t.riskTier, `risk-${t.riskTier}`)],
     () => openReviewDetail(it, agents),
   );
 }
@@ -228,7 +229,7 @@ function auditCard(it: ReviewItem): HTMLElement {
   const t = it.task;
   return card(
     t.title,
-    [el("span", { class: "tag" }, ["auto-merged"]), el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier])],
+    [tag("auto-merged"), tag(t.riskTier, `risk-${t.riskTier}`)],
     () => openAuditDetail(it),
   );
 }
@@ -236,10 +237,10 @@ function auditCard(it: ReviewItem): HTMLElement {
 function taskCard(t: Task, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
   if (t.agentId) meta.push(agentPhoto(agents, t.agentId));
-  meta.push(el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier]));
-  meta.push(el("span", { class: `tag priority-${t.priority}` }, [`priority: ${t.priority}`]));
-  if (t.reporter) meta.push(el("span", { class: `tag reporter-${t.reporter}` }, [t.reporter]));
-  for (const tag of t.tags ?? []) meta.push(el("span", { class: "tag" }, [tag]));
+  meta.push(tag(t.riskTier, `risk-${t.riskTier}`));
+  meta.push(tag(`priority: ${t.priority}`, `priority-${t.priority}`));
+  if (t.reporter) meta.push(tag(t.reporter, `reporter-${t.reporter}`));
+  for (const lbl of t.tags ?? []) meta.push(tag(lbl));
   return card(t.title, meta, () => openTaskDetail(t, agents));
 }
 
@@ -258,29 +259,29 @@ export function openPlanDetail(p: Plan): void {
             el("div", { class: "plan-decision" }, [
               el("span", { class: "q" }, [d.question]),
               d.status === "answered"
-                ? el("span", { class: "tag" }, [`→ ${d.answer}`])
+                ? tag(`→ ${d.answer}`)
                 : el("span", { class: "muted hint" }, [" — answer it in Decide"]),
             ]),
           ),
         ])
       : el("span", {}),
     actionRow([
-      primaryBtn("Approve plan", () => act(() => api.approvePlan(p.id))),
-      dangerBtn("Reject", () => act(() => api.rejectPlan(p.id))),
+      button("Approve plan", { variant: "primary", onclick: () => act(() => api.approvePlan(p.id)) }),
+      button("Reject", { variant: "danger", onclick: () => act(() => api.rejectPlan(p.id)) }),
     ]),
   ]);
   const side = buildSidebar([
-    asideField("Status", [el("span", { class: `tag status-${p.status}` }, [p.status])]),
-    asideField("Tasks", [el("span", { class: "tag" }, [`${p.tasks.length} tasks`])]),
-    openQ ? asideField("Open questions", [el("span", { class: "tag dep" }, [`${openQ} open`])]) : null,
+    asideField("Status", [tag(p.status, `status-${p.status}`)]),
+    asideField("Tasks", [tag(`${p.tasks.length} tasks`)]),
+    openQ ? asideField("Open questions", [tag(`${openQ} open`, "dep")]) : null,
   ]);
   openModal(p.bigTask?.title ?? "Plan", body, { wide: true, sidebar: side });
 }
 
 function planTaskRow(t: Task, titleOf: (id: string) => string): HTMLElement {
-  const meta: (Node | string)[] = [el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier])];
-  for (const tag of t.tags ?? []) meta.push(el("span", { class: "tag" }, [tag]));
-  for (const dep of t.dependsOn ?? []) meta.push(el("span", { class: "tag dep" }, [`after: ${titleOf(dep)}`]));
+  const meta: (Node | string)[] = [tag(t.riskTier, `risk-${t.riskTier}`)];
+  for (const lbl of t.tags ?? []) meta.push(tag(lbl));
+  for (const dep of t.dependsOn ?? []) meta.push(tag(`after: ${titleOf(dep)}`, "dep"));
   for (const c of t.acceptance?.verifyCmds ?? []) meta.push(el("code", { class: "verify-cmd" }, [c]));
   return el("div", { class: "plan-task" }, [
     el("div", { class: "plan-task-title" }, [t.title]),
@@ -305,12 +306,12 @@ export function openDecideDetail(d: Decision): void {
     d.options.length
       ? el("div", { class: "option-row" }, d.options.map((o) => el("button", { class: "option", onclick: () => answer(o) }, [o])))
       : el("span", {}),
-    el("div", { class: "decision-answer" }, [free, primaryBtn("Answer", () => answer(free.value))]),
+    el("div", { class: "decision-answer" }, [free, button("Answer", { variant: "primary", onclick: () => answer(free.value) })]),
     el("label", { class: "checkbox" }, [promote, "Save as a convention (steer future runs)"]),
   ]);
   const side = buildSidebar([
-    asideField("Status", [el("span", { class: `tag status-${d.status}` }, [d.status])]),
-    asideField("Type", [el("span", { class: "tag" }, [d.taskId ? "task" : "plan"])]),
+    asideField("Status", [tag(d.status, `status-${d.status}`)]),
+    asideField("Type", [tag(d.taskId ? "task" : "plan")]),
   ]);
   openModal(d.question, body, { sidebar: side });
 }
@@ -333,27 +334,27 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     actionRow([
       green
-        ? el("button", { class: "primary", onclick: () => act(() => api.acceptTask(task.id)) }, ["Merge"])
-        : primaryBtn("Retry", () => act(() => api.retryTask(task.id))),
+        ? button("Merge", { variant: "primary", onclick: () => act(() => api.acceptTask(task.id)) })
+        : button("Retry", { variant: "primary", onclick: () => act(() => api.retryTask(task.id)) }),
       !green && task.branch
-        ? dangerBtn("Merge anyway", () => {
+        ? button("Merge anyway", { variant: "danger", onclick: () => {
             if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
             act(() => api.acceptTask(task.id, true));
-          })
+          }})
         : el("span", {}),
-      dangerBtn("Kick back", () => {
+      button("Kick back", { variant: "danger", onclick: () => {
         const reason = prompt("Reason for kicking this back? (optional)") ?? "";
         act(() => api.rejectTask(task.id, reason));
-      }),
+      }}),
     ]),
     commentsSection(task.id),
   ]);
   const side = buildSidebar([
-    asideField("Status", [el("span", { class: `tag status-${task.status}` }, [task.status])]),
-    asideField("Risk", [el("span", { class: `tag risk-${task.riskTier}` }, [task.riskTier])]),
+    asideField("Status", [tag(task.status, `status-${task.status}`)]),
+    asideField("Risk", [tag(task.riskTier, `risk-${task.riskTier}`)]),
     asideField("Assignee", [
       task.agentId
-        ? el("span", { class: "tag agent" }, [agentName(agents, task.agentId)])
+        ? tag(agentName(agents, task.agentId), "agent")
         : el("span", { class: "muted" }, ["unassigned"]),
     ]),
     task.branch ? asideField("Branch", [el("code", { class: "branch" }, [task.branch])]) : null,
@@ -372,17 +373,17 @@ export function openAuditDetail(it: ReviewItem): void {
     evidenceArtifacts(attempt?.evidence),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     actionRow([
-      primaryBtn("Looks good", () => act(() => api.ackAudit(task.id))),
-      dangerBtn("Revert", () => {
+      button("Looks good", { variant: "primary", onclick: () => act(() => api.ackAudit(task.id)) }),
+      button("Revert", { variant: "danger", onclick: () => {
         if (!confirm(`Mark "${task.title}" as a change-failure? Revert it in git separately.`)) return;
         act(() => api.revertTask(task.id));
-      }),
+      }}),
     ]),
     commentsSection(task.id),
   ]);
   const side = buildSidebar([
-    asideField("Status", [el("span", { class: "tag" }, ["auto-merged"])]),
-    asideField("Risk", [el("span", { class: `tag risk-${task.riskTier}` }, [task.riskTier])]),
+    asideField("Status", [tag("auto-merged")]),
+    asideField("Risk", [tag(task.riskTier, `risk-${task.riskTier}`)]),
     task.branch ? asideField("Branch", [el("code", { class: "branch" }, [task.branch])]) : null,
   ]);
   openTaskId = task.id;
@@ -396,21 +397,21 @@ export function openAuditDetail(it: ReviewItem): void {
 // the latest attempt.
 export function openTaskDetail(t: Task, agents: Agent[]): void {
   const side = buildSidebar([
-    asideField("Status", [el("span", { class: `tag status-${t.status}` }, [t.status])]),
-    asideField("Risk", [el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier])]),
-    t.priority ? asideField("Priority", [el("span", { class: `tag priority-${t.priority}` }, [t.priority])]) : null,
-    t.reporter ? asideField("Reporter", [el("span", { class: `tag reporter-${t.reporter}` }, [t.reporter])]) : null,
+    asideField("Status", [tag(t.status, `status-${t.status}`)]),
+    asideField("Risk", [tag(t.riskTier, `risk-${t.riskTier}`)]),
+    t.priority ? asideField("Priority", [tag(t.priority, `priority-${t.priority}`)]) : null,
+    t.reporter ? asideField("Reporter", [tag(t.reporter, `reporter-${t.reporter}`)]) : null,
     asideField("Assignee", [
       t.agentId
-        ? el("span", { class: "tag agent" }, [agentName(agents, t.agentId)])
+        ? tag(agentName(agents, t.agentId), "agent")
         : el("span", { class: "muted" }, ["unassigned"]),
     ]),
     t.branch ? asideField("Branch", [el("code", { class: "branch" }, [t.branch])]) : null,
     asideField("Tags", (t.tags ?? []).length
-      ? (t.tags ?? []).map((tag) => el("span", { class: "tag" }, [tag]))
+      ? (t.tags ?? []).map((lbl) => tag(lbl))
       : [el("span", { class: "muted" }, ["none"])]),
     (t.dependsOn ?? []).length
-      ? asideField("Depends on", (t.dependsOn ?? []).map((dep) => el("span", { class: "tag dep" }, [dep.slice(0, 6)])))
+      ? asideField("Depends on", (t.dependsOn ?? []).map((dep) => tag(dep.slice(0, 6), "dep")))
       : null,
     (t.touchPaths ?? []).length
       ? asideField("Touches", (t.touchPaths ?? []).map((p) => el("code", { class: "verify-cmd" }, [p])))
@@ -425,11 +426,11 @@ export function openTaskDetail(t: Task, agents: Agent[]): void {
   if (STEERABLE.includes(t.status)) children.push(steerRow(t, agents));
   if (t.status === "closed") {
     children.push(actionRow([
-      primaryBtn("Retry", () => act(() => api.retryTask(t.id))),
-      dangerBtn("Delete", () => {
+      button("Retry", { variant: "primary", onclick: () => act(() => api.retryTask(t.id)) }),
+      button("Delete", { variant: "danger", onclick: () => {
         if (!confirm(`Permanently delete "${t.title}"? Its attempt history and comments are removed too.`)) return;
         act(() => api.deleteTask(t.id));
-      }),
+      }}),
     ]));
   }
   children.push(el("div", { id: `task-evidence-${t.id}`, class: "task-evidence" }, []));
@@ -499,7 +500,7 @@ function imageAttach(pasteTarget: HTMLTextAreaElement, err: HTMLElement) {
     upload(files);
   });
 
-  const button = el("button", {
+  const attachBtn = el("button", {
     type: "button",
     title: "Attach images (or paste one into the text field)",
     onclick: () => picker.click(),
@@ -507,7 +508,7 @@ function imageAttach(pasteTarget: HTMLTextAreaElement, err: HTMLElement) {
 
   return {
     previews,
-    controls: [picker, button],
+    controls: [picker, attachBtn],
     urls: () => [...pending],
     reset: () => {
       pending.length = 0;
@@ -574,7 +575,7 @@ function commentsSection(id: string): HTMLElement {
       input,
       attach.previews,
       err,
-      el("div", { class: "form-actions" }, [...attach.controls, primaryBtn("Comment", submit)]),
+      el("div", { class: "form-actions" }, [...attach.controls, button("Comment", { variant: "primary", onclick: submit })]),
     ]),
   ]);
 }
@@ -639,10 +640,10 @@ function steerRow(t: Task, agents: Agent[]): HTMLElement {
   }
   return el("div", { class: "card-actions" }, [
     select,
-    dangerBtn("Cancel task", () => {
+    button("Cancel task", { variant: "danger", onclick: () => {
       if (!confirm(`Cancel "${t.title}"?`)) return;
       act(() => api.cancelTask(t.id));
-    }),
+    }}),
   ]);
 }
 
@@ -679,7 +680,7 @@ function openDefine(): void {
     field("Images", el("div", { class: "attach-field" }, [attach.previews, ...attach.controls])),
     field("Constraints", constraints),
     err,
-    el("div", { class: "form-actions" }, [el("button", { class: "primary", type: "submit" }, ["Define big task"])]),
+    el("div", { class: "form-actions" }, [button("Define big task", { variant: "primary", type: "submit" })]),
   ]);
   openModal("Define a big task", form, {
     subtitle: "Describe an outcome in plain intent — a planner agent decomposes it into tasks for your approval.",
@@ -729,7 +730,7 @@ function openCreateTask(): void {
     field("Priority", priority),
     el("p", { class: "muted sm" }, ["Verify commands are the machine-checkable acceptance contract."]),
     err,
-    el("div", { class: "form-actions" }, [el("button", { class: "primary", type: "submit" }, ["Create task"])]),
+    el("div", { class: "form-actions" }, [button("Create task", { variant: "primary", type: "submit" })]),
   ]);
   openModal("Create a task", form, {
     subtitle: "One well-scoped change, routed straight to an implementer agent — no planner involved.",
@@ -760,20 +761,8 @@ function buildSidebar(fields: (HTMLElement | null)[]): HTMLElement {
   return el("div", {}, fields.filter(Boolean) as HTMLElement[]);
 }
 
-function field(label: string, control: HTMLElement): HTMLElement {
-  return el("div", { class: "field" }, [el("label", {}, [label]), control]);
-}
-
 function actionRow(buttons: HTMLElement[]): HTMLElement {
   return el("div", { class: "card-actions" }, buttons);
-}
-
-function primaryBtn(label: string, onclick: () => void): HTMLElement {
-  return el("button", { class: "primary", onclick }, [label]);
-}
-
-function dangerBtn(label: string, onclick: () => void): HTMLElement {
-  return el("button", { class: "danger", onclick }, [label]);
 }
 
 function lines(s: string): string[] {
@@ -794,17 +783,6 @@ function stageRow(ev: Evidence): HTMLElement {
   });
   if (chips.length === 0) return el("div", { class: "stage-row" }, [el("span", { class: "muted" }, ["no gate stages"])]);
   return el("div", { class: "stage-row" }, chips);
-}
-
-// formatTokens renders a token count with thousands separators (12345 → "12,345").
-function formatTokens(n: number): string {
-  return n.toLocaleString("en-US");
-}
-
-// formatTokensShort abbreviates a count for the compact in/out breakdown
-// (8200 → "8k", 950 → "950").
-function formatTokensShort(n: number): string {
-  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 }
 
 // usageLine surfaces an attempt's self-reported token usage as a small muted
