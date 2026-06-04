@@ -5,3 +5,4 @@
 - [ ] when agents work there is no way to validate they're really working. They might get stuck.
 - [ ] Mobile app for mobile usage
 - [ ] Desktop app for increased experience ? (question and tinkering)
+- [ ] Priority for big tasks

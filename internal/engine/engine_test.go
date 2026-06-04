@@ -233,6 +233,140 @@ func TestGateFailureSurfacesAsFailed(t *testing.T) {
 	}
 }
 
+func TestAutoRetryRequeuesWithinBudget(t *testing.T) {
+	eng, st, _ := setup(t)
+	// Two-attempt budget; verify is red on the first run (no marker yet) and
+	// green on the second, simulating a failure the agent can correct.
+	a := &model.Agent{
+		Name:        "fake",
+		Command:     "printf 'x' > out.txt",
+		Roles:       []string{model.RoleImplementer},
+		Enabled:     true,
+		MaxAttempts: 2,
+	}
+	if err := st.Agents.Create(a); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "marker")
+	task := &model.Task{
+		Title:      "flaky verify",
+		Acceptance: model.Contract{VerifyCmds: []string{"test -f " + marker + " || { touch " + marker + "; exit 1; }"}},
+	}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+
+	// First run fails the gate but stays within budget -> auto-requeued.
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskReady {
+		t.Fatalf("status = %q, want ready (auto-retry)", got.Status)
+	}
+	att, err := st.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if att.Result != model.ResultFail {
+		t.Fatalf("result = %q, want fail", att.Result)
+	}
+
+	// Second run passes -> review, with both attempts kept as history.
+	if !eng.dispatchOnce() {
+		t.Fatal("expected auto-retry dispatch")
+	}
+	got, _ = st.Tasks.Get(task.ID)
+	if got.Status != model.TaskReview {
+		t.Fatalf("status = %q, want review after retry", got.Status)
+	}
+	atts, err := st.Attempts.ListForTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(atts) != 2 {
+		t.Fatalf("attempts = %d, want 2", len(atts))
+	}
+}
+
+func TestAutoRetryExhaustsBudgetThenFails(t *testing.T) {
+	eng, st, _ := setup(t)
+	a := &model.Agent{
+		Name:        "fake",
+		Command:     "printf 'x' > out.txt",
+		Roles:       []string{model.RoleImplementer},
+		Enabled:     true,
+		MaxAttempts: 2,
+	}
+	if err := st.Agents.Create(a); err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{
+		Title:      "always-red verify",
+		Acceptance: model.Contract{VerifyCmds: []string{"exit 1"}},
+	}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt 1: fails, auto-requeued. Attempt 2: fails, budget spent -> failed.
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+	if got, _ := st.Tasks.Get(task.ID); got.Status != model.TaskReady {
+		t.Fatalf("status = %q, want ready after first failure", got.Status)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected auto-retry dispatch")
+	}
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status = %q, want failed after budget exhausted", got.Status)
+	}
+	atts, err := st.Attempts.ListForTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(atts) != 2 {
+		t.Fatalf("attempts = %d, want 2", len(atts))
+	}
+}
+
+func TestLastFailureSummaryIncludesPriorFailures(t *testing.T) {
+	eng, st, _ := setup(t)
+	task := &model.Task{Title: "multi-fail"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	older := &model.Attempt{
+		TaskID: task.ID, Result: model.ResultFail,
+		Evidence: model.Evidence{Stages: map[string]model.StageResult{
+			"build": {Pass: false, Output: "syntax error: smart quotes"},
+		}},
+	}
+	newer := &model.Attempt{
+		TaskID: task.ID, Result: model.ResultFail,
+		Evidence: model.Evidence{Stages: map[string]model.StageResult{
+			"verify": {Pass: false, Output: "TypeError: cannot read undefined"},
+		}},
+	}
+	for _, a := range []*model.Attempt{older, newer} {
+		if err := st.Attempts.Create(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sum := eng.lastFailureSummary(task.ID)
+	for _, want := range []string{
+		`stage "verify" failed`, "TypeError: cannot read undefined",
+		"Earlier attempts failed too", `stage "build" failed: syntax error: smart quotes`,
+	} {
+		if !strings.Contains(sum, want) {
+			t.Fatalf("summary missing %q:\n%s", want, sum)
+		}
+	}
+}
+
 func TestRetryRequeuesFailedTask(t *testing.T) {
 	eng, st, _ := setup(t)
 	registerAgent(t, st, "printf 'x' > out.txt")

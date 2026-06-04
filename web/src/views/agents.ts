@@ -114,6 +114,9 @@ function agentForm(): HTMLElement {
   const tags = el("input", { placeholder: "Tags, comma-separated (go, frontend)" }) as HTMLInputElement;
   const concurrency = el("input", { type: "number", value: "1", min: "1" }) as HTMLInputElement;
   const timeout = el("input", { placeholder: "20m", value: "20m" }) as HTMLInputElement;
+  // Retry budget: the engine auto-requeues a failed task (with the failure
+  // summary in the next prompt) until this many attempts have failed.
+  const maxAttempts = el("input", { type: "number", value: "3", min: "1" }) as HTMLInputElement;
 
   const roleBoxes = ROLES.map((r) => {
     const cb = el("input", { type: "checkbox", value: r }) as HTMLInputElement;
@@ -171,7 +174,7 @@ function agentForm(): HTMLElement {
         tags: tags.value.split(",").map((s) => s.trim()).filter(Boolean),
         concurrency: parseInt(concurrency.value, 10) || 1,
         timeout: timeout.value.trim(),
-        maxAttempts: 1,
+        maxAttempts: parseInt(maxAttempts.value, 10) || 1,
         enabled: true,
         photo: photoDataUrl,
       };
@@ -195,6 +198,7 @@ function agentForm(): HTMLElement {
       el("div", { class: "field" }, [el("label", {}, ["Tags"]), tags]),
       el("div", { class: "field" }, [el("label", {}, ["Concurrency"]), concurrency]),
       el("div", { class: "field" }, [el("label", {}, ["Timeout"]), timeout]),
+      el("div", { class: "field" }, [el("label", {}, ["Max attempts"]), maxAttempts]),
     ]),
     el("div", { class: "field" }, [
       el("label", {}, ["Roles"]),
@@ -218,6 +222,7 @@ function agentForm(): HTMLElement {
     populateModels(kind.value);
     concurrency.value = "1";
     timeout.value = "20m";
+    maxAttempts.value = "3";
     photoDataUrl = "";
     photoPreview.src = DEFAULT_AVATAR;
     photoHint.textContent = "Optional — default avatar otherwise.";
@@ -233,6 +238,7 @@ function agentForm(): HTMLElement {
     tags.value = a.tags?.join(", ") ?? "";
     concurrency.value = String(a.concurrency);
     timeout.value = a.timeout;
+    maxAttempts.value = String(a.maxAttempts || 1);
     roleBoxes.forEach((b) => (b.cb.checked = a.roles?.includes(b.role) ?? false));
     photoDataUrl = a.photo || "";
     photoPreview.src = photoDataUrl || DEFAULT_AVATAR;

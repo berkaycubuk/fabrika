@@ -272,6 +272,9 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 		if t.Status != model.TaskReady {
 			continue
 		}
+		if _, busy := e.running[t.ID]; busy {
+			continue // an auto-retried run hasn't released its slot yet (markDone pending)
+		}
 		if !depsSatisfied(t, byID) {
 			continue // a prerequisite hasn't merged yet
 		}
@@ -464,7 +467,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	}
 	if err != nil {
 		log.Printf("engine: agent run %q: %v", ag.Name, err)
-		e.finish(task, ag, model.Evidence{}, model.ResultFail, "agent error: "+err.Error(), model.TaskFailed, model.Usage{})
+		e.finishFail(task, ag, model.Evidence{}, "agent error: "+err.Error(), model.Usage{})
 		return
 	}
 
@@ -540,9 +543,9 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 		ev := model.Evidence{Stages: map[string]model.StageResult{
 			"locked": {Pass: false, Output: "branch edits protected files: " + strings.Join(viol, ", ")},
 		}, Diff: diff, Artifacts: artifactURLs}
-		e.finish(task, ag, ev, model.ResultFail,
-			"LOCKED GLOB VIOLATION: "+strings.Join(viol, ", ")+"\n\n"+logText, model.TaskFailed, agentRes.Usage)
-		log.Printf("engine: task %q failed: locked globs touched (%v)", task.Title, viol)
+		e.finishFail(task, ag, ev,
+			"LOCKED GLOB VIOLATION: "+strings.Join(viol, ", ")+"\n\n"+logText, agentRes.Usage)
+		log.Printf("engine: task %q gate-blocked: locked globs touched (%v)", task.Title, viol)
 		return
 	}
 
@@ -568,11 +571,12 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	ev.Diff = diff
 	ev.Artifacts = artifactURLs
 
-	// A red gate fails the task outright. The green path runs the Phase 3 trust
-	// checks (reviewer + mutation testing) and decides auto-merge vs human review.
+	// A red gate fails the attempt; finishFail auto-retries while the agent's
+	// MaxAttempts budget allows, else the task lands in failed. The green path
+	// runs the Phase 3 trust checks (reviewer + mutation testing) and decides
+	// auto-merge vs human review.
 	if !gatePassed(ev) {
-		e.finish(task, ag, ev, model.ResultFail, logText, model.TaskFailed, agentRes.Usage)
-		log.Printf("engine: task %q -> failed (gate red)", task.Title)
+		e.finishFail(task, ag, ev, logText, agentRes.Usage)
 		return
 	}
 	e.finishGreen(ctx, task, ag, ev, logText, base, changed, conventions, agentRes.Usage)
@@ -656,6 +660,51 @@ func (e *Engine) finish(task model.Task, ag model.Agent, ev model.Evidence, resu
 	e.recordAttempt(task, ag, ev, result, logText, usage)
 	e.setStatus(task.ID, status)
 	e.emitTask(task.ID)
+}
+
+// finishFail records a failed attempt, then either re-queues the task for an
+// automatic retry — while the agent's MaxAttempts budget allows — or marks it
+// failed for the human. The re-run's prompt carries lastFailureSummary, so the
+// next attempt corrects instead of repeats; claim() rebuilds a clean worktree.
+// Counting is all-time (manual Retry keeps attempt history), so a human Retry
+// after exhaustion grants one more run, not a fresh budget.
+func (e *Engine) finishFail(task model.Task, ag model.Agent, ev model.Evidence, logText string, usage model.Usage) {
+	e.mu.Lock()
+	e.recordAttempt(task, ag, ev, model.ResultFail, logText, usage)
+	status := model.TaskFailed
+	budget := maxAttempts(ag)
+	if fails, err := e.failedAttempts(task.ID); err == nil && fails < budget {
+		status = model.TaskReady
+		log.Printf("engine: task %q failed attempt %d/%d — auto-retrying", task.Title, fails, budget)
+	} else {
+		log.Printf("engine: task %q -> failed", task.Title)
+	}
+	e.setStatus(task.ID, status)
+	e.mu.Unlock()
+	e.emitTask(task.ID)
+}
+
+// failedAttempts counts the task's recorded failed attempts.
+func (e *Engine) failedAttempts(taskID string) (int, error) {
+	atts, err := e.store.Attempts.ListForTask(taskID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, a := range atts {
+		if a.Result == model.ResultFail {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// maxAttempts is the agent's retry budget, floored at one run.
+func maxAttempts(ag model.Agent) int {
+	if ag.MaxAttempts < 1 {
+		return 1
+	}
+	return ag.MaxAttempts
 }
 
 // recordAttempt persists one attempt row. The caller must hold e.mu.
@@ -1030,16 +1079,42 @@ func (e *Engine) taskGuidance(taskID string) []string {
 	return out
 }
 
+// stageOrder is the canonical reporting order for evidence stages.
+var stageOrder = []string{"contract", "locked", "heldout", "setup", "typecheck", "lint", "build", "test", "verify", "e2e"}
+
 // lastFailureSummary condenses the most recent failed attempt's evidence into a
 // short report (failing stages + the tail of their output) for the next run's
-// prompt. Empty when the task has no prior failed attempt.
+// prompt, followed by one line per earlier failure so a fix for the newest
+// problem doesn't reintroduce an older one. Empty when the task's latest
+// attempt didn't fail.
 func (e *Engine) lastFailureSummary(taskID string) string {
-	att, err := e.store.Attempts.LatestForTask(taskID)
-	if err != nil || att == nil || att.Result != model.ResultFail {
+	atts, err := e.store.Attempts.ListForTask(taskID) // newest first
+	if err != nil || len(atts) == 0 || atts[0].Result != model.ResultFail {
 		return ""
 	}
 	var b strings.Builder
-	for _, stage := range []string{"contract", "locked", "heldout", "setup", "typecheck", "lint", "build", "test", "verify", "e2e"} {
+	b.WriteString(attemptFailureDetail(atts[0]))
+	var prior []string
+	for _, a := range atts[1:] {
+		if a.Result == model.ResultFail {
+			prior = append(prior, attemptFailureLine(a))
+		}
+	}
+	if len(prior) > 0 {
+		b.WriteString("\n\nEarlier attempts failed too (oldest first) — make sure your fix doesn't reintroduce these:\n")
+		for i := len(prior) - 1; i >= 0; i-- {
+			b.WriteString("- " + prior[i] + "\n")
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// attemptFailureDetail reports each failing stage with the tail of its output,
+// falling back to the attempt log when there is no stage evidence (e.g. the
+// agent itself errored).
+func attemptFailureDetail(att model.Attempt) string {
+	var b strings.Builder
+	for _, stage := range stageOrder {
 		res, ok := att.Evidence.Stages[stage]
 		if !ok || res.Pass {
 			continue
@@ -1047,10 +1122,32 @@ func (e *Engine) lastFailureSummary(taskID string) string {
 		fmt.Fprintf(&b, "stage %q failed:\n%s\n", stage, tailLines(res.Output, 40))
 	}
 	if b.Len() == 0 && att.Log != "" {
-		// No stage evidence (e.g. the agent itself errored): fall back to the log.
 		b.WriteString(tailLines(att.Log, 40))
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// attemptFailureLine condenses one failed attempt to a single line: the first
+// failing stage plus the last line of its output (where the error usually is).
+func attemptFailureLine(att model.Attempt) string {
+	for _, stage := range stageOrder {
+		res, ok := att.Evidence.Stages[stage]
+		if !ok || res.Pass {
+			continue
+		}
+		return fmt.Sprintf("stage %q failed: %s", stage, lastLine(res.Output))
+	}
+	return lastLine(att.Log)
+}
+
+// lastLine returns the last non-empty line of s, truncated for prompt brevity.
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	out := strings.TrimSpace(lines[len(lines)-1])
+	if len(out) > 200 {
+		out = out[:200] + "…"
+	}
+	return out
 }
 
 // tailLines returns the last n lines of s, prefixing a marker when truncated.
