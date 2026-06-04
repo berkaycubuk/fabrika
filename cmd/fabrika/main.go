@@ -148,7 +148,7 @@ func cmdServe(port int, openBrowser bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv := api.NewServer(st, cfg, cwd, assets)
+	srv := api.NewServer(st, cfg, cwd, assets, versionString())
 	srv.Start(ctx) // launch the dispatch loop
 
 	addr := fmt.Sprintf("localhost:%d", port)

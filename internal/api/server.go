@@ -24,13 +24,14 @@ type Server struct {
 	web      fs.FS  // embedded static UI assets (may be nil in tests)
 	repoRoot string // project root; uploads live under <repoRoot>/.fabrika/uploads
 	engine   *engine.Engine
+	version  string
 }
 
 // NewServer constructs a Server and its engine. cfg + repoRoot configure the
 // dispatch loop; web is the embedded UI filesystem (nil disables static
 // serving). The engine emits UI events through the WebSocket hub.
-func NewServer(s *store.Store, cfg *config.Config, repoRoot string, web fs.FS) *Server {
-	srv := &Server{store: s, cfg: cfg, hub: newHub(), web: web, repoRoot: repoRoot}
+func NewServer(s *store.Store, cfg *config.Config, repoRoot string, web fs.FS, version string) *Server {
+	srv := &Server{store: s, cfg: cfg, hub: newHub(), web: web, repoRoot: repoRoot, version: version}
 	srv.engine = engine.New(s, cfg, repoRoot, func(t string, p any) {
 		srv.hub.Broadcast(Event{Type: t, Payload: p})
 	})
@@ -98,6 +99,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 
+	// --- Version ---
+	mux.HandleFunc("GET /api/version", s.getVersion)
+
 	// --- WebSocket events ---
 	mux.HandleFunc("GET /api/events", s.hub.serveWS)
 
@@ -128,6 +132,10 @@ func decodeJSON(r *http.Request, v any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
+}
+
+func (s *Server) getVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"version": s.version})
 }
 
 // mapStoreErr translates store errors into HTTP responses.

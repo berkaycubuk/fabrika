@@ -79,7 +79,7 @@ func TestEvidenceArtifactServe(t *testing.T) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	srv := NewServer(s, &config.Config{}, dir, nil)
+	srv := NewServer(s, &config.Config{}, dir, nil, "")
 	srv.Start(context.Background())
 	h := srv.Handler()
 
