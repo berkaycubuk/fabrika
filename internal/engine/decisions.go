@@ -167,28 +167,15 @@ func (e *Engine) ApprovePlan(planID string) error {
 	return nil
 }
 
-// RejectPlan marks a plan rejected and closes its still-planned tasks. The big
-// task returns to draft so it can be re-planned.
+// RejectPlan discards the whole plan request: it deletes the plan, its planned
+// tasks, its plan-level decisions, and the big task itself. The big task is NOT
+// returned to draft and cannot be re-planned.
 func (e *Engine) RejectPlan(planID string) error {
 	p, err := e.store.Plans.Get(planID)
 	if err != nil {
 		return err
 	}
-	if err := e.store.Plans.UpdateStatus(planID, model.PlanRejected); err != nil {
-		return err
-	}
-	tasks, _ := e.store.Tasks.ListByBigTask(p.BigTaskID)
-	for _, t := range tasks {
-		if t.Status == model.TaskPlanned {
-			_ = e.store.Tasks.UpdateStatus(t.ID, model.TaskClosed)
-			if updated, gerr := e.store.Tasks.Get(t.ID); gerr == nil {
-				e.emit("task.updated", *updated)
-			}
-		}
-	}
-	e.setBigTaskStatus(p.BigTaskID, model.BigTaskDraft)
-	e.emit("plan.updated", *p)
-	return nil
+	return e.DeleteBigTask(p.BigTaskID)
 }
 
 // lockedViolations returns the changed files that match any locked glob. The
