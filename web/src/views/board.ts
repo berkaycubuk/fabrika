@@ -187,6 +187,14 @@ function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
   } else if (b.status === "error") {
     children.push(el("p", { class: "form-error bigtask-error" }, [b.error || "Planning failed."]));
   }
+  if (b.status === "draft" || b.status === "error") {
+    children.push(actionRow([
+      dangerBtn("Delete request", () => {
+        if (!confirm(`Delete "${b.title}"? This removes the plan request and its proposed tasks.`)) return;
+        act(() => api.deleteBigTask(b.id));
+      }),
+    ]));
+  }
   openModal(b.title, el("div", { class: "detail" }, children), { wide: true });
 }
 

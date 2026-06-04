@@ -60,6 +60,7 @@ export const api = {
   listBigTasks: () => req<BigTask[]>("GET", "/api/bigtasks"),
   createBigTask: (b: { title: string; intent: string; constraints?: string[]; attachments?: string[] }) =>
     req<BigTask>("POST", "/api/bigtasks", b),
+  deleteBigTask: (id: string) => req<void>("DELETE", `/api/bigtasks/${id}`),
 
   // Plans (approve flow, Phase 2)
   listPlans: () => req<Plan[]>("GET", "/api/plans"),
