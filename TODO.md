@@ -1,6 +1,7 @@
 - [ ] Merged column is not growing longer with its content.
-- [ ] Approve column cards are not caring decide card results. The system does not care about our decisions.
-- [ ] Do not close modals when clicked outside of the modal.
 - [ ] How agent pooling works? Which agents chosen for which work?
-- [ ] When agents task waiting in the Accept column, agent stops working until that task is moved.
 - [ ] More visual diff
+- [ ] Git viewer for more git integration
+- [ ] plan request becomes draft after getting rejected. We need to delete it.
+- [ ] Mobile app for mobile usage
+- [ ] Desktop app for increased experience ? (question and tinkering)

@@ -94,9 +94,31 @@ func TestBuildResolvesDepsAndDefaults(t *testing.T) {
 func TestRenderPromptIncludesSchemaAndPlanFile(t *testing.T) {
 	bt := model.BigTask{Title: "X", Intent: "do x", Constraints: []string{"fast"}}
 	p := RenderPrompt(bt, []model.Convention{{Rule: "use tabs"}}, "/tmp/plan.json", []string{"/repo/.fabrika/uploads/a.png"})
-	for _, want := range []string{"do x", "fast", "use tabs", "/tmp/plan.json", "verifyCmds", "dependsOn", "/repo/.fabrika/uploads/a.png"} {
+	for _, want := range []string{"do x", "fast", "use tabs", "/tmp/plan.json", "verifyCmds", "dependsOn", "/repo/.fabrika/uploads/a.png", "heldOutFiles"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("prompt missing %q", want)
 		}
+	}
+}
+
+func TestParseHeldOutFiles(t *testing.T) {
+	out := `{
+  "tasks": [{
+    "title": "T",
+    "spec": "s",
+    "acceptance": {
+      "verifyCmds": ["true"],
+      "heldOut": ["node --test test/heldout/x.test.ts"],
+      "heldOutFiles": { "test/heldout/x.test.ts": "import {test} from \"node:test\";" }
+    }
+  }]
+}`
+	p, err := Parse(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := p.Tasks[0].Acceptance.HeldOutFiles
+	if len(got) != 1 || !strings.Contains(got["test/heldout/x.test.ts"], "node:test") {
+		t.Fatalf("heldOutFiles = %v", got)
 	}
 }

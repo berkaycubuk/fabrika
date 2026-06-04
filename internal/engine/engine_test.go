@@ -450,3 +450,41 @@ func TestEvidenceBadRefsSkipped(t *testing.T) {
 		t.Fatalf("comments = %+v, want none", comments)
 	}
 }
+
+func TestWriteHeldOutFiles(t *testing.T) {
+	wt := t.TempDir()
+	files := map[string]string{
+		"web/test/heldout/x.test.ts": "import \"node:test\"",
+		"./flat.txt":                 "flat",
+	}
+	if err := writeHeldOutFiles(wt, files); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(wt, "web", "test", "heldout", "x.test.ts"))
+	if err != nil || string(b) != "import \"node:test\"" {
+		t.Fatalf("nested file = %q, err = %v", b, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(wt, "flat.txt")); string(b) != "flat" {
+		t.Fatalf("flat file = %q", b)
+	}
+
+	// Overwrites an implementer-supplied copy with the trusted contents.
+	if err := writeHeldOutFiles(wt, map[string]string{"flat.txt": "trusted"}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(wt, "flat.txt")); string(b) != "trusted" {
+		t.Fatalf("flat file after overwrite = %q", b)
+	}
+
+	// Paths escaping the worktree are rejected.
+	for _, bad := range []string{"../escape.txt", "/abs.txt", "a/../../b.txt", ""} {
+		if err := writeHeldOutFiles(wt, map[string]string{bad: "x"}); err == nil {
+			t.Fatalf("path %q accepted, want error", bad)
+		}
+	}
+
+	// No held-out files is a no-op.
+	if err := writeHeldOutFiles(wt, nil); err != nil {
+		t.Fatal(err)
+	}
+}

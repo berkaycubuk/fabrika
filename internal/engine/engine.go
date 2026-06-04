@@ -459,15 +459,32 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	e.mu.Unlock()
 	e.emitTask(task.ID)
 
-	// Integrity: the implementer may not touch locked test files. A violation
-	// fails the task before the gate even runs — its acceptance can't be trusted.
-	if viol := lockedViolations(changed, task.Acceptance.LockedGlobs); len(viol) > 0 {
+	// Integrity: the implementer may not touch locked test files, nor the paths
+	// the planner-authored held-out files will occupy. A violation fails the task
+	// before the gate even runs — its acceptance can't be trusted.
+	locked := append([]string{}, task.Acceptance.LockedGlobs...)
+	for p := range task.Acceptance.HeldOutFiles {
+		locked = append(locked, p)
+	}
+	if viol := lockedViolations(changed, locked); len(viol) > 0 {
 		ev := model.Evidence{Stages: map[string]model.StageResult{
 			"locked": {Pass: false, Output: "branch edits protected files: " + strings.Join(viol, ", ")},
 		}, Diff: diff, Artifacts: artifactURLs}
 		e.finish(task, ag, ev, model.ResultFail,
 			"LOCKED GLOB VIOLATION: "+strings.Join(viol, ", ")+"\n\n"+logText, model.TaskFailed, agentRes.Usage)
 		log.Printf("engine: task %q failed: locked globs touched (%v)", task.Title, viol)
+		return
+	}
+
+	// Materialize planner-authored held-out files now — after the branch's
+	// auto-commit, so they stay untracked (gate and mutation testing see them;
+	// they never enter the branch or the merge).
+	if werr := writeHeldOutFiles(wt, task.Acceptance.HeldOutFiles); werr != nil {
+		ev := model.Evidence{Stages: map[string]model.StageResult{
+			"heldout": {Pass: false, Output: "write held-out files: " + werr.Error()},
+		}, Diff: diff, Artifacts: artifactURLs}
+		e.finish(task, ag, ev, model.ResultFail, logText, model.TaskFailed, agentRes.Usage)
+		log.Printf("engine: task %q failed: held-out files: %v", task.Title, werr)
 		return
 	}
 
@@ -923,4 +940,26 @@ func writeTempPrompt(content string) (path string, cleanup func(), err error) {
 	}
 	f.Close()
 	return f.Name(), func() { os.Remove(f.Name()) }, nil
+}
+
+// writeHeldOutFiles materializes planner-authored held-out test files
+// (Contract.HeldOutFiles) into the worktree just before the gate runs. Paths
+// are worktree-relative; anything absolute or escaping the worktree is
+// rejected. Existing files are overwritten — the gate must run against the
+// trusted contents, never an implementer-supplied copy.
+func writeHeldOutFiles(wt string, files map[string]string) error {
+	for p, contents := range files {
+		rel := strings.TrimPrefix(strings.TrimSpace(p), "./")
+		if rel == "" || filepath.IsAbs(rel) || !filepath.IsLocal(filepath.FromSlash(rel)) {
+			return fmt.Errorf("held-out file path %q escapes the worktree", p)
+		}
+		dst := filepath.Join(wt, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(dst, []byte(contents), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

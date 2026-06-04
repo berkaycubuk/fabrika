@@ -102,6 +102,7 @@ type Contract struct {
     HeldOut     []string // checks the implementer agent never sees (Phase 2+)
     Properties  []string // invariants (Phase 2+)
     LockedGlobs []string // protected test files the implementer may not edit
+    HeldOutFiles map[string]string // planner-authored files backing HeldOut checks: path -> contents, written into the worktree only at gate time
 }
 
 type Attempt struct {
@@ -208,6 +209,7 @@ Integrity rules (the gate must be hard to fool):
 - **Acceptance comes from the spec, not the implementer.** `Contract.VerifyCmds` and locked tests are authored by you or the planner agent — the implementing agent may not modify `LockedGlobs`. The gate rejects branches that touch them.
 - **Determinism**: no live network/time/random in the gate; pin where possible.
 - **Phase 2+**: run `HeldOut` checks the implementer never saw; add **mutation testing** as a validator-of-the-validator (inject a bug, confirm a test goes red).
+- A `HeldOut` check needing a test file that doesn't exist in the repo must ship it in `HeldOutFiles` (planner-authored). The engine writes those files into the worktree after the branch's auto-commit and just before the gate, so they stay untracked: the implementer never sees them, they overwrite any implementer-supplied copy, and their paths are implicitly locked.
 - Reject skipped tests and assertion-count regressions.
 
 A branch only becomes a `review`/auto-merge candidate if every required stage passes.

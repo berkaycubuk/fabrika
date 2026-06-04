@@ -95,6 +95,9 @@ func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile str
 	b.WriteString("Decompose this into the smallest set of independently-verifiable tasks. ")
 	b.WriteString("For each task author a machine-checkable acceptance contract: shell `verifyCmds` that prove it is done, ")
 	b.WriteString("optional `lockedGlobs` the implementer must not edit, and optional `heldOut` checks the implementer never sees. ")
+	b.WriteString("A `heldOut` command must be runnable as-is: if it needs a test file that does not already exist in the repo, ")
+	b.WriteString("author that file yourself in `heldOutFiles` (worktree-relative path -> full file contents) — the implementer cannot create it ")
+	b.WriteString("and fabrika writes it into the worktree only at gate time. Never reference a held-out file you did not provide. ")
 	b.WriteString("Express ordering with `dependsOn` referencing another task's exact title. ")
 	b.WriteString("List the files/dirs each task will touch in `touchPaths` (drives collision avoidance + risk). ")
 	b.WriteString("If something genuinely cannot be decided without the human, add it to `decisions` instead of guessing.\n\n")
@@ -113,7 +116,8 @@ func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile str
       "acceptance": {
         "verifyCmds": ["go test ./..."],
         "lockedGlobs": ["**/*_test.go"],
-        "heldOut": ["go test -run Hidden ./..."]
+        "heldOut": ["go test -run Hidden ./..."],
+        "heldOutFiles": { "internal/foo/hidden_test.go": "package foo\n\n// full file contents..." }
       }
     }
   ],

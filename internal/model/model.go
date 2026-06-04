@@ -123,6 +123,11 @@ type Contract struct {
 	HeldOut     []string `json:"heldOut"`     // checks the implementer never sees (Phase 2+)
 	Properties  []string `json:"properties"`  // invariants (Phase 2+)
 	LockedGlobs []string `json:"lockedGlobs"` // protected test files the implementer may not edit
+	// HeldOutFiles are planner-authored test files backing the HeldOut checks:
+	// worktree-relative path -> full contents. They are written into the
+	// worktree only at gate time (after the implementer finishes and the branch
+	// is committed), so the implementer never sees them and they never merge.
+	HeldOutFiles map[string]string `json:"heldOutFiles,omitempty"`
 }
 
 // Attempt records one agent run against a Task.
