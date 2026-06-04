@@ -156,6 +156,26 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, bt)
 }
 
+// replanBigTask re-queues an errored plan request for planning, so a planner
+// failure is recoverable from the UI instead of a delete-and-retype dead end.
+func (s *Server) replanBigTask(w http.ResponseWriter, r *http.Request) {
+	bt, err := s.store.BigTasks.Get(r.PathValue("id"))
+	if err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	if bt.Status != model.BigTaskError {
+		writeErr(w, http.StatusConflict, "plan request is "+bt.Status+", not errored")
+		return
+	}
+	if _, ok := s.engine.PlannerAgent(); !ok {
+		writeErr(w, http.StatusConflict, "no planner agent is enabled — enable one in Agents, then retry")
+		return
+	}
+	s.engine.PlanBigTask(*bt)
+	writeJSON(w, http.StatusOK, map[string]string{"status": model.BigTaskDraft})
+}
+
 func (s *Server) deleteBigTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.engine.DeleteBigTask(id); err != nil {
@@ -195,7 +215,11 @@ func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) acceptTask(w http.ResponseWriter, r *http.Request) {
-	if err := s.engine.Accept(r.PathValue("id")); err != nil {
+	var body struct {
+		Force bool `json:"force"`
+	}
+	_ = decodeJSON(r, &body) // body is optional; absent means a normal accept
+	if err := s.engine.Accept(r.PathValue("id"), body.Force); err != nil {
 		mapEngineErr(w, err)
 		return
 	}

@@ -357,3 +357,55 @@ func TestAddAllAndCommit(t *testing.T) {
 
 	_ = r.RemoveWorktree(ctx, wt)
 }
+
+// A conflicting merge must leave the repo clean (merge aborted), never in a
+// half-merged state the web UI can't recover from.
+func TestMergeConflictAborts(t *testing.T) {
+	dir := initRepo(t)
+	ctx := context.Background()
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	// Branch edits README one way; main edits it another -> guaranteed conflict.
+	run("checkout", "-q", "-b", "task/conflict")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("branch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("commit", "-aqm", "branch edit")
+	run("checkout", "-q", "main")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("commit", "-aqm", "main edit")
+
+	if err := r.Merge(ctx, "main", "task/conflict"); err == nil {
+		t.Fatal("expected merge conflict error")
+	}
+
+	// No MERGE_HEAD and a clean status -> the merge was aborted.
+	if _, err := os.Stat(filepath.Join(dir, ".git", "MERGE_HEAD")); !os.IsNotExist(err) {
+		t.Fatalf("MERGE_HEAD should not exist after abort, stat err = %v", err)
+	}
+	status := exec.Command("git", "status", "--porcelain")
+	status.Dir = dir
+	out, err := status.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git status: %v\n%s", err, out)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("repo should be clean after aborted merge, status:\n%s", out)
+	}
+}

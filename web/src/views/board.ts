@@ -188,6 +188,9 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
   }
   if (b.status === "draft" || b.status === "error") {
     children.push(actionRow([
+      b.status === "error"
+        ? primaryBtn("Retry planning", () => act(() => api.replanBigTask(b.id)))
+        : el("span", {}),
       dangerBtn("Delete request", () => {
         if (!confirm(`Delete "${b.title}"? This removes the plan request and its proposed tasks.`)) return;
         act(() => api.deleteBigTask(b.id));
@@ -325,14 +328,14 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
     evidenceArtifacts(attempt?.evidence),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
     actionRow([
-      el("button", {
-        class: "primary",
-        disabled: !green,
-        title: green ? "" : "Only green runs can be merged",
-        onclick: green ? () => act(() => api.acceptTask(task.id)) : undefined,
-      }, ["Merge"]),
-      !green
-        ? el("button", { onclick: () => act(() => api.retryTask(task.id)) }, ["Retry"])
+      green
+        ? el("button", { class: "primary", onclick: () => act(() => api.acceptTask(task.id)) }, ["Merge"])
+        : primaryBtn("Retry", () => act(() => api.retryTask(task.id))),
+      !green && task.branch
+        ? dangerBtn("Merge anyway", () => {
+            if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
+            act(() => api.acceptTask(task.id, true));
+          })
         : el("span", {}),
       dangerBtn("Kick back", () => {
         const reason = prompt("Reason for kicking this back? (optional)") ?? "";

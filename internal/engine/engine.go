@@ -759,9 +759,12 @@ func (e *Engine) finalizeCancelled(task model.Task, ag model.Agent, reason strin
 }
 
 // Accept merges a reviewed task's branch into the base branch and marks it
-// merged. Only valid for tasks in review (green). On merge conflict it returns
-// an error (decision-based conflict resolution is Phase 2).
-func (e *Engine) Accept(taskID string) error {
+// merged. Normally only valid for tasks in review (green); with force it also
+// merges failed/blocked tasks whose work the human judged good despite the red
+// gate — the explicit flag keeps "merge red work" a deliberate act, never a
+// default. Merge conflicts abort cleanly (git.Merge) and surface as an error;
+// the human's recovery is Retry, which rebuilds on the current base.
+func (e *Engine) Accept(taskID string, force bool) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -769,8 +772,16 @@ func (e *Engine) Accept(taskID string) error {
 	if err != nil {
 		return err
 	}
-	if t.Status != model.TaskReview {
+	switch {
+	case t.Status == model.TaskReview:
+	case force && (t.Status == model.TaskFailed || t.Status == model.TaskBlocked):
+	case t.Status == model.TaskFailed || t.Status == model.TaskBlocked:
+		return fmt.Errorf("task is %s; pass force to merge anyway", t.Status)
+	default:
 		return fmt.Errorf("task is %s, not awaiting accept", t.Status)
+	}
+	if t.Branch == "" {
+		return fmt.Errorf("task has no branch to merge")
 	}
 	repo, err := git.Open(e.ctx, e.repoRoot)
 	if err != nil {
@@ -786,7 +797,7 @@ func (e *Engine) Accept(taskID string) error {
 	_ = repo.RemoveWorktree(e.ctx, e.worktreePath(taskID))
 	e.setStatus(taskID, model.TaskMerged)
 	e.emitTask(taskID)
-	log.Printf("engine: merged task %q (%s -> %s)", t.Title, t.Branch, base)
+	log.Printf("engine: merged task %q (%s -> %s, force=%v)", t.Title, t.Branch, base, force)
 	return nil
 }
 

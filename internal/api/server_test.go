@@ -211,6 +211,63 @@ func TestBigTaskWithPlannerSkipsPassthrough(t *testing.T) {
 	}
 }
 
+// TestReplanBigTask covers the recovery path for planner failures: an errored
+// plan request must be re-queueable from the UI, not a delete-and-retype dead end.
+func TestReplanBigTask(t *testing.T) {
+	st, h := newTestServerWithStore(t)
+
+	bt := &model.BigTask{Title: "Ship login", Intent: "Users can log in"}
+	if err := st.BigTasks.Create(bt); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.BigTasks.SetError(bt.ID, "planner exploded"); err != nil {
+		t.Fatal(err)
+	}
+
+	// No planner agent enabled -> conflict with a actionable message.
+	rec := do(t, h, "POST", "/api/bigtasks/"+bt.ID+"/replan", nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("replan without planner: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// With a planner registered, replan re-queues the request as draft and
+	// clears the stale error.
+	rec = do(t, h, "POST", "/api/agents", model.Agent{
+		Name: "Planner", Command: "true", Roles: []string{model.RolePlanner}, Enabled: true,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create planner: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, h, "POST", "/api/bigtasks/"+bt.ID+"/replan", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("replan: %d %s", rec.Code, rec.Body.String())
+	}
+	got, err := st.BigTasks.Get(bt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The planner dispatcher may have already claimed the draft, so accept
+	// either queued or in-flight — just never the errored state.
+	if got.Status == model.BigTaskError {
+		t.Fatalf("status = %q, want re-queued", got.Status)
+	}
+	if got.Error != "" {
+		t.Fatalf("error should be cleared, got %q", got.Error)
+	}
+
+	// Replanning a non-errored request is refused.
+	rec = do(t, h, "POST", "/api/bigtasks/"+bt.ID+"/replan", nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("replan non-errored: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Unknown ID -> 404.
+	rec = do(t, h, "POST", "/api/bigtasks/nope/replan", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("replan unknown: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestBigTaskPreflightRejectsRepoWithoutCommits is the regression for the
 // silent failure: a repo with no commits (unresolvable HEAD) used to pass
 // is-inside-work-tree, then fail deep in the planner and revert to draft with

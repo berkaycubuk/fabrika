@@ -61,6 +61,7 @@ export const api = {
   createBigTask: (b: { title: string; intent: string; constraints?: string[]; attachments?: string[] }) =>
     req<BigTask>("POST", "/api/bigtasks", b),
   deleteBigTask: (id: string) => req<void>("DELETE", `/api/bigtasks/${id}`),
+  replanBigTask: (id: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/replan`),
 
   // Plans (approve flow, Phase 2)
   listPlans: () => req<Plan[]>("GET", "/api/plans"),
@@ -74,7 +75,8 @@ export const api = {
 
   // Accept queue (live loop)
   listReviews: () => req<ReviewItem[]>("GET", "/api/reviews"),
-  acceptTask: (id: string) => req<{ status: string }>("POST", `/api/tasks/${id}/accept`),
+  acceptTask: (id: string, force = false) =>
+    req<{ status: string }>("POST", `/api/tasks/${id}/accept`, force ? { force } : undefined),
   rejectTask: (id: string, reason: string) =>
     req<{ status: string }>("POST", `/api/tasks/${id}/reject`, { reason }),
   retryTask: (id: string) => req<{ status: string }>("POST", `/api/tasks/${id}/retry`),

@@ -123,7 +123,7 @@ func TestDispatchProducesGreenReview(t *testing.T) {
 	}
 
 	// Accept -> merged, and the file lands on main.
-	if err := eng.Accept(task.ID); err != nil {
+	if err := eng.Accept(task.ID, false); err != nil {
 		t.Fatalf("Accept: %v", err)
 	}
 	got, _ = st.Tasks.Get(task.ID)
@@ -227,9 +227,49 @@ func TestGateFailureSurfacesAsFailed(t *testing.T) {
 	if got.Status != model.TaskFailed {
 		t.Fatalf("status = %q, want failed", got.Status)
 	}
-	// Accept must be refused for a non-green task.
-	if err := eng.Accept(task.ID); err == nil {
+	// Accept must be refused for a non-green task — and the error should point
+	// the human at the force escape hatch.
+	err := eng.Accept(task.ID, false)
+	if err == nil {
 		t.Fatal("Accept should fail for a failed task")
+	}
+	if !strings.Contains(err.Error(), "force") {
+		t.Fatalf("error should mention force, got: %v", err)
+	}
+}
+
+func TestForceAcceptMergesFailedTask(t *testing.T) {
+	eng, st, repo := setup(t)
+	registerAgent(t, st, "printf 'x' > out.txt")
+
+	task := &model.Task{
+		Title:      "failing verify",
+		Acceptance: model.Contract{VerifyCmds: []string{"exit 1"}},
+	}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status = %q, want failed", got.Status)
+	}
+
+	// Force-accept merges the red work and cleans up, exactly like a green accept.
+	if err := eng.Accept(task.ID, true); err != nil {
+		t.Fatalf("force Accept: %v", err)
+	}
+	got, _ = st.Tasks.Get(task.ID)
+	if got.Status != model.TaskMerged {
+		t.Fatalf("status = %q, want merged", got.Status)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "out.txt")); err != nil {
+		t.Fatalf("out.txt should exist on main after force merge: %v", err)
+	}
+	if _, err := os.Stat(eng.worktreePath(task.ID)); !os.IsNotExist(err) {
+		t.Fatalf("worktree should be removed after force merge, stat err = %v", err)
 	}
 }
 

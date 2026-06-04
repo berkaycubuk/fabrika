@@ -110,14 +110,18 @@ func (r *Repo) ChangedFiles(ctx context.Context, base, branch string) ([]string,
 	return files, nil
 }
 
-// Merge merges branch into base. On conflict it returns an error; the caller
-// escalates that as a Decision (SPECS §9).
+// Merge merges branch into base. On conflict it aborts the merge so the repo
+// is never left in a conflicted half-merged state — the user's only recovery
+// from that would be the git CLI, which the web UI must never require. The
+// returned error carries git's conflict output; the caller surfaces it.
 func (r *Repo) Merge(ctx context.Context, base, branch string) error {
 	if _, err := r.run(ctx, "checkout", base); err != nil {
 		return err
 	}
 	if _, err := r.run(ctx, "merge", "--no-ff", branch); err != nil {
-		// Leave the conflicted state for the caller to inspect/abort.
+		if _, aerr := r.run(ctx, "merge", "--abort"); aerr != nil {
+			return fmt.Errorf("merge %s into %s: %w (and abort failed: %v)", branch, base, err, aerr)
+		}
 		return fmt.Errorf("merge %s into %s: %w", branch, base, err)
 	}
 	return nil
