@@ -139,7 +139,7 @@ function fillColumn(id: string, cards: HTMLElement[]): void {
   body.replaceChildren();
   if (count) count.textContent = cards.length ? String(cards.length) : "";
   if (cards.length === 0) {
-    body.append(el("div", { class: "board-empty" }, ["—"]));
+    body.append(el("div", { class: "board-empty" }, ["empty"]));
     return;
   }
   for (const c of cards) body.append(c);
@@ -234,13 +234,14 @@ function auditCard(it: ReviewItem): HTMLElement {
   );
 }
 
+// Cards stay quiet: avatar + risk, plus priority only when it deviates from
+// the medium default. Reporter, topic tags, deps etc. live in the detail
+// sidebar — repeating them here turns every card into equal-weight noise.
 function taskCard(t: Task, agents: Agent[]): HTMLElement {
   const meta: (Node | string)[] = [];
   if (t.agentId) meta.push(agentPhoto(agents, t.agentId));
   meta.push(tag(t.riskTier, `risk-${t.riskTier}`));
-  meta.push(tag(`priority: ${t.priority}`, `priority-${t.priority}`));
-  if (t.reporter) meta.push(tag(t.reporter, `reporter-${t.reporter}`));
-  for (const lbl of t.tags ?? []) meta.push(tag(lbl));
+  if (t.priority && t.priority !== "medium") meta.push(tag(t.priority, `priority-${t.priority}`));
   return card(t.title, meta, () => openTaskDetail(t, agents));
 }
 

@@ -49,6 +49,21 @@
   --border-hover: #3a362f;
   --bg-code: #0a0c10;
 
+  /* Elevation ladder. Dark UIs read depth from two cues working together: a
+     drop shadow below and a 1px light "catch" along the top edge (the inset).
+     Every raised surface uses one of these — never an ad-hoc shadow. */
+  --edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.45), var(--edge-light);
+  --shadow-card-hover: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.6), var(--edge-light);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+
+  /* Accent surfaces get a vertical gradient + top catch-light instead of a
+     flat fill — same hue, just lit like a physical key. */
+  --accent-grad: linear-gradient(180deg, #6d99ff, #4d7df2);
+  --accent-grad-hover: linear-gradient(180deg, #7aa3ff, #5887f5);
+  --accent-edge: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+
   /* UI element base colors (used in color-mix for pills/badges/borders) */
   --pill-green: #46c98b;
   --pill-grey: #8a90a0;
@@ -91,10 +106,15 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  /* Faint top-of-frame wash so the canvas isn't a flat void — barely-there
+     light falling from above, in keeping with the elevation model. */
+  background: radial-gradient(1100px 600px at 50% -200px, rgba(255, 255, 255, 0.035), transparent 70%), var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font: var(--fs-lg)/1.5 var(--mono);
 }
+
+::selection { background: var(--accent); color: var(--on-accent); }
 
 code { font-family: var(--mono); font-size: var(--fs-md); }
 
@@ -166,9 +186,10 @@ code { font-family: var(--mono); font-size: var(--fs-md); }
   color: var(--text);
   text-decoration: none;
   font-weight: 500;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 .nav-item:hover { background: var(--panel-2); }
-.nav-item.active { background: var(--accent); color: var(--on-accent); }
+.nav-item.active { background: var(--accent-grad); color: var(--on-accent); box-shadow: var(--accent-edge); }
 .nav-item .dot {
   width: 6px; height: 6px; border-radius: var(--radius);
   background: var(--amber);
@@ -176,7 +197,7 @@ code { font-family: var(--mono); font-size: var(--fs-md); }
 
 /* Content */
 .content { flex: 1; min-width: 0; padding: var(--space-12) var(--space-13); max-width: 920px; height: 100vh; overflow-y: auto; }
-.view-header h1 { margin: 0 0 var(--space-2); font-size: var(--fs-3xl); }
+.view-header h1 { margin: 0 0 var(--space-2); font-size: var(--fs-3xl); font-weight: 700; letter-spacing: -0.5px; }
 .muted { color: var(--muted); }
 .sm { font-size: var(--fs-md); }
 h1 + .muted, .view-header .muted { margin-top: 0; }
@@ -215,9 +236,14 @@ input, textarea, select {
   padding: var(--space-4) var(--space-5);
   font: inherit;
   width: 100%;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 textarea { resize: vertical; font-family: var(--mono); font-size: var(--fs-md); }
-input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
 .checkbox-row { display: flex; gap: var(--space-8); }
 .checkbox { display: flex; align-items: center; gap: var(--space-3); color: var(--text); font-weight: 500; }
 .checkbox input { width: auto; }
@@ -234,9 +260,17 @@ button {
   font: inherit;
   font-weight: 500;
   cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
 button:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+button.primary {
+  background: var(--accent-grad);
+  color: var(--on-accent);
+  border-color: #4d7df2;
+  box-shadow: var(--accent-edge), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+button.primary:hover { background: var(--accent-grad-hover); border-color: #5887f5; }
 button.danger:hover { border-color: var(--red); color: var(--red); }
 
 /* Pills + tags */
@@ -255,7 +289,8 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 .pill.status-planning { background: color-mix(in srgb, var(--pill-amber) 16%, transparent); color: var(--amber); }
 .bigtask-error { margin-top: var(--space-4); }
 .tag {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.3px;
   padding: var(--space-1) var(--space-4);
   border-radius: var(--radius);
   background: var(--panel-2);
@@ -424,8 +459,9 @@ pre.fail-out {
   flex-direction: column;
   gap: var(--space-1);
   min-width: 92px;
+  box-shadow: var(--edge-light);
 }
-.metric-value { font-size: var(--fs-2xl); font-weight: 700; }
+.metric-value { font-size: var(--fs-2xl); font-weight: 700; font-variant-numeric: tabular-nums; }
 .metric-label { font-size: var(--fs-sm); color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
 .wip-cap {
   display: flex;
@@ -475,7 +511,11 @@ pre.fail-out {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--panel);
+  /* Translucent + blurred so cards visibly slide *under* the head. */
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
   margin: -10px -10px 0;
   padding: var(--space-6) var(--space-7) var(--space-5);
 }
@@ -483,10 +523,35 @@ pre.fail-out {
   background: var(--panel-2);
   color: var(--text);
   font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
   padding: 1px var(--space-3);
   border-radius: var(--radius);
 }
-.board-empty { color: var(--border); text-align: center; padding: var(--space-4) 0; }
+.board-empty {
+  color: var(--muted);
+  opacity: 0.55;
+  text-align: center;
+  padding: var(--space-10) 0;
+  font-size: var(--fs-sm);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+
+/* Empty columns recede instead of competing with busy ones: transparent,
+   dashed, dimmed. The populated columns become the visual heroes. */
+.board-col:has(.board-empty) {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.5;
+  transition: opacity 160ms ease;
+}
+.board-col:has(.board-empty):hover { opacity: 0.85; }
+.board-col:has(.board-empty) .board-col-head {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom-color: transparent;
+}
 .board-task {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -497,6 +562,7 @@ pre.fail-out {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  box-shadow: var(--shadow-card);
 }
 .board-task.status-running, .board-task.status-claimed { border-left-color: var(--accent); }
 .board-task.status-verifying { border-left-color: var(--amber); }
@@ -573,15 +639,21 @@ button.option:hover { border-color: var(--accent); }
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius);
-  padding: var(--space-5);
+  padding: var(--space-6) var(--space-7);
   margin-bottom: var(--space-4);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
+  box-shadow: var(--shadow-card);
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
-.needs-card:hover { border-color: var(--accent); }
-.needs-card-title { font-weight: 600; font-size: var(--fs-md); }
+.needs-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+}
+.needs-card-title { font-weight: 600; font-size: var(--fs-lg); line-height: 1.45; }
 .needs-card-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .board-col[data-col="approve"] .needs-card { border-left-color: var(--accent); }
 .board-col[data-col="decide"] .needs-card { border-left-color: var(--amber); }
@@ -595,7 +667,14 @@ button.option:hover { border-color: var(--accent); }
 .needs-card .tag.status-blocked, .needs-card .tag.status-failed { color: var(--red); border-color: color-mix(in srgb, var(--border-red) 50%, transparent); }
 .needs-card .tag.status-review { color: var(--green); border-color: color-mix(in srgb, var(--pill-green) 40%, transparent); }
 .needs-card .tag.agent { color: var(--accent); border-color: color-mix(in srgb, var(--pill-accent) 40%, transparent); }
-.card-agent-photo { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.card-agent-photo {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px var(--border); /* hairline ring seats it on the card */
+}
 
 /* Gate columns (the ones that need you) get a marker dot. */
 .gate-dot {
@@ -604,6 +683,9 @@ button.option:hover { border-color: var(--accent); }
   height: 7px;
   background: var(--amber);
   vertical-align: middle;
+  /* Amber is the "needs you" contract — a soft glow makes the signal felt
+     before it's read. */
+  box-shadow: 0 0 8px color-mix(in srgb, var(--amber) 65%, transparent);
 }
 .board-col.gate .board-col-head { color: var(--text); }
 .board-col.gate { border-top: 2px solid var(--amber); }
@@ -668,6 +750,8 @@ button.option:hover { border-color: var(--accent); }
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -683,6 +767,7 @@ button.option:hover { border-color: var(--accent); }
   max-width: 640px;
   display: flex;
   flex-direction: column;
+  box-shadow: var(--shadow-modal);
 }
 .modal.wide { max-width: 880px; }
 .modal.split { max-width: 1040px; }
@@ -844,6 +929,7 @@ button.option:hover { border-color: var(--accent); }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-8) var(--space-9);
+  box-shadow: var(--edge-light);
 }
 .stat-label {
   font-size: var(--fs-xs);
@@ -853,7 +939,7 @@ button.option:hover { border-color: var(--accent); }
   color: var(--muted);
   margin-bottom: var(--space-7);
 }
-.stat-value { font-size: var(--fs-4xl); font-weight: 600; letter-spacing: -1px; line-height: 1; }
+.stat-value { font-size: var(--fs-4xl); font-weight: 600; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
 .stat-value .unit { font-size: var(--fs-unit); color: var(--muted); font-weight: 500; letter-spacing: 0; }
 .stat.span2 { grid-column: span 2; }
 

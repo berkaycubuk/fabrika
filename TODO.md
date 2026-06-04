@@ -6,3 +6,6 @@
 - [ ] Mobile app for mobile usage
 - [ ] Desktop app for increased experience ? (question and tinkering)
 - [ ] Priority for big tasks
+- [ ] Do we need custom skills for fabrika specific?
+- [ ] Logging agent comments and thoughts
+- [ ] Commenting card movements. example: ready -> running
