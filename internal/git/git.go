@@ -162,17 +162,15 @@ func (r *Repo) Ahead(ctx context.Context, remote, branch string) (int, error) {
 func (r *Repo) Push(ctx context.Context, remote, branch string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "push", "-u", remote, branch)
 	cmd.Dir = r.Root
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	stdout, stderr, err := runCmd(cmd)
+	if err != nil {
 		return "", fmt.Errorf("git push %s %s: %w: %s",
-			remote, branch, err, strings.TrimSpace(stderr.String()))
+			remote, branch, err, strings.TrimSpace(stderr))
 	}
-	if summary := strings.TrimSpace(stderr.String()); summary != "" {
+	if summary := strings.TrimSpace(stderr); summary != "" {
 		return summary, nil
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return strings.TrimSpace(stdout), nil
 }
 
 // AddAllAndCommit stages everything in a worktree and commits it on the
@@ -231,12 +229,9 @@ func (r *Repo) NormalizeCommitTrailers(ctx context.Context, base, branch string)
 		"filter-branch", "--force", "--msg-filter", msgFilter, "--", rng)
 	cmd.Dir = r.Root
 	cmd.Env = append(os.Environ(), "FILTER_BRANCH_SQUELCH_WARNING=1")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if _, stderr, err := runCmd(cmd); err != nil {
 		return fmt.Errorf("normalize trailers on %s: %w: %s",
-			rng, err, strings.TrimSpace(stderr.String()))
+			rng, err, strings.TrimSpace(stderr))
 	}
 	return nil
 }
@@ -250,12 +245,22 @@ func (r *Repo) run(ctx context.Context, args ...string) (string, error) {
 func runIn(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return stdout.String(), fmt.Errorf("git %s: %w: %s",
-			strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	stdout, stderr, err := runCmd(cmd)
+	if err != nil {
+		return stdout, fmt.Errorf("git %s: %w: %s",
+			strings.Join(args, " "), err, strings.TrimSpace(stderr))
 	}
-	return stdout.String(), nil
+	return stdout, nil
+}
+
+// runCmd runs an already-configured git command, capturing both output streams.
+// It wires up the stdout/stderr buffers, runs the command, and returns the
+// buffered output alongside the raw error from Run so callers can wrap it with
+// command-specific context.
+func runCmd(cmd *exec.Cmd) (stdout, stderr string, err error) {
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err = cmd.Run()
+	return outBuf.String(), errBuf.String(), err
 }
