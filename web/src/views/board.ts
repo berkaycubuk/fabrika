@@ -226,6 +226,7 @@ function taskCard(t: Task, agents: Agent[]): HTMLElement {
   if (t.agentId) meta.push(agentPhoto(agents, t.agentId));
   meta.push(el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier]));
   meta.push(el("span", { class: `tag priority-${t.priority}` }, [`priority: ${t.priority}`]));
+  if (t.reporter) meta.push(el("span", { class: `tag reporter-${t.reporter}` }, [t.reporter]));
   for (const tag of t.tags ?? []) meta.push(el("span", { class: "tag" }, [tag]));
   return card(t.title, meta, () => openTaskDetail(t, agents));
 }
@@ -369,6 +370,7 @@ function openTaskDetail(t: Task, agents: Agent[]): void {
     asideField("Status", [el("span", { class: `tag status-${t.status}` }, [t.status])]),
     asideField("Risk", [el("span", { class: `tag risk-${t.riskTier}` }, [t.riskTier])]),
     t.priority ? asideField("Priority", [el("span", { class: `tag priority-${t.priority}` }, [t.priority])]) : null,
+    t.reporter ? asideField("Reporter", [el("span", { class: `tag reporter-${t.reporter}` }, [t.reporter])]) : null,
     asideField("Assignee", [
       t.agentId
         ? el("span", { class: "tag agent" }, [agentName(agents, t.agentId)])

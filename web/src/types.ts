@@ -41,6 +41,7 @@ export interface Task {
   autoMerged: boolean;
   auditFlagged: boolean;
   reverted: boolean;
+  reporter: string;
 }
 
 export interface StageResult {
