@@ -348,3 +348,35 @@ func (e *Engine) setBigTaskStatus(id, status string) {
 		e.emit("bigtask.updated", *bt)
 	}
 }
+
+// DeleteBigTask cascade-deletes a plan request and all its children (decisions,
+// tasks, plans). It refuses if any of the big task's tasks are in an active state
+// (claimed, running, or verifying). Connected UIs are notified via bigtask.deleted.
+func (e *Engine) DeleteBigTask(id string) error {
+	if _, err := e.store.BigTasks.Get(id); err != nil {
+		return err
+	}
+	tasks, err := e.store.Tasks.ListByBigTask(id)
+	if err != nil {
+		return err
+	}
+	for _, t := range tasks {
+		if t.Status == model.TaskClaimed || t.Status == model.TaskRunning || t.Status == model.TaskVerifying {
+			return fmt.Errorf("cannot delete a plan request with running tasks")
+		}
+	}
+	if err := e.store.Decisions.DeleteByBigTask(id); err != nil {
+		return err
+	}
+	if err := e.store.Tasks.DeleteByBigTask(id); err != nil {
+		return err
+	}
+	if err := e.store.Plans.DeleteByBigTask(id); err != nil {
+		return err
+	}
+	if err := e.store.BigTasks.Delete(id); err != nil {
+		return err
+	}
+	e.emit("bigtask.deleted", map[string]string{"id": id})
+	return nil
+}
