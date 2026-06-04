@@ -339,6 +339,7 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
         act(() => api.rejectTask(task.id, reason));
       }),
     ]),
+    commentsSection(task.id),
   ]);
   const side = buildSidebar([
     asideField("Status", [el("span", { class: `tag status-${task.status}` }, [task.status])]),
@@ -350,7 +351,9 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
     ]),
     task.branch ? asideField("Branch", [el("code", { class: "branch" }, [task.branch])]) : null,
   ]);
+  openTaskId = task.id;
   openModal(task.title, body, { wide: true, sidebar: side });
+  loadComments(task.id);
 }
 
 export function openAuditDetail(it: ReviewItem): void {
@@ -368,13 +371,16 @@ export function openAuditDetail(it: ReviewItem): void {
         act(() => api.revertTask(task.id));
       }),
     ]),
+    commentsSection(task.id),
   ]);
   const side = buildSidebar([
     asideField("Status", [el("span", { class: "tag" }, ["auto-merged"])]),
     asideField("Risk", [el("span", { class: `tag risk-${task.riskTier}` }, [task.riskTier])]),
     task.branch ? asideField("Branch", [el("code", { class: "branch" }, [task.branch])]) : null,
   ]);
+  openTaskId = task.id;
   openModal(task.title, body, { wide: true, sidebar: side });
+  loadComments(task.id);
 }
 
 // openTaskDetail covers the non-gate lifecycle cards (ready/running/verifying/
