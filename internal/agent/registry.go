@@ -19,9 +19,11 @@ func HasRole(a model.Agent, role string) bool {
 //	   has no free slot, the task WAITS for it (returns nil) rather than spilling
 //	   onto another agent — pinning is a deliberate routing choice. A pin to a
 //	   missing/disabled agent falls through to the general pool.
-//	2. An enabled implementer with a free slot whose Tags overlap the task's.
-//	3. Any enabled implementer with a free slot.
-//	4. nil if none are eligible (task waits in ready).
+//	2. Capability (tag overlap) partitions the eligible pool. If any eligible
+//	   agent's Tags overlap the task's, choose only from that subset.
+//	3. Within the chosen subset, the highest Priority agent wins (larger int).
+//	   Ties are broken by existing slice order (first wins).
+//	4. nil if no eligible agents (task waits in ready).
 func Route(t model.Task, agents []model.Agent, free map[string]int) *model.Agent {
 	hasSlot := func(a *model.Agent) bool { return free == nil || free[a.ID] > 0 }
 
@@ -39,20 +41,27 @@ func Route(t model.Task, agents []model.Agent, free map[string]int) *model.Agent
 		}
 	}
 
-	var anyImplementer *model.Agent
+	var tagMatch *model.Agent
+	var anyMatch *model.Agent
 	for i := range agents {
 		a := &agents[i]
 		if !a.Enabled || !HasRole(*a, model.RoleImplementer) || !hasSlot(a) {
 			continue
 		}
-		if anyImplementer == nil {
-			anyImplementer = a
-		}
 		if tagsOverlap(a.Tags, t.Tags) {
-			return a
+			if tagMatch == nil || a.Priority > tagMatch.Priority {
+				tagMatch = a
+			}
+		} else {
+			if anyMatch == nil || a.Priority > anyMatch.Priority {
+				anyMatch = a
+			}
 		}
 	}
-	return anyImplementer
+	if tagMatch != nil {
+		return tagMatch
+	}
+	return anyMatch
 }
 
 func tagsOverlap(a, b []string) bool {
