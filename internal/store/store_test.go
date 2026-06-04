@@ -31,6 +31,7 @@ func TestAgentRoundTrip(t *testing.T) {
 		Timeout:     "20m",
 		MaxAttempts: 3,
 		Enabled:     true,
+		Priority:    5,
 	}
 	if err := s.Agents.Create(a); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -54,6 +55,9 @@ func TestAgentRoundTrip(t *testing.T) {
 	}
 	if len(got.Tags) != 2 || !got.Enabled || got.Concurrency != 2 {
 		t.Fatalf("fields mismatch: %+v", got)
+	}
+	if got.Priority != 5 {
+		t.Fatalf("priority not round-tripped: %d", got.Priority)
 	}
 
 	// Disable then verify.

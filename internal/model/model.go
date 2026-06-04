@@ -120,6 +120,9 @@ type Agent struct {
 	Timeout     string   `json:"timeout"`     // e.g. "20m"
 	MaxAttempts int      `json:"maxAttempts"`
 	Enabled     bool     `json:"enabled"`
+	// Priority is a user-set routing weight: higher integer = higher priority
+	// when choosing among eligible agents. 0 is the default/normal level.
+	Priority int `json:"priority"`
 }
 
 // Contract is the machine-verifiable acceptance criteria for a Task.
