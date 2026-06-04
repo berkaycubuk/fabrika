@@ -2,6 +2,7 @@
 // (SPECS.md §7, §10). Persisted in the global store, reusable across repos.
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
+import { button, pill, tag, field } from "../components.js";
 import { ROLES, type Agent } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
 
@@ -158,7 +159,7 @@ function agentForm(): HTMLElement {
   });
 
   const err = el("div", { class: "form-error" });
-  const submitBtn = el("button", { class: "primary", type: "submit" }, ["Add agent"]);
+  const submitBtn = button("Add agent", { variant: "primary", type: "submit" });
 
   const form = el("form", {
     class: "agent-form card",
@@ -191,25 +192,19 @@ function agentForm(): HTMLElement {
       }
     },
   }, [
-    el("div", { class: "field" }, [el("label", {}, ["Name"]), name]),
-    el("div", { class: "field" }, [el("label", {}, ["Agent"]), kind]),
-    el("div", { class: "field" }, [el("label", {}, ["Model"]), model]),
+    field("Name", name),
+    field("Agent", kind),
+    field("Model", model),
     el("div", { class: "field-row" }, [
-      el("div", { class: "field" }, [el("label", {}, ["Tags"]), tags]),
-      el("div", { class: "field" }, [el("label", {}, ["Concurrency"]), concurrency]),
-      el("div", { class: "field" }, [el("label", {}, ["Timeout"]), timeout]),
-      el("div", { class: "field" }, [el("label", {}, ["Max attempts"]), maxAttempts]),
+      field("Tags", tags),
+      field("Concurrency", concurrency),
+      field("Timeout", timeout),
+      field("Max attempts", maxAttempts),
     ]),
-    el("div", { class: "field" }, [
-      el("label", {}, ["Roles"]),
-      el("div", { class: "checkbox-row" }, roleBoxes.flatMap((b) => [
-        el("label", { class: "checkbox" }, [b.cb, b.role]),
-      ])),
-    ]),
-    el("div", { class: "field" }, [
-      el("label", {}, ["Photo"]),
-      el("div", { class: "photo-row" }, [photoPreview, photoBtn, photoHint, photoInput]),
-    ]),
+    field("Roles", el("div", { class: "checkbox-row" }, roleBoxes.flatMap((b) => [
+      el("label", { class: "checkbox" }, [b.cb, b.role]),
+    ]))),
+    field("Photo", el("div", { class: "photo-row" }, [photoPreview, photoBtn, photoHint, photoInput])),
     err,
     el("div", { class: "form-actions" }, [submitBtn]),
   ]) as HTMLFormElement;
@@ -272,33 +267,33 @@ function agentCard(a: Agent): HTMLElement {
       el("img", { class: "agent-avatar", src: a.photo || DEFAULT_AVATAR, alt: "" }),
       el("div", { class: "card-title" }, [
         a.name,
-        el("span", { class: a.enabled ? "pill on" : "pill off" }, [a.enabled ? "enabled" : "disabled"]),
+        pill(a.enabled ? "enabled" : "disabled", a.enabled ? "on" : "off"),
       ]),
       el("code", { class: "card-cmd" }, [kindFor(a.command)?.label ?? a.command]),
       el("div", { class: "card-meta" }, [
-        ...(a.model ? [el("span", { class: "tag model" }, [labelForModel(kindFor(a.command), a.model)])] : []),
-        ...(a.roles ?? []).map((r) => el("span", { class: "tag role" }, [r])),
-        ...(a.tags ?? []).map((t) => el("span", { class: "tag" }, [t])),
+        ...(a.model ? [tag(labelForModel(kindFor(a.command), a.model), "model")] : []),
+        ...(a.roles ?? []).map((r) => tag(r, "role")),
+        ...(a.tags ?? []).map((t) => tag(t)),
         el("span", { class: "muted" }, [`×${a.concurrency} · ${a.timeout || "no timeout"}`]),
       ]),
     ]),
     el("div", { class: "card-actions" }, [
-      el("button", { onclick: () => populateForm?.(a) }, ["Edit"]),
-      el("button", {
+      button("Edit", { onclick: () => populateForm?.(a) }),
+      button(a.enabled ? "Disable" : "Enable", {
         onclick: async () => {
           a.enabled ? await api.disableAgent(a.id) : await api.enableAgent(a.id);
           refresh();
         },
-      }, [a.enabled ? "Disable" : "Enable"]),
-      el("button", {
-        class: "danger",
+      }),
+      button("Delete", {
+        variant: "danger",
         onclick: async () => {
-          if (confirm(`Delete agent “${a.name}”?`)) {
+          if (confirm(`Delete agent "${a.name}"?`)) {
             await api.deleteAgent(a.id);
             refresh();
           }
         },
-      }, ["Delete"]),
+      }),
     ]),
   ]);
 }
