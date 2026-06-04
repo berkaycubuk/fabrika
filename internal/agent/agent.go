@@ -195,18 +195,37 @@ func RenderReviewPrompt(t model.Task, diff string, conventions []model.Conventio
 	return b.String()
 }
 
+// lastMarkerPayload scans out for the last line containing marker and returns the
+// trimmed remainder of that line. The marker may appear mid-line. found is false
+// if no line contains the marker (last-wins, used by the single-marker parsers).
+func lastMarkerPayload(out, marker string) (payload string, found bool) {
+	for _, line := range strings.Split(out, "\n") {
+		if idx := strings.Index(line, marker); idx >= 0 {
+			payload = strings.TrimSpace(line[idx+len(marker):])
+			found = true
+		}
+	}
+	return payload, found
+}
+
+// markerPayloads scans out for every line containing marker and returns the
+// trimmed remainder of each, in order (all-occurrences, used by the multi-marker
+// parsers). Empty remainders are included; callers filter as needed.
+func markerPayloads(out, marker string) []string {
+	var payloads []string
+	for _, line := range strings.Split(out, "\n") {
+		if idx := strings.Index(line, marker); idx >= 0 {
+			payloads = append(payloads, strings.TrimSpace(line[idx+len(marker):]))
+		}
+	}
+	return payloads
+}
+
 // ParseReview scans output for the last ReviewMarker line and decodes its verdict.
 // Missing or malformed verdicts are treated as a non-approval (ok=false) so the
 // work falls back to a human rather than auto-merging on an ambiguous review.
 func ParseReview(out string) (ReviewVerdict, bool) {
-	var payload string
-	found := false
-	for _, line := range strings.Split(out, "\n") {
-		if idx := strings.Index(line, ReviewMarker); idx >= 0 {
-			payload = strings.TrimSpace(line[idx+len(ReviewMarker):])
-			found = true
-		}
-	}
+	payload, found := lastMarkerPayload(out, ReviewMarker)
 	if !found {
 		return ReviewVerdict{}, false
 	}
@@ -262,14 +281,7 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 // or absent payload returns ok=false. When the agent reports a zero total but
 // non-zero input/output, the total is derived as input+output.
 func parseUsage(out string) (model.Usage, bool) {
-	var payload string
-	found := false
-	for _, line := range strings.Split(out, "\n") {
-		if idx := strings.Index(line, UsageMarker); idx >= 0 {
-			payload = strings.TrimSpace(line[idx+len(UsageMarker):])
-			found = true
-		}
-	}
+	payload, found := lastMarkerPayload(out, UsageMarker)
 	if !found {
 		return model.Usage{}, false
 	}
@@ -286,27 +298,16 @@ func parseUsage(out string) (model.Usage, bool) {
 // parseEscalation scans output for the last DecisionMarker line and returns the
 // trailing JSON payload.
 func parseEscalation(out string) (string, bool) {
-	var payload string
-	found := false
-	for _, line := range strings.Split(out, "\n") {
-		if idx := strings.Index(line, DecisionMarker); idx >= 0 {
-			payload = strings.TrimSpace(line[idx+len(DecisionMarker):])
-			found = true
-		}
-	}
-	return payload, found
+	return lastMarkerPayload(out, DecisionMarker)
 }
 
 // parseComments scans output for all lines beginning with CommentMarker and
 // returns the trimmed text after the marker, preserving order and skipping empty.
 func parseComments(out string) []string {
 	var comments []string
-	for _, line := range strings.Split(out, "\n") {
-		if idx := strings.Index(line, CommentMarker); idx >= 0 {
-			text := strings.TrimSpace(line[idx+len(CommentMarker):])
-			if text != "" {
-				comments = append(comments, text)
-			}
+	for _, text := range markerPayloads(out, CommentMarker) {
+		if text != "" {
+			comments = append(comments, text)
 		}
 	}
 	return comments
@@ -318,12 +319,7 @@ func parseComments(out string) []string {
 // spaces; lines with an empty path are skipped.
 func parseEvidence(out string) []EvidenceRef {
 	var refs []EvidenceRef
-	for _, line := range strings.Split(out, "\n") {
-		idx := strings.Index(line, EvidenceMarker)
-		if idx < 0 {
-			continue
-		}
-		rest := strings.TrimSpace(line[idx+len(EvidenceMarker):])
+	for _, rest := range markerPayloads(out, EvidenceMarker) {
 		path, caption, _ := strings.Cut(rest, " | ")
 		path = strings.TrimSpace(path)
 		if path == "" {
