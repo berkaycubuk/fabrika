@@ -100,3 +100,9 @@ func (r *AttemptRepo) TokensByAgent() (map[string]model.Usage, error) {
 	}
 	return out, rows.Err()
 }
+
+// DeleteByTask removes a task's attempt history when the task itself is deleted.
+func (r *AttemptRepo) DeleteByTask(taskID string) error {
+	_, err := r.db.Exec(`DELETE FROM attempts WHERE task_id=?`, taskID)
+	return err
+}

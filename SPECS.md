@@ -221,7 +221,7 @@ A branch only becomes a `review`/auto-merge candidate if every required stage pa
 - If tier is in `auto_merge` and evidence is green -> merge to main, mark `merged`, re-queue any tasks it unblocks.
 - Else -> create a `review` item surfaced to the UI ("Accept").
 - Merge = git merge/rebase of the worktree branch. A conflicting merge is always aborted so the repo is never left half-merged; the work surfaces in Accept and the human's recovery is Retry (which rebuilds on the current base).
-- Red (failed/blocked) work is also mergeable from the UI via an explicit **Merge anyway** — the force flag keeps it a deliberate act, never a default. Every dead-end state has a UI exit: failed/blocked -> Retry / Merge anyway / Kick back; errored plan requests -> Retry planning / Delete.
+- Red (failed/blocked) work is also mergeable from the UI via an explicit **Merge anyway** — the force flag keeps it a deliberate act, never a default. Every dead-end state has a UI exit: failed/blocked -> Retry / Merge anyway / Kick back; kicked-back (closed) tasks land in a **Closed** column -> Retry / Delete; errored plan requests -> Retry planning / Delete.
 
 ## 10. Web UI (the surfaces + observability)
 
@@ -243,6 +243,7 @@ GET    /api/plans/:id                      # Phase 2
 POST   /api/plans/:id/approve|reject
 GET    /api/decisions                      POST /api/decisions/:id/answer
 GET    /api/tasks                          GET  /api/tasks/:id          # DAG / observability
+DELETE /api/tasks/:id                      # discard a closed (kicked-back) task
 GET    /api/reviews                        POST /api/tasks/:id/accept|reject   # accept body: {"force":true} merges red work
 POST   /api/bigtasks/:id/replan            # re-queue an errored plan request
 POST   /api/tasks/:id/assign               # body {agentId}  -- steer routing

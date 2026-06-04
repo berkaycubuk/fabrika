@@ -328,6 +328,15 @@ func (r *TaskRepo) DeleteByBigTask(bigTaskID string) error {
 	return err
 }
 
+// Delete removes a task by ID, returning ErrNotFound when no row matched.
+func (r *TaskRepo) Delete(id string) error {
+	res, err := r.db.Exec(`DELETE FROM tasks WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
 func scanTask(s scanner) (*model.Task, error) {
 	var t model.Task
 	var acc, dependsOn, touchPaths, tags, attachments string

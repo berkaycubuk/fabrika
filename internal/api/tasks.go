@@ -226,6 +226,16 @@ func (s *Server) acceptTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "merged"})
 }
 
+// deleteTask permanently discards a closed (kicked-back) task. The engine
+// enforces that only closed tasks qualify.
+func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
+	if err := s.engine.DeleteTask(r.PathValue("id")); err != nil {
+		mapEngineErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) retryTask(w http.ResponseWriter, r *http.Request) {
 	if err := s.engine.Retry(r.PathValue("id")); err != nil {
 		mapEngineErr(w, err)

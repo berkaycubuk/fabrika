@@ -273,6 +273,44 @@ func TestForceAcceptMergesFailedTask(t *testing.T) {
 	}
 }
 
+func TestDeleteTaskOnlyClosed(t *testing.T) {
+	eng, st, _ := setup(t)
+
+	task := &model.Task{Title: "kicked back", Status: model.TaskClosed}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	// Attempt + comment history should go with the task.
+	if err := st.Attempts.Create(&model.Attempt{TaskID: task.ID, Result: model.ResultFail}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Comments.Create(&model.Comment{TaskID: task.ID, AuthorType: "user", Body: "redo"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A non-closed task is refused.
+	ready := &model.Task{Title: "still queued"}
+	if err := st.Tasks.Create(ready); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.DeleteTask(ready.ID); err == nil {
+		t.Fatal("DeleteTask should refuse a ready task")
+	}
+
+	if err := eng.DeleteTask(task.ID); err != nil {
+		t.Fatalf("DeleteTask: %v", err)
+	}
+	if _, err := st.Tasks.Get(task.ID); err == nil {
+		t.Fatal("task should be gone")
+	}
+	if atts, _ := st.Attempts.ListForTask(task.ID); len(atts) != 0 {
+		t.Fatalf("attempts should be gone, got %d", len(atts))
+	}
+	if cs, _ := st.Comments.ListForTask(task.ID); len(cs) != 0 {
+		t.Fatalf("comments should be gone, got %d", len(cs))
+	}
+}
+
 func TestAutoRetryRequeuesWithinBudget(t *testing.T) {
 	eng, st, _ := setup(t)
 	// Two-attempt budget; verify is red on the first run (no marker yet) and

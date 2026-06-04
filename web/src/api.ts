@@ -80,6 +80,7 @@ export const api = {
   rejectTask: (id: string, reason: string) =>
     req<{ status: string }>("POST", `/api/tasks/${id}/reject`, { reason }),
   retryTask: (id: string) => req<{ status: string }>("POST", `/api/tasks/${id}/retry`),
+  deleteTask: (id: string) => req<void>("DELETE", `/api/tasks/${id}`),
 
   // Audit queue (Phase 3: post-merge sampling of auto-merged work)
   listAudits: () => req<ReviewItem[]>("GET", "/api/audits"),

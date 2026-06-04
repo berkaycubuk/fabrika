@@ -12,7 +12,7 @@ import { DEFAULT_AVATAR } from "../avatar.js";
 import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent } from "../types.js";
 import { renderDiff } from "./diff-view.js";
 
-type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
+type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
   { id: "planning", label: "Planning" },
   { id: "approve", label: "Approve", gate: true },
@@ -23,6 +23,7 @@ const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
   { id: "accept", label: "Accept", gate: true },
   { id: "audit", label: "Audit", gate: true },
   { id: "merged", label: "Merged" },
+  { id: "closed", label: "Closed" },
 ];
 const IN_FLIGHT = ["claimed", "running"];
 // Big-task statuses shown in the Planning column: the request is in (or awaiting)
@@ -121,6 +122,9 @@ async function refresh(): Promise<void> {
     fillColumn("accept", reviews.map((r) => reviewCard(r, agents)));
     fillColumn("audit", audits.map(auditCard));
     fillColumn("merged", byStatus("merged").filter((t) => !auditIds.has(t.id)).map((t) => taskCard(t, agents)));
+    // Kicked-back tasks land here instead of vanishing: every dead end keeps a
+    // UI exit (retry or delete from the card detail).
+    fillColumn("closed", byStatus("closed").map((t) => taskCard(t, agents)));
   } catch (e) {
     if (gen !== refreshGen) return;
     if (errBox) errBox.textContent = (e as Error).message;
@@ -387,8 +391,9 @@ export function openAuditDetail(it: ReviewItem): void {
 }
 
 // openTaskDetail covers the non-gate lifecycle cards (ready/running/verifying/
-// merged): spec + meta, live steering for in-flight work, and lazily-loaded
-// gate evidence (stages + diff) from the latest attempt.
+// merged/closed): spec + meta, live steering for in-flight work, retry/delete
+// for kicked-back work, and lazily-loaded gate evidence (stages + diff) from
+// the latest attempt.
 export function openTaskDetail(t: Task, agents: Agent[]): void {
   const side = buildSidebar([
     asideField("Status", [el("span", { class: `tag status-${t.status}` }, [t.status])]),
@@ -418,6 +423,15 @@ export function openTaskDetail(t: Task, agents: Agent[]): void {
   if (t.attachments?.length) children.push(attachmentGallery(t.attachments));
   for (const c of t.acceptance?.verifyCmds ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
   if (STEERABLE.includes(t.status)) children.push(steerRow(t, agents));
+  if (t.status === "closed") {
+    children.push(actionRow([
+      primaryBtn("Retry", () => act(() => api.retryTask(t.id))),
+      dangerBtn("Delete", () => {
+        if (!confirm(`Permanently delete "${t.title}"? Its attempt history and comments are removed too.`)) return;
+        act(() => api.deleteTask(t.id));
+      }),
+    ]));
+  }
   children.push(el("div", { id: `task-evidence-${t.id}`, class: "task-evidence" }, []));
   children.push(commentsSection(t.id));
 

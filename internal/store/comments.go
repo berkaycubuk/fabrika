@@ -77,3 +77,9 @@ func emptyIfNil(s []string) []string {
 	}
 	return s
 }
+
+// DeleteByTask removes a task's comments when the task itself is deleted.
+func (r *CommentRepo) DeleteByTask(taskID string) error {
+	_, err := r.db.Exec(`DELETE FROM comments WHERE task_id=?`, taskID)
+	return err
+}

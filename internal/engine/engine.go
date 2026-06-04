@@ -972,6 +972,46 @@ func (e *Engine) Retry(taskID string) error {
 	return nil
 }
 
+// DeleteTask permanently removes a closed (kicked-back) task with its attempt
+// and comment history, so the Closed shelf doesn't grow forever. Only closed
+// tasks qualify: every other status either still has a UI exit of its own or
+// is history worth keeping (merged). Stale worktree/branch leftovers are
+// cleared so nothing orphaned survives the row.
+func (e *Engine) DeleteTask(taskID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	t, err := e.store.Tasks.Get(taskID)
+	if err != nil {
+		return err
+	}
+	if t.Status != model.TaskClosed {
+		return fmt.Errorf("task is %s; only closed tasks can be deleted", t.Status)
+	}
+
+	if repo, rerr := git.Open(e.ctx, e.repoRoot); rerr == nil {
+		wt := e.worktreePath(taskID)
+		_ = repo.RemoveWorktree(e.ctx, wt)
+		_ = os.RemoveAll(wt)
+		if t.Branch != "" {
+			_ = repo.DeleteBranch(e.ctx, t.Branch)
+		}
+	}
+
+	if err := e.store.Attempts.DeleteByTask(taskID); err != nil {
+		return err
+	}
+	if err := e.store.Comments.DeleteByTask(taskID); err != nil {
+		return err
+	}
+	if err := e.store.Tasks.Delete(taskID); err != nil {
+		return err
+	}
+	e.emit("task.deleted", map[string]string{"id": taskID})
+	log.Printf("engine: task %q deleted", t.Title)
+	return nil
+}
+
 // AckAudit acknowledges a sampled post-merge audit as acceptable, removing it
 // from the audit queue (SPECS.md §13 Phase 3).
 func (e *Engine) AckAudit(taskID string) error {
