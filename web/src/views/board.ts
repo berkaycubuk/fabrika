@@ -10,6 +10,7 @@ import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
 import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent } from "../types.js";
+import { renderDiff } from "./diff-view.js";
 
 type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -799,15 +800,7 @@ function failureBlock(attempt: Attempt): HTMLElement {
 }
 
 function diffBlock(diff: string): HTMLElement {
-  const pre = el("pre", { class: "diff" });
-  for (const line of diff.split("\n")) {
-    let cls = "";
-    if (line.startsWith("+") && !line.startsWith("+++")) cls = "add";
-    else if (line.startsWith("-") && !line.startsWith("---")) cls = "del";
-    else if (line.startsWith("@@")) cls = "hunk";
-    pre.append(el("span", { class: `dl ${cls}` }, [line + "\n"]));
-  }
-  return el("details", { class: "diff-wrap" }, [el("summary", {}, ["Diff"]), pre]);
+  return renderDiff(diff);
 }
 
 // updatePushButton shows the Push button only when the integration branch has
