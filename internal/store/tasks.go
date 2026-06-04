@@ -138,6 +138,15 @@ func (r *BigTaskRepo) SetError(id, reason string) error {
 	return mustAffect(res)
 }
 
+// Delete removes a big task by ID, returning ErrNotFound when no row matched.
+func (r *BigTaskRepo) Delete(id string) error {
+	res, err := r.db.Exec(`DELETE FROM bigtasks WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
 // TaskRepo persists Tasks in the per-project store.
 type TaskRepo struct{ db *sql.DB }
 
@@ -307,6 +316,13 @@ func (r *TaskRepo) SetReverted(id string) error {
 		return err
 	}
 	return mustAffect(res)
+}
+
+// DeleteByBigTask removes every task belonging to a big task. The project tables
+// carry no foreign keys, so deletion is explicit; removing zero rows is not an error.
+func (r *TaskRepo) DeleteByBigTask(bigTaskID string) error {
+	_, err := r.db.Exec(`DELETE FROM tasks WHERE big_task_id=?`, bigTaskID)
+	return err
 }
 
 func scanTask(s scanner) (*model.Task, error) {

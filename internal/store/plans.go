@@ -73,6 +73,13 @@ func (r *PlanRepo) UpdateStatus(id, status string) error {
 	return mustAffect(res)
 }
 
+// DeleteByBigTask removes every plan for a big task. The project tables carry no
+// foreign keys, so deletion is explicit; removing zero rows is not an error.
+func (r *PlanRepo) DeleteByBigTask(bigTaskID string) error {
+	_, err := r.db.Exec(`DELETE FROM plans WHERE big_task_id=?`, bigTaskID)
+	return err
+}
+
 func scanPlan(s scanner) (*model.Plan, error) {
 	var p model.Plan
 	err := s.Scan(&p.ID, &p.BigTaskID, &p.Status)
@@ -146,6 +153,17 @@ func (r *DecisionRepo) Answer(id, answer string, promote bool) error {
 		return err
 	}
 	return mustAffect(res)
+}
+
+// DeleteByBigTask removes every decision tied to a big task, whether raised at
+// plan level (plan_id) or against one of its tasks (task_id). Removing zero rows
+// is not an error.
+func (r *DecisionRepo) DeleteByBigTask(bigTaskID string) error {
+	_, err := r.db.Exec(
+		`DELETE FROM decisions WHERE plan_id IN (SELECT id FROM plans WHERE big_task_id=?) OR task_id IN (SELECT id FROM tasks WHERE big_task_id=?)`,
+		bigTaskID, bigTaskID,
+	)
+	return err
 }
 
 func (r *DecisionRepo) query(q string, args ...any) ([]model.Decision, error) {

@@ -230,6 +230,93 @@ func TestTaskSetRun(t *testing.T) {
 	}
 }
 
+func TestBigTaskDelete(t *testing.T) {
+	s := openTest(t)
+
+	if err := s.BigTasks.Delete("nope"); err != ErrNotFound {
+		t.Fatalf("Delete missing = %v, want ErrNotFound", err)
+	}
+
+	bt := &model.BigTask{Title: "t", Intent: "y"}
+	if err := s.BigTasks.Create(bt); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.BigTasks.Delete(bt.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := s.BigTasks.Get(bt.ID); err != ErrNotFound {
+		t.Fatalf("Get after Delete = %v, want ErrNotFound", err)
+	}
+}
+
+func TestDeleteByBigTask(t *testing.T) {
+	s := openTest(t)
+
+	bt := &model.BigTask{Title: "Ship login", Intent: "y"}
+	if err := s.BigTasks.Create(bt); err != nil {
+		t.Fatalf("Create big task: %v", err)
+	}
+	plan := &model.Plan{BigTaskID: bt.ID}
+	if err := s.Plans.Create(plan); err != nil {
+		t.Fatalf("Create plan: %v", err)
+	}
+	task := &model.Task{BigTaskID: bt.ID, Title: "do it"}
+	if err := s.Tasks.Create(task); err != nil {
+		t.Fatalf("Create task: %v", err)
+	}
+	dec := &model.Decision{PlanID: plan.ID, Question: "which?", Options: []string{"a", "b"}}
+	if err := s.Decisions.Create(dec); err != nil {
+		t.Fatalf("Create decision: %v", err)
+	}
+
+	// Deleting an unrelated big task removes nothing and is not an error.
+	if err := s.Decisions.DeleteByBigTask("other"); err != nil {
+		t.Fatalf("DeleteByBigTask decisions (no-op): %v", err)
+	}
+	if err := s.Plans.DeleteByBigTask("other"); err != nil {
+		t.Fatalf("DeleteByBigTask plans (no-op): %v", err)
+	}
+	if err := s.Tasks.DeleteByBigTask("other"); err != nil {
+		t.Fatalf("DeleteByBigTask tasks (no-op): %v", err)
+	}
+	if _, err := s.Plans.Get(plan.ID); err != nil {
+		t.Fatalf("plan should survive unrelated delete: %v", err)
+	}
+
+	// Now delete everything under the big task.
+	if err := s.Decisions.DeleteByBigTask(bt.ID); err != nil {
+		t.Fatalf("DeleteByBigTask decisions: %v", err)
+	}
+	if err := s.Plans.DeleteByBigTask(bt.ID); err != nil {
+		t.Fatalf("DeleteByBigTask plans: %v", err)
+	}
+	if err := s.Tasks.DeleteByBigTask(bt.ID); err != nil {
+		t.Fatalf("DeleteByBigTask tasks: %v", err)
+	}
+	if err := s.BigTasks.Delete(bt.ID); err != nil {
+		t.Fatalf("Delete big task: %v", err)
+	}
+
+	if _, err := s.Decisions.Get(dec.ID); err != ErrNotFound {
+		t.Fatalf("decision Get = %v, want ErrNotFound", err)
+	}
+	if _, err := s.Plans.Get(plan.ID); err != ErrNotFound {
+		t.Fatalf("plan Get = %v, want ErrNotFound", err)
+	}
+	if _, err := s.Tasks.Get(task.ID); err != ErrNotFound {
+		t.Fatalf("task Get = %v, want ErrNotFound", err)
+	}
+	if _, err := s.BigTasks.Get(bt.ID); err != ErrNotFound {
+		t.Fatalf("big task Get = %v, want ErrNotFound", err)
+	}
+	if list, err := s.Tasks.ListByBigTask(bt.ID); err != nil || len(list) != 0 {
+		t.Fatalf("ListByBigTask = %v (err %v), want empty", list, err)
+	}
+	if list, err := s.Decisions.ListForPlan(plan.ID); err != nil || len(list) != 0 {
+		t.Fatalf("ListForPlan = %v (err %v), want empty", list, err)
+	}
+}
+
 func TestSettingsRoundTrip(t *testing.T) {
 	s := openTest(t)
 
