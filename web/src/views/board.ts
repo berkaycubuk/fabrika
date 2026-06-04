@@ -12,6 +12,7 @@ import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
 import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent } from "../types.js";
 import { renderDiff } from "./diff-view.js";
+import { attachmentGallery } from "./attachment.js";
 
 type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -518,22 +519,7 @@ function imageAttach(pasteTarget: HTMLTextAreaElement, err: HTMLElement) {
   };
 }
 
-// attachmentGallery renders stored attachment URLs: images as thumbnails linking
-// to the full-size upload, other artifact types (logs, recordings) as named
-// link chips.
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
 
-function attachmentGallery(urls: string[]): HTMLElement {
-  return el("div", { class: "attachments" }, urls.map((url) =>
-    IMAGE_EXT.test(url)
-      ? el("a", { href: url, target: "_blank", rel: "noopener" }, [
-          el("img", { src: url, class: "attach-thumb", alt: "attachment", loading: "lazy" }),
-        ])
-      : el("a", { href: url, target: "_blank", rel: "noopener", class: "attach-link" }, [
-          url.split("/").pop() ?? url,
-        ]),
-  ));
-}
 
 // evidenceArtifacts renders agent-attached proof files (screenshots, recordings,
 // logs) from the attempt's evidence, or nothing when the run produced none.
