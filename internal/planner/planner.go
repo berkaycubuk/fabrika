@@ -53,6 +53,7 @@ func Passthrough(bt model.BigTask) model.Plan {
 				Attachments: bt.Attachments,
 				Status:      model.TaskReady,
 				RiskTier:    model.RiskLow,
+				Reporter:    model.ReporterUser,
 			},
 		},
 	}
@@ -180,6 +181,7 @@ func Build(bt model.BigTask, planID string, raw RawPlan) ([]model.Task, []model.
 			Tags:       rt.Tags,
 			RiskTier:   risk,
 			Status:     model.TaskPlanned,
+			Reporter:   model.ReporterPlanner,
 		})
 	}
 

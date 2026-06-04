@@ -150,7 +150,7 @@ func (r *BigTaskRepo) Delete(id string) error {
 // TaskRepo persists Tasks in the per-project store.
 type TaskRepo struct{ db *sql.DB }
 
-const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, attachments, risk_tier, priority, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted`
+const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, attachments, risk_tier, priority, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted, reporter`
 
 // Create inserts a Task, assigning an ID and defaults if absent.
 func (r *TaskRepo) Create(t *model.Task) error {
@@ -166,16 +166,19 @@ func (r *TaskRepo) Create(t *model.Task) error {
 	if t.Priority == "" {
 		t.Priority = model.PriorityMedium
 	}
+	if t.Reporter == "" {
+		t.Reporter = model.ReporterUser
+	}
 	acc, err := json.Marshal(t.Acceptance)
 	if err != nil {
 		return err
 	}
 	_, err = r.db.Exec(
-		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.BigTaskID, t.Title, t.Spec, string(acc),
 		jsonStrings(t.DependsOn), jsonStrings(t.TouchPaths), jsonStrings(t.Tags), jsonStrings(t.Attachments),
 		t.RiskTier, t.Priority, t.Status, t.Branch, t.AgentID, t.PreferredAgentID,
-		boolToInt(t.AutoMerged), boolToInt(t.AuditFlagged), boolToInt(t.Reverted),
+		boolToInt(t.AutoMerged), boolToInt(t.AuditFlagged), boolToInt(t.Reverted), t.Reporter,
 	)
 	return err
 }
@@ -331,7 +334,7 @@ func scanTask(s scanner) (*model.Task, error) {
 	var autoMerged, auditFlagged, reverted int
 	err := s.Scan(&t.ID, &t.BigTaskID, &t.Title, &t.Spec, &acc, &dependsOn, &touchPaths, &tags, &attachments,
 		&t.RiskTier, &t.Priority, &t.Status, &t.Branch, &t.AgentID, &t.PreferredAgentID,
-		&autoMerged, &auditFlagged, &reverted)
+		&autoMerged, &auditFlagged, &reverted, &t.Reporter)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

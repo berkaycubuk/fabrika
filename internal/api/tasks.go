@@ -61,6 +61,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	t.ID = ""
+	t.Reporter = model.ReporterUser
 	// Derive the risk tier from the paths the task will touch (manifest [risk]
 	// globs) unless the caller pinned one explicitly. Drives per-tier routing
 	// now and the merge gate in Phase 3.

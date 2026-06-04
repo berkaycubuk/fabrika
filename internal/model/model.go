@@ -44,6 +44,10 @@ const (
 	PriorityMedium = "medium"
 	PriorityHigh   = "high"
 
+	// Task reporter: who created the task
+	ReporterUser    = "user"
+	ReporterPlanner = "planner"
+
 	// Agent roles
 	RoleImplementer = "implementer"
 	RolePlanner     = "planner"
@@ -94,6 +98,7 @@ type Task struct {
 	Branch           string   `json:"branch"`     // git worktree/branch
 	AgentID          string   `json:"agentId"`    // which registered agent picked it up
 	PreferredAgentID string   `json:"preferredAgentId"`
+	Reporter         string   `json:"reporter"` // user|planner
 
 	// Phase 3 autonomy/trust annotations.
 	AutoMerged   bool `json:"autoMerged"`   // merged by the machine (risk-tier auto-merge), no human accept
