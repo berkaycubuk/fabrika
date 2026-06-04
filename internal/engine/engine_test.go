@@ -488,3 +488,65 @@ func TestWriteHeldOutFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A human can steer a retry by commenting on the task: the next run's prompt
+// carries the comment as guidance plus a summary of the previous failure. The
+// fake agent echoes its own prompt (minus the fabrika_ marker instruction
+// lines, which the engine would otherwise parse as real markers) so the
+// attempt log proves what it was told.
+func TestRetryCarriesHumanGuidanceAndLastFailure(t *testing.T) {
+	eng, st, _ := setup(t)
+	a := &model.Agent{
+		Name:    "fake",
+		Command: "grep -v fabrika_ {prompt_file}",
+		Roles:   []string{model.RoleImplementer},
+		Enabled: true,
+	}
+	if err := st.Agents.Create(a); err != nil {
+		t.Fatal(err)
+	}
+
+	// First run fails (held-out check is red).
+	task := &model.Task{
+		Title:      "steerable",
+		Spec:       "do the thing",
+		Acceptance: model.Contract{HeldOut: []string{"echo boom-marker && exit 3"}},
+	}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status = %q, want failed", got.Status)
+	}
+
+	// Human leaves guidance and retries.
+	c := &model.Comment{TaskID: task.ID, AuthorType: "user", Body: "try mocking the clock instead"}
+	if err := st.Comments.Create(c); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Retry(task.ID); err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected retry dispatch")
+	}
+
+	att, err := st.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	for _, want := range []string{
+		"Guidance from the human",
+		"try mocking the clock instead",
+		"Previous attempt failed",
+		"boom-marker",
+	} {
+		if !strings.Contains(att.Log, want) {
+			t.Fatalf("retry prompt missing %q:\n%s", want, att.Log)
+		}
+	}
+}

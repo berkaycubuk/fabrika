@@ -210,6 +210,7 @@ Integrity rules (the gate must be hard to fool):
 - **Determinism**: no live network/time/random in the gate; pin where possible.
 - **Phase 2+**: run `HeldOut` checks the implementer never saw; add **mutation testing** as a validator-of-the-validator (inject a bug, confirm a test goes red).
 - A `HeldOut` check needing a test file that doesn't exist in the repo must ship it in `HeldOutFiles` (planner-authored). The engine writes those files into the worktree after the branch's auto-commit and just before the gate, so they stay untracked: the implementer never sees them, they overwrite any implementer-supplied copy, and their paths are implicitly locked.
+- **That invariant is enforced in code, not just prompted** (`planner.ValidateHeldOut`): a plan whose `HeldOut` command references a file that neither exists in the repo, is covered by the task's `TouchPaths`, nor is authored in `HeldOutFiles` is rejected at plan time — the planner gets one repair attempt with the violations fed back, then the big task errors. A dispatch-time backstop fails any already-persisted task with such a contract as a `contract` plan defect before the implementer runs, so no agent tokens are spent on work that can only gate red.
 - Reject skipped tests and assertion-count regressions.
 
 A branch only becomes a `review`/auto-merge candidate if every required stage passes.
@@ -227,7 +228,7 @@ A branch only becomes a `review`/auto-merge candidate if every required stage pa
 - **Approve**: shows a proposed `Plan` (task list + dependency shape + open decisions). Approve / adjust / reject. *(Phase 2)*
 - **Decide**: the decision queue — each item a question + options; answer with a tap, optional note, optional "save as convention."
 - **Accept**: the review queue — each item a task with its `Evidence` (stage results + diff, later a recording). Merge or kick back with a reason.
-- **Steer**: reprioritize the ready queue, pause/redirect in-flight tasks, change autonomy tiers, **reassign a task to a different agent**.
+- **Steer**: reprioritize the ready queue, pause/redirect in-flight tasks, change autonomy tiers, **reassign a task to a different agent**. To tell the implementer *what to do*, comment on the task and hit Retry: human comments are injected into the next run's prompt as guidance, together with a summary of the previous failed attempt's evidence.
 - **Agents**: create/edit/enable/disable agents (name, command, roles, tags, concurrency, timeout). Assign which agent holds the planner/reviewer roles and set per-tier routing. Shows **live per-agent activity** — current tasks, throughput, and kick-back rate — so you can compare agents head to head.
 - **Engine room** (observability, not control): live task DAG with statuses, which agent is on what, attempt counts, stuck/blocked items, and the metrics bar. You glance here to calibrate trust; you don't operate it.
 

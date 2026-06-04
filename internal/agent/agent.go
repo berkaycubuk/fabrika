@@ -99,12 +99,25 @@ func RenderCommand(template, promptFile, worktree, model string) string {
 // RenderPrompt builds the prompt file contents for a task run: the spec, the
 // acceptance contract, relevant conventions, and the standing run rules. The
 // implementing agent must not edit locked test files. attachments are local
-// paths to images attached at task creation (mockups, screenshots).
-func RenderPrompt(t model.Task, conventions []model.Convention, attachments []string) string {
+// paths to images attached at task creation (mockups, screenshots). guidance
+// carries human comments on the task (oldest first) so a person can steer a
+// retry by commenting; lastFailure summarizes the previous failed attempt so
+// the agent corrects course instead of repeating it.
+func RenderPrompt(t model.Task, conventions []model.Convention, attachments []string, guidance []string, lastFailure string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task: %s\n\n", t.Title)
 	if t.Spec != "" {
 		fmt.Fprintf(&b, "## Specification\n%s\n\n", t.Spec)
+	}
+	if len(guidance) > 0 {
+		b.WriteString("## Guidance from the human (follow this — it overrides the spec where they conflict)\n")
+		for _, g := range guidance {
+			fmt.Fprintf(&b, "  - %s\n", strings.ReplaceAll(strings.TrimSpace(g), "\n", "\n    "))
+		}
+		b.WriteString("\n")
+	}
+	if lastFailure != "" {
+		fmt.Fprintf(&b, "## Previous attempt failed\nA prior run of this task failed. Do not repeat it — diagnose and fix the cause:\n\n```\n%s\n```\n\n", lastFailure)
 	}
 	if len(attachments) > 0 {
 		b.WriteString("## Attached images\nThe task includes these image files — read them for context (mockups, screenshots, diagrams):\n")

@@ -98,6 +98,8 @@ func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile str
 	b.WriteString("A `heldOut` command must be runnable as-is: if it needs a test file that does not already exist in the repo, ")
 	b.WriteString("author that file yourself in `heldOutFiles` (worktree-relative path -> full file contents) — the implementer cannot create it ")
 	b.WriteString("and fabrika writes it into the worktree only at gate time. Never reference a held-out file you did not provide. ")
+	b.WriteString("This is machine-validated: a plan whose heldOut command references a file that is neither in the repo, ")
+	b.WriteString("in that task's touchPaths, nor authored in heldOutFiles will be rejected. ")
 	b.WriteString("Express ordering with `dependsOn` referencing another task's exact title. ")
 	b.WriteString("List the files/dirs each task will touch in `touchPaths` (drives collision avoidance + risk). ")
 	b.WriteString("If something genuinely cannot be decided without the human, add it to `decisions` instead of guessing.\n\n")

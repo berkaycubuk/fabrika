@@ -224,3 +224,123 @@ func TestHeldOutChecksRunInGate(t *testing.T) {
 		t.Fatalf("status = %q, want failed (held-out check failed)", got.Status)
 	}
 }
+
+// A plan whose held-out check references a file that neither exists, is
+// authored in heldOutFiles, nor is in touchPaths is rejected, and the planner
+// gets ONE repair attempt with the violations fed back. Here the second
+// attempt authors the file, so the plan lands.
+func TestPlanRetryRepairsUnsatisfiableHeldOut(t *testing.T) {
+	eng, st, _ := setup(t)
+
+	bad := `{"tasks":[{"title":"T","spec":"s","acceptance":{` +
+		`"heldOut":["node --test test/heldout/x.heldout.test.ts"]}}]}`
+	good := `{"tasks":[{"title":"T","spec":"s","acceptance":{` +
+		`"heldOut":["node --test test/heldout/x.heldout.test.ts"],` +
+		`"heldOutFiles":{"test/heldout/x.heldout.test.ts":"// hidden"}}}]}`
+	ag := &model.Agent{
+		Name: "planner",
+		Command: "if [ -f .second ]; then printf '%s' '" + good + "' > fabrika_plan.json; " +
+			"else touch .second; printf '%s' '" + bad + "' > fabrika_plan.json; fi",
+		Roles:   []string{model.RolePlanner},
+		Enabled: true,
+	}
+	if err := st.Agents.Create(ag); err != nil {
+		t.Fatal(err)
+	}
+	bt := &model.BigTask{Title: "ship", Intent: "do"}
+	if err := st.BigTasks.Create(bt); err != nil {
+		t.Fatal(err)
+	}
+
+	eng.planBigTask(*bt)
+
+	got, _ := st.BigTasks.Get(bt.ID)
+	if got.Status != model.BigTaskPlanned {
+		t.Fatalf("bigtask status = %q (error %q), want planned after repair", got.Status, got.Error)
+	}
+	tasks, _ := st.Tasks.ListByBigTask(bt.ID)
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+	if _, ok := tasks[0].Acceptance.HeldOutFiles["test/heldout/x.heldout.test.ts"]; !ok {
+		t.Fatalf("repaired plan should carry heldOutFiles, got %+v", tasks[0].Acceptance)
+	}
+}
+
+// If the repair attempt still references a held-out file it never authored,
+// the big task fails at PLAN time with an actionable reason — no doomed task
+// is ever persisted for an implementer to burn tokens on.
+func TestPlanRejectedWhenHeldOutStaysUnsatisfiable(t *testing.T) {
+	eng, st, _ := setup(t)
+
+	bad := `{"tasks":[{"title":"T","spec":"s","acceptance":{` +
+		`"heldOut":["node --test test/heldout/x.heldout.test.ts"]}}]}`
+	ag := &model.Agent{
+		Name:    "planner",
+		Command: "printf '%s' '" + bad + "' > fabrika_plan.json",
+		Roles:   []string{model.RolePlanner},
+		Enabled: true,
+	}
+	if err := st.Agents.Create(ag); err != nil {
+		t.Fatal(err)
+	}
+	bt := &model.BigTask{Title: "ship", Intent: "do"}
+	if err := st.BigTasks.Create(bt); err != nil {
+		t.Fatal(err)
+	}
+
+	eng.planBigTask(*bt)
+
+	got, _ := st.BigTasks.Get(bt.ID)
+	if got.Status != "error" {
+		t.Fatalf("bigtask status = %q, want error", got.Status)
+	}
+	if !strings.Contains(got.Error, "test/heldout/x.heldout.test.ts") {
+		t.Fatalf("error not actionable: %q", got.Error)
+	}
+	tasks, _ := st.Tasks.ListByBigTask(bt.ID)
+	if len(tasks) != 0 {
+		t.Fatalf("rejected plan must persist no tasks, got %d", len(tasks))
+	}
+}
+
+// Backstop for tasks that already carry an unsatisfiable held-out contract
+// (e.g. persisted before validation existed): dispatch fails them as a plan
+// defect BEFORE running the implementer, so no agent tokens are spent on work
+// that can only ever gate red.
+func TestDispatchFailsFastOnUnsatisfiableHeldOut(t *testing.T) {
+	eng, st, _ := setup(t)
+	registerAgent(t, st, "echo AGENT_RAN")
+
+	task := &model.Task{
+		Title: "doomed",
+		Acceptance: model.Contract{
+			HeldOut:     []string{"node --test test/heldout/missing.heldout.test.ts"},
+			LockedGlobs: []string{"test/heldout/**"},
+		},
+	}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status = %q, want failed", got.Status)
+	}
+	att, err := st.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if att.Evidence.Stages["contract"].Pass {
+		t.Fatalf("expected failing contract stage: %+v", att.Evidence.Stages)
+	}
+	if !strings.Contains(att.Log, "plan defect") || !strings.Contains(att.Log, "missing.heldout.test.ts") {
+		t.Fatalf("attempt log not actionable: %q", att.Log)
+	}
+	if strings.Contains(att.Log, "AGENT_RAN") {
+		t.Fatal("implementer ran despite an unsatisfiable contract")
+	}
+}

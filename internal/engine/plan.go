@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/berkaycubuk/fabrika/internal/agent"
 	"github.com/berkaycubuk/fabrika/internal/git"
@@ -228,36 +229,71 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 
 	planFile := filepath.Join(wt, planFileName)
 	conventions, _ := e.store.Conventions.List()
-	prompt := planner.RenderPrompt(bt, conventions, planFile, e.attachmentPaths(bt.Attachments))
-	promptFile, cleanup, err := writeTempPrompt(prompt)
-	if err != nil {
-		e.failBigTask(bt.ID, "write planner prompt: %v", err)
-		return
-	}
-	defer cleanup()
-
+	basePrompt := planner.RenderPrompt(bt, conventions, planFile, e.attachmentPaths(bt.Attachments))
 	synthetic := model.Task{ID: bt.ID, Title: "plan: " + bt.Title}
-	res, err := e.agent.Run(e.ctx, ag, synthetic, wt, promptFile)
-	if err != nil {
-		e.failBigTask(bt.ID, "run planner agent: %v", err)
-		return
-	}
 
-	// Persist the planner's reported usage now, before parsing — the tokens were
-	// consumed by the run regardless of whether the plan output parses cleanly.
-	if uerr := e.store.BigTasks.SetUsage(bt.ID, res.Usage); uerr != nil {
-		log.Printf("engine: set bigtask usage %s: %v", bt.ID, uerr)
-	}
+	// Run the planner, validate the contract invariants the prompt can only ask
+	// for, and give the planner ONE repair attempt with the exact violations fed
+	// back. Catching an unsatisfiable held-out check here turns a guaranteed
+	// late gate failure (after a full implementer run) into an immediate,
+	// correctly-attributed plan rejection.
+	prompt := basePrompt
+	var raw planner.RawPlan
+	var usage model.Usage
+	for attempt := 0; ; attempt++ {
+		promptFile, cleanup, err := writeTempPrompt(prompt)
+		if err != nil {
+			e.failBigTask(bt.ID, "write planner prompt: %v", err)
+			return
+		}
+		res, err := e.agent.Run(e.ctx, ag, synthetic, wt, promptFile)
+		cleanup()
+		if err != nil {
+			e.failBigTask(bt.ID, "run planner agent: %v", err)
+			return
+		}
 
-	// Prefer the plan file; fall back to the agent's stdout.
-	output := res.Stdout
-	if data, rerr := os.ReadFile(planFile); rerr == nil && len(data) > 0 {
-		output = string(data)
-	}
-	raw, err := planner.Parse(output)
-	if err != nil {
-		e.failBigTask(bt.ID, "parse planner output: %v", err)
-		return
+		// Persist the planner's reported usage now, before parsing — the tokens
+		// were consumed by the run regardless of whether the plan output parses
+		// cleanly. Repair attempts accumulate.
+		usage.InputTokens += res.Usage.InputTokens
+		usage.OutputTokens += res.Usage.OutputTokens
+		usage.TotalTokens += res.Usage.TotalTokens
+		if uerr := e.store.BigTasks.SetUsage(bt.ID, usage); uerr != nil {
+			log.Printf("engine: set bigtask usage %s: %v", bt.ID, uerr)
+		}
+
+		// Prefer the plan file; fall back to the agent's stdout.
+		output := res.Stdout
+		if data, rerr := os.ReadFile(planFile); rerr == nil && len(data) > 0 {
+			output = string(data)
+		}
+		raw, err = planner.Parse(output)
+		if err != nil {
+			e.failBigTask(bt.ID, "parse planner output: %v", err)
+			return
+		}
+
+		issues := planner.ValidateHeldOut(e.repoRoot, raw)
+		if len(issues) == 0 {
+			break
+		}
+		if attempt >= 1 {
+			e.failBigTask(bt.ID, "plan rejected after repair attempt: %s", strings.Join(issues, "; "))
+			return
+		}
+		log.Printf("engine: plan for %q rejected, retrying planner: %s", bt.Title, strings.Join(issues, "; "))
+		var b strings.Builder
+		b.WriteString(basePrompt)
+		b.WriteString("\n## Previous attempt rejected\nYour previous plan was rejected for these contract violations:\n")
+		for _, is := range issues {
+			fmt.Fprintf(&b, "  - %s\n", is)
+		}
+		b.WriteString("\nFix them and write the FULL corrected plan JSON to the same file. ")
+		b.WriteString("Remember: every file a `heldOut` command needs must already exist in the repo, ")
+		b.WriteString("be listed in that task's `touchPaths` (the implementer will create it), ")
+		b.WriteString("or be fully authored by you in `heldOutFiles`.\n")
+		prompt = b.String()
 	}
 
 	e.persistPlan(bt, raw)

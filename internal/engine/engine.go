@@ -27,6 +27,7 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/gate"
 	"github.com/berkaycubuk/fabrika/internal/git"
 	"github.com/berkaycubuk/fabrika/internal/model"
+	"github.com/berkaycubuk/fabrika/internal/planner"
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
@@ -375,9 +376,30 @@ func pathsOverlap(a, b []string) bool {
 func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base string) {
 	wt := e.worktreePath(task.ID)
 
-	// Render the prompt to a temp file the agent command can read.
+	// Backstop for plan-time validation: a held-out check referencing a file
+	// that neither exists, is authored in HeldOutFiles, nor will be created by
+	// this task (touchPaths) can never pass — the implementer is locked out of
+	// held-out paths. Fail it as a plan defect BEFORE spending an agent run, so
+	// the failure is attributed to the contract, not to correct implementer work.
+	if missing := planner.MissingHeldOutRefs(wt, task.Acceptance, task.TouchPaths); len(missing) > 0 {
+		msg := "plan defect: held-out check references missing file(s): " + strings.Join(missing, ", ") +
+			" — the planner must author them in heldOutFiles (or the contract must be edited); the implementer cannot create them"
+		ev := model.Evidence{Stages: map[string]model.StageResult{
+			"contract": {Pass: false, Output: msg},
+		}}
+		e.finish(task, ag, ev, model.ResultFail, msg, model.TaskFailed, model.Usage{})
+		log.Printf("engine: task %q failed before dispatch: %s", task.Title, msg)
+		return
+	}
+
+	// Render the prompt to a temp file the agent command can read. Human
+	// comments on the task ride along as guidance — commenting then hitting
+	// Retry is how a person steers the next run — and a previous failed
+	// attempt's evidence is summarized so the agent corrects instead of repeats.
 	conventions, _ := e.store.Conventions.List()
-	promptFile, cleanup, err := writeTempPrompt(agent.RenderPrompt(task, conventions, e.attachmentPaths(task.Attachments)))
+	promptFile, cleanup, err := writeTempPrompt(agent.RenderPrompt(
+		task, conventions, e.attachmentPaths(task.Attachments),
+		e.taskGuidance(task.ID), e.lastFailureSummary(task.ID)))
 	if err != nil {
 		log.Printf("engine: write prompt: %v", err)
 		e.finish(task, ag, model.Evidence{}, model.ResultFail, "write prompt: "+err.Error(), model.TaskFailed, model.Usage{})
@@ -940,6 +962,56 @@ func writeTempPrompt(content string) (path string, cleanup func(), err error) {
 	}
 	f.Close()
 	return f.Name(), func() { os.Remove(f.Name()) }, nil
+}
+
+// taskGuidance returns the bodies of human ("user") comments on a task, oldest
+// first, so they can be injected into the implementer prompt. Agent comments
+// are excluded — guidance is the human steering channel.
+func (e *Engine) taskGuidance(taskID string) []string {
+	comments, err := e.store.Comments.ListForTask(taskID)
+	if err != nil {
+		log.Printf("engine: list comments for guidance %s: %v", taskID, err)
+		return nil
+	}
+	var out []string
+	for _, c := range comments {
+		if c.AuthorType == "user" && strings.TrimSpace(c.Body) != "" {
+			out = append(out, c.Body)
+		}
+	}
+	return out
+}
+
+// lastFailureSummary condenses the most recent failed attempt's evidence into a
+// short report (failing stages + the tail of their output) for the next run's
+// prompt. Empty when the task has no prior failed attempt.
+func (e *Engine) lastFailureSummary(taskID string) string {
+	att, err := e.store.Attempts.LatestForTask(taskID)
+	if err != nil || att == nil || att.Result != model.ResultFail {
+		return ""
+	}
+	var b strings.Builder
+	for _, stage := range []string{"contract", "locked", "heldout", "setup", "typecheck", "lint", "build", "test", "verify", "e2e"} {
+		res, ok := att.Evidence.Stages[stage]
+		if !ok || res.Pass {
+			continue
+		}
+		fmt.Fprintf(&b, "stage %q failed:\n%s\n", stage, tailLines(res.Output, 40))
+	}
+	if b.Len() == 0 && att.Log != "" {
+		// No stage evidence (e.g. the agent itself errored): fall back to the log.
+		b.WriteString(tailLines(att.Log, 40))
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// tailLines returns the last n lines of s, prefixing a marker when truncated.
+func tailLines(s string, n int) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) <= n {
+		return strings.TrimSpace(s)
+	}
+	return "[... truncated ...]\n" + strings.Join(lines[len(lines)-n:], "\n")
 }
 
 // writeHeldOutFiles materializes planner-authored held-out test files
