@@ -491,3 +491,43 @@ func TestSettingsRoundTripOverHTTP(t *testing.T) {
 		t.Fatalf("settings = %v", got)
 	}
 }
+
+func TestDeleteBigTaskOverHTTP(t *testing.T) {
+	h := newTestServer(t)
+
+	// Create a big task.
+	rec := do(t, h, "POST", "/api/bigtasks", model.BigTask{
+		Title:  "Delete me",
+		Intent: "This should be removed",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create bigtask: %d %s", rec.Code, rec.Body.String())
+	}
+	var created model.BigTask
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.ID == "" {
+		t.Fatal("expected assigned ID")
+	}
+
+	// DELETE -> 204.
+	rec = do(t, h, "DELETE", "/api/bigtasks/"+created.ID, nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// DELETE same id again -> 404.
+	rec = do(t, h, "DELETE", "/api/bigtasks/"+created.ID, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 on second delete, got %d", rec.Code)
+	}
+
+	// GET /api/bigtasks no longer lists it.
+	rec = do(t, h, "GET", "/api/bigtasks", nil)
+	var bts []model.BigTask
+	json.Unmarshal(rec.Body.Bytes(), &bts)
+	for _, bt := range bts {
+		if bt.ID == created.ID {
+			t.Fatal("deleted big task still appears in list")
+		}
+	}
+}

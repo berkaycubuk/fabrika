@@ -156,6 +156,19 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, bt)
 }
 
+func (s *Server) deleteBigTask(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.engine.DeleteBigTask(id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // reviewItem is a surfaced task awaiting human judgment, with its latest attempt.
 type reviewItem struct {
 	Task    model.Task     `json:"task"`
