@@ -22,7 +22,7 @@ func newTestServerStore(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	srv := NewServer(s, &config.Config{}, dir, nil)
+	srv := NewServer(s, &config.Config{}, dir, nil, "")
 	srv.Start(context.Background())
 	return srv.Handler(), s
 }

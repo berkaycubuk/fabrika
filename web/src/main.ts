@@ -44,12 +44,18 @@ function navItem(n: Nav): HTMLElement {
 }
 
 function sidebar(): HTMLElement {
+  const versionEl = el("span", { id: "build-version", class: "build-version" }, ["…"]);
+  fetch("/api/version")
+    .then((r) => r.json())
+    .then((d: { version: string }) => { versionEl.textContent = d.version; })
+    .catch(() => { versionEl.textContent = ""; });
   return el("aside", { class: "sidebar" }, [
     el("div", { class: "brand" }, ["fabrika"]),
     el("div", { class: "nav-group" }, NAV.map(navItem)),
     el("div", { class: "conn-row" }, [
       el("span", { id: "conn", class: "pill soon" }, ["connecting"]),
     ]),
+    versionEl,
   ]);
 }
 

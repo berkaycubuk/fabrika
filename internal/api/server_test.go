@@ -58,7 +58,7 @@ func newTestServerWithStore(t *testing.T) (*store.Store, http.Handler) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	srv := NewServer(s, &config.Config{}, dir, nil)
+	srv := NewServer(s, &config.Config{}, dir, nil, "")
 	srv.Start(context.Background())
 	return s, srv.Handler()
 }
@@ -230,7 +230,7 @@ func TestBigTaskPreflightRejectsRepoWithoutCommits(t *testing.T) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	srv := NewServer(s, &config.Config{}, dir, nil)
+	srv := NewServer(s, &config.Config{}, dir, nil, "")
 	srv.Start(context.Background())
 	h := srv.Handler()
 
