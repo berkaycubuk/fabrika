@@ -178,6 +178,69 @@ func (e *Engine) RejectPlan(planID string) error {
 	return e.DeleteBigTask(p.BigTaskID)
 }
 
+// RevisePlan re-queues a plan with feedback so the planner re-thinks it. It
+// deletes the old plan artifacts but keeps the big task, composes a
+// revision-context string from the old plan's tasks and the feedback, stores
+// it on the big task, and re-queues planning.
+func (e *Engine) RevisePlan(planID, feedback string) error {
+	feedback = strings.TrimSpace(feedback)
+	if feedback == "" {
+		return fmt.Errorf("feedback is required to revise a plan")
+	}
+
+	p, err := e.store.Plans.Get(planID)
+	if err != nil {
+		return err
+	}
+	if p.Status == model.PlanApproved {
+		return fmt.Errorf("plan already approved")
+	}
+	if p.Status == model.PlanRejected {
+		return fmt.Errorf("plan was rejected")
+	}
+
+	bt, err := e.store.BigTasks.Get(p.BigTaskID)
+	if err != nil {
+		return err
+	}
+	tasks, err := e.store.Tasks.ListByBigTask(p.BigTaskID)
+	if err != nil {
+		return err
+	}
+	for _, t := range tasks {
+		if t.Status == model.TaskClaimed || t.Status == model.TaskRunning || t.Status == model.TaskVerifying {
+			return fmt.Errorf("cannot revise a plan with running tasks")
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("## Previous plan\n\n")
+	for _, t := range tasks {
+		fmt.Fprintf(&b, "### %s\n%s\n\n", t.Title, t.Spec)
+	}
+	b.WriteString("## Requested changes\n")
+	b.WriteString(feedback)
+	revisionCtx := b.String()
+
+	if err := e.store.BigTasks.SetPlanFeedback(p.BigTaskID, revisionCtx); err != nil {
+		return err
+	}
+
+	if err := e.store.Decisions.DeleteByBigTask(p.BigTaskID); err != nil {
+		return err
+	}
+	if err := e.store.Tasks.DeleteByBigTask(p.BigTaskID); err != nil {
+		return err
+	}
+	if err := e.store.Plans.DeleteByBigTask(p.BigTaskID); err != nil {
+		return err
+	}
+
+	bt.PlanFeedback = revisionCtx
+	e.PlanBigTask(*bt)
+	return nil
+}
+
 // lockedViolations returns the changed files that match any locked glob. The
 // implementer must not edit these (spec-derived locked acceptance, SPECS §8).
 func lockedViolations(changed, lockedGlobs []string) []string {

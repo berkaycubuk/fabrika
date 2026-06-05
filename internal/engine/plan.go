@@ -350,6 +350,7 @@ func (e *Engine) persistPlan(bt model.BigTask, raw planner.RawPlan) {
 	if err := e.store.BigTasks.UpdateStatus(bt.ID, model.BigTaskPlanned); err != nil {
 		log.Printf("engine: set bigtask planned: %v", err)
 	}
+	e.store.BigTasks.SetPlanFeedback(bt.ID, "")
 	plan.Tasks, plan.OpenDecisions = tasks, decisions
 	e.emit("plan.ready", *plan)
 	log.Printf("engine: planned %q -> %d task(s), %d decision(s)", bt.Title, len(tasks), len(decisions))
