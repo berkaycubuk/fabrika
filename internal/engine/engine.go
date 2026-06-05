@@ -54,6 +54,15 @@ type runInfo struct {
 	cancelReason string
 }
 
+// planRunInfo records an in-flight planning run for a big task. Held in
+// Engine.planRuns under planMu. cancel stops this specific planner run
+// without disturbing the engine or other planning runs; reason carries the
+// human's stop note so the run goroutine can finalize the big task as error.
+type planRunInfo struct {
+	cancel context.CancelFunc
+	reason string
+}
+
 // Engine coordinates dispatch, verification, and merge.
 type Engine struct {
 	store    *store.Store
@@ -75,6 +84,11 @@ type Engine struct {
 	planMu   sync.Mutex
 	planning map[string]int
 
+	// planRuns tracks in-flight planning runs keyed by big-task ID, guarded by
+	// planMu. The cancel func stops this specific planner run without disturbing
+	// the engine; reason carries the human's stop note.
+	planRuns map[string]planRunInfo
+
 	// sample decides, per auto-merge, whether to flag a PR for post-merge audit.
 	// Overridable in tests for determinism; defaults to a rate-based RNG.
 	sample func(rate float64) bool
@@ -95,6 +109,7 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		wake:     make(chan struct{}, 1),
 		running:  map[string]runInfo{},
 		planning: map[string]int{},
+		planRuns: map[string]planRunInfo{},
 		sample: func(rate float64) bool {
 			if rate <= 0 {
 				return false
@@ -1043,6 +1058,43 @@ func (e *Engine) Revert(taskID string) error {
 	e.emitTask(taskID)
 	log.Printf("engine: task %q marked reverted (change-failure)", t.Title)
 	return nil
+}
+
+// CancelPlanning stops an in-flight planning run for the given big task.
+// It returns store.ErrNotFound when the big task does not exist, a non-nil
+// error when the big task is not currently planning, or nil once the reason is
+// recorded and the run's cancel func is called.
+func (e *Engine) CancelPlanning(bigTaskID, reason string) error {
+	if _, err := e.store.BigTasks.Get(bigTaskID); err != nil {
+		return err // store.ErrNotFound when absent
+	}
+
+	e.planMu.Lock()
+	pri, ok := e.planRuns[bigTaskID]
+	if !ok || pri.cancel == nil {
+		e.planMu.Unlock()
+		return fmt.Errorf("big task is not currently planning")
+	}
+	pri.reason = reason
+	e.planRuns[bigTaskID] = pri
+	cancel := pri.cancel
+	e.planMu.Unlock()
+
+	cancel()
+	return nil
+}
+
+// planCancelReason reports whether a planning run was deliberately stopped and
+// the human's reason. Returns ("", false) when the big task is not in an
+// in-flight planning run or hasn't been deliberately stopped.
+func (e *Engine) planCancelReason(bigTaskID string) (string, bool) {
+	e.planMu.Lock()
+	defer e.planMu.Unlock()
+	pri, ok := e.planRuns[bigTaskID]
+	if !ok || pri.reason == "" {
+		return "", false
+	}
+	return pri.reason, true
 }
 
 // --- helpers ---
