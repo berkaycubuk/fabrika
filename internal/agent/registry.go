@@ -15,15 +15,15 @@ func HasRole(a model.Agent, role string) bool {
 // honoring live free slots (SPECS §7). free maps agentID -> remaining
 // concurrency slots; an agent is eligible only when free[id] > 0. Precedence:
 //
-//	1. PreferredAgentID, if set and that agent is enabled. When it's pinned but
-//	   has no free slot, the task WAITS for it (returns nil) rather than spilling
-//	   onto another agent — pinning is a deliberate routing choice. A pin to a
-//	   missing/disabled agent falls through to the general pool.
-//	2. Capability (tag overlap) partitions the eligible pool. If any eligible
-//	   agent's Tags overlap the task's, choose only from that subset.
-//	3. Within the chosen subset, the highest Priority agent wins (larger int).
-//	   Ties are broken by existing slice order (first wins).
-//	4. nil if no eligible agents (task waits in ready).
+//  1. PreferredAgentID, if set and that agent is enabled. When it's pinned but
+//     has no free slot, the task WAITS for it (returns nil) rather than spilling
+//     onto another agent — pinning is a deliberate routing choice. A pin to a
+//     missing/disabled agent falls through to the general pool.
+//  2. Capability (tag overlap) partitions the eligible pool. If any eligible
+//     agent's Tags overlap the task's, choose only from that subset.
+//  3. Within the chosen subset, the highest Priority agent wins (larger int).
+//     Ties are broken by existing slice order (first wins).
+//  4. nil if no eligible agents (task waits in ready).
 func Route(t model.Task, agents []model.Agent, free map[string]int) *model.Agent {
 	hasSlot := func(a *model.Agent) bool { return free == nil || free[a.ID] > 0 }
 
