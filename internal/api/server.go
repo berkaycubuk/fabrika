@@ -68,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/bigtasks", s.createBigTask)
 	mux.HandleFunc("DELETE /api/bigtasks/{id}", s.deleteBigTask)
 	mux.HandleFunc("POST /api/bigtasks/{id}/replan", s.replanBigTask)
+	mux.HandleFunc("POST /api/bigtasks/{id}/stop", s.stopBigTask)
 
 	// --- Accept queue (live loop) ---
 	mux.HandleFunc("GET /api/reviews", s.listReviews)
