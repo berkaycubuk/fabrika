@@ -183,6 +183,19 @@ func (e *Engine) planBigTask(bt model.BigTask) {
 // the planner agent and flipping status to `planning` is idempotent: the gated
 // dispatcher already did both when it claimed the slot; direct callers rely on it.
 func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
+	// Per-big-task cancellable context so cancelling this run stops only this
+	// planner, not the whole engine (mirrors claim() at engine.go).
+	planCtx, cancel := context.WithCancel(e.ctx)
+	e.planMu.Lock()
+	e.planRuns[bt.ID] = planRunInfo{cancel: cancel}
+	e.planMu.Unlock()
+	defer func() {
+		e.planMu.Lock()
+		delete(e.planRuns, bt.ID)
+		e.planMu.Unlock()
+		cancel()
+	}()
+
 	// Record the planner agent on the big task before flipping status so the
 	// subsequent emit carries the agent ID and the UI shows it in the card.
 	e.store.BigTasks.SetPlannerAgent(bt.ID, ag.ID)
@@ -246,8 +259,15 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 			e.failBigTask(bt.ID, "write planner prompt: %v", err)
 			return
 		}
-		res, err := e.agent.Run(e.ctx, ag, synthetic, wt, promptFile)
+		res, err := e.agent.Run(planCtx, ag, synthetic, wt, promptFile)
 		cleanup()
+
+		// A deliberate planning stop lands the big task in error.
+		if reason, stopped := e.planCancelReason(bt.ID); stopped {
+			e.failBigTask(bt.ID, "planning stopped: %s", reason)
+			return
+		}
+
 		if err != nil {
 			e.failBigTask(bt.ID, "run planner agent: %v", err)
 			return
