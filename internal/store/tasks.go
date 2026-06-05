@@ -12,7 +12,7 @@ import (
 // BigTaskRepo persists BigTasks in the per-project store.
 type BigTaskRepo struct{ db *sql.DB }
 
-const bigTaskCols = `id, title, intent, constraints, attachments, repo_path, status, error, planner_agent_id`
+const bigTaskCols = `id, title, intent, constraints, attachments, repo_path, status, error, planner_agent_id, plan_feedback`
 
 // Create inserts a BigTask, assigning an ID and default status if absent.
 func (r *BigTaskRepo) Create(b *model.BigTask) error {
@@ -23,8 +23,8 @@ func (r *BigTaskRepo) Create(b *model.BigTask) error {
 		b.Status = model.BigTaskDraft
 	}
 	_, err := r.db.Exec(
-		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), jsonStrings(b.Attachments), b.RepoPath, b.Status, b.Error, b.PlannerAgentID,
+		`INSERT INTO bigtasks (`+bigTaskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.ID, b.Title, b.Intent, jsonStrings(b.Constraints), jsonStrings(b.Attachments), b.RepoPath, b.Status, b.Error, b.PlannerAgentID, b.PlanFeedback,
 	)
 	return err
 }
@@ -62,7 +62,7 @@ func (r *BigTaskRepo) List() ([]model.BigTask, error) {
 func scanBigTask(s scanner) (*model.BigTask, error) {
 	var b model.BigTask
 	var constraints, attachments string
-	err := s.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &attachments, &b.RepoPath, &b.Status, &b.Error, &b.PlannerAgentID)
+	err := s.Scan(&b.ID, &b.Title, &b.Intent, &constraints, &attachments, &b.RepoPath, &b.Status, &b.Error, &b.PlannerAgentID, &b.PlanFeedback)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +74,15 @@ func scanBigTask(s scanner) (*model.BigTask, error) {
 // SetPlannerAgent records which planner agent is working on a big task.
 func (r *BigTaskRepo) SetPlannerAgent(id, agentID string) error {
 	res, err := r.db.Exec(`UPDATE bigtasks SET planner_agent_id=? WHERE id=?`, agentID, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
+// SetPlanFeedback records plan-revision feedback on a big task.
+func (r *BigTaskRepo) SetPlanFeedback(id, feedback string) error {
+	res, err := r.db.Exec(`UPDATE bigtasks SET plan_feedback=? WHERE id=?`, feedback, id)
 	if err != nil {
 		return err
 	}

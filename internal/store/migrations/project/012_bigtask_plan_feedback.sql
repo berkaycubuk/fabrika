@@ -1,0 +1,1 @@
+ALTER TABLE bigtasks ADD COLUMN plan_feedback TEXT NOT NULL DEFAULT '';

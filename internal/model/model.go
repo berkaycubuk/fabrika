@@ -70,6 +70,7 @@ type BigTask struct {
 	Status         string   `json:"status"`         // draft|planning|planned|running|done|error
 	Error          string   `json:"error"`          // failure reason when Status == error; cleared on retry
 	PlannerAgentID string   `json:"plannerAgentId"` // which registered planner agent is decomposing this
+	PlanFeedback   string   `json:"planFeedback"`   // asks the planner to re-think its plan
 }
 
 // Plan is a proposed decomposition of a BigTask into Tasks.
