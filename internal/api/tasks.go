@@ -60,6 +60,14 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if t.RiskTier != "" && !model.ValidRiskTier(t.RiskTier) {
+		writeErr(w, http.StatusBadRequest, "invalid riskTier: "+t.RiskTier)
+		return
+	}
+	if t.Priority != "" && !model.ValidPriority(t.Priority) {
+		writeErr(w, http.StatusBadRequest, "invalid priority: "+t.Priority)
+		return
+	}
 	t.ID = ""
 	t.Reporter = model.ReporterUser
 	// Derive the risk tier from the paths the task will touch (manifest [risk]
