@@ -67,7 +67,40 @@ func Load(repoRoot string) (*Config, error) {
 	if c.Project.Name == "" {
 		return nil, fmt.Errorf("%s: [project].name is required", path)
 	}
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return &c, nil
+}
+
+// Validate checks [autonomy] semantics: every listed tier must be "low",
+// "medium", or "high", and no tier may appear in both auto_merge and escalate.
+func (c *Config) Validate() error {
+	validTiers := map[string]bool{
+		tierLow:    true,
+		tierMedium: true,
+		tierHigh:   true,
+	}
+	for _, t := range c.Autonomy.AutoMerge {
+		if !validTiers[t] {
+			return fmt.Errorf("[autonomy].auto_merge: unknown tier %q (must be low, medium, or high)", t)
+		}
+	}
+	for _, t := range c.Autonomy.Escalate {
+		if !validTiers[t] {
+			return fmt.Errorf("[autonomy].escalate: unknown tier %q (must be low, medium, or high)", t)
+		}
+	}
+	mergeSet := make(map[string]bool, len(c.Autonomy.AutoMerge))
+	for _, t := range c.Autonomy.AutoMerge {
+		mergeSet[t] = true
+	}
+	for _, t := range c.Autonomy.Escalate {
+		if mergeSet[t] {
+			return fmt.Errorf("[autonomy]: tier %q appears in both auto_merge and escalate", t)
+		}
+	}
+	return nil
 }
 
 // Exists reports whether a manifest is present at the repo root.
