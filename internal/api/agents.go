@@ -31,6 +31,12 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name and command are required")
 		return
 	}
+	for _, role := range a.Roles {
+		if !model.ValidAgentRole(role) {
+			writeErr(w, http.StatusBadRequest, "invalid role: "+role)
+			return
+		}
+	}
 	if len(a.Photo) > maxPhotoBytes {
 		writeErr(w, http.StatusBadRequest, "photo exceeds maximum size of 2 MiB")
 		return
@@ -54,6 +60,12 @@ func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request) {
 	if a.Name == "" || a.Command == "" {
 		writeErr(w, http.StatusBadRequest, "name and command are required")
 		return
+	}
+	for _, role := range a.Roles {
+		if !model.ValidAgentRole(role) {
+			writeErr(w, http.StatusBadRequest, "invalid role: "+role)
+			return
+		}
 	}
 	if len(a.Photo) > maxPhotoBytes {
 		writeErr(w, http.StatusBadRequest, "photo exceeds maximum size of 2 MiB")
