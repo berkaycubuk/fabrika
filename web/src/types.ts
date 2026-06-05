@@ -91,6 +91,7 @@ export interface BigTask {
   status: string; // draft|planning|planned|running|done|error
   error: string; // failure reason when status === "error"
   plannerAgentId: string; // which registered planner agent is decomposing this
+  planFeedback?: string;
 }
 
 export interface Decision {
