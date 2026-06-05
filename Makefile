@@ -1,4 +1,4 @@
-.PHONY: all web build run test clean dev install uninstall
+.PHONY: all web build run test clean dev install uninstall fmt-check vet lint check
 
 # Installation prefix for `make install` (override with `make install PREFIX=...`).
 PREFIX ?= /usr/local
@@ -38,3 +38,14 @@ clean:
 	rm -f fabrika
 	rm -rf web/dist/*
 	touch web/dist/.gitkeep
+
+fmt-check:
+	@test -z "$$(gofmt -l internal/ cmd/)" || (echo "Go files not formatted:"; gofmt -l internal/ cmd/; exit 1)
+
+vet:
+	go vet ./...
+
+lint: fmt-check vet
+
+check: lint
+	go test ./...
