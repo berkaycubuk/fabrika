@@ -203,6 +203,14 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
       }}),
     ]));
   }
+  if (b.status === "planning") {
+    children.push(actionRow([
+      button("Stop planning", { variant: "danger", onclick: () => {
+        if (!confirm(`Stop planning "${b.title}"?`)) return;
+        act(() => api.stopPlanning(b.id));
+      }}),
+    ]));
+  }
   const side = buildSidebar([
     asideField("Status", [pill(b.status, `status-${b.status}`)]),
     b.plannerAgentId ? asideField("Planner", [tag(agentName(agents, b.plannerAgentId), "agent")]) : null,

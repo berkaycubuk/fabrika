@@ -62,6 +62,7 @@ export const api = {
     req<BigTask>("POST", "/api/bigtasks", b),
   deleteBigTask: (id: string) => req<void>("DELETE", `/api/bigtasks/${id}`),
   replanBigTask: (id: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/replan`),
+  stopPlanning: (id: string, reason?: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/stop`, { reason }),
 
   // Plans (approve flow, Phase 2)
   listPlans: () => req<Plan[]>("GET", "/api/plans"),
