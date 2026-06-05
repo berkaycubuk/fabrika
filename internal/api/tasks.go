@@ -176,6 +176,18 @@ func (s *Server) replanBigTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": model.BigTaskDraft})
 }
 
+func (s *Server) stopBigTask(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = decodeJSON(r, &body) // body is optional
+	if err := s.engine.CancelPlanning(r.PathValue("id"), body.Reason); err != nil {
+		mapEngineErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) deleteBigTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.engine.DeleteBigTask(id); err != nil {
