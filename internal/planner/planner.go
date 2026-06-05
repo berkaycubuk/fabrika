@@ -92,6 +92,12 @@ func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile str
 		b.WriteString("\n")
 	}
 
+	if fb := strings.TrimSpace(bt.PlanFeedback); fb != "" {
+		b.WriteString("## Revision requested\n")
+		fmt.Fprintf(&b, "%s\n\n", fb)
+		b.WriteString("Reconsider your previous plan in light of the feedback above and produce an updated plan that addresses it.\n\n")
+	}
+
 	b.WriteString("## Your job\n")
 	b.WriteString("Decompose this into the smallest set of independently-verifiable tasks. ")
 	b.WriteString("For each task author a machine-checkable acceptance contract: shell `verifyCmds` that prove it is done, ")
