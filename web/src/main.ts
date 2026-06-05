@@ -2,6 +2,7 @@
 // decide / accept / audit) into one kanban and seeds new work via Define /
 // Create task; Agents exposes the registry + observability views.
 import { el } from "./dom.js";
+import { brand } from "./brand.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent } from "./views/board.js";
@@ -45,12 +46,20 @@ function navItem(n: Nav): HTMLElement {
 
 function sidebar(): HTMLElement {
   const versionEl = el("span", { id: "build-version", class: "build-version" }, ["…"]);
+  const brandEl = brand("");
   fetch("/api/version")
     .then((r) => r.json())
-    .then((d: { version: string }) => { versionEl.textContent = d.version; })
+    .then((d: { version: string; project?: string }) => {
+      versionEl.textContent = d.version;
+      if (d.project) {
+        const newBrand = brand(d.project);
+        brandEl.replaceWith(newBrand);
+        document.title = `fabrika — ${d.project}`;
+      }
+    })
     .catch(() => { versionEl.textContent = ""; });
   return el("aside", { class: "sidebar" }, [
-    el("div", { class: "brand" }, ["fabrika"]),
+    brandEl,
     el("div", { class: "nav-group" }, NAV.map(navItem)),
     el("div", { class: "conn-row" }, [
       el("span", { id: "conn", class: "pill soon" }, ["connecting"]),
