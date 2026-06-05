@@ -68,6 +68,8 @@ export const api = {
   listPlans: () => req<Plan[]>("GET", "/api/plans"),
   approvePlan: (id: string) => req<{ status: string }>("POST", `/api/plans/${id}/approve`),
   rejectPlan: (id: string) => req<{ status: string }>("POST", `/api/plans/${id}/reject`),
+  revisePlan: (id: string, feedback: string) =>
+    req<{ status: string }>("POST", `/api/plans/${id}/revise`, { feedback }),
 
   // Decisions (decide queue, Phase 2)
   listDecisions: () => req<Decision[]>("GET", "/api/decisions"),

@@ -277,6 +277,10 @@ export function openPlanDetail(p: Plan): void {
       : el("span", {}),
     actionRow([
       button("Approve plan", { variant: "primary", onclick: () => act(() => api.approvePlan(p.id)) }),
+      button("Request changes", { variant: "danger", onclick: () => {
+        const feedback = prompt("What should the planner change?")?.trim();
+        if (feedback) act(() => api.revisePlan(p.id, feedback));
+      }}),
       button("Reject", { variant: "danger", onclick: () => act(() => api.rejectPlan(p.id)) }),
     ]),
   ]);
