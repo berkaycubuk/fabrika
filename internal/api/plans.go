@@ -88,6 +88,25 @@ func (s *Server) rejectPlan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
 }
 
+func (s *Server) revisePlan(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Feedback string `json:"feedback"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Feedback == "" {
+		writeErr(w, http.StatusBadRequest, "feedback is required")
+		return
+	}
+	if err := s.engine.RevisePlan(r.PathValue("id"), body.Feedback); err != nil {
+		mapEngineErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "revising"})
+}
+
 // listDecisions returns the open decision queue (plan- and task-level).
 func (s *Server) listDecisions(w http.ResponseWriter, r *http.Request) {
 	ds, err := s.store.Decisions.ListOpen()
