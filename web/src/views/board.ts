@@ -592,14 +592,24 @@ async function loadComments(id: string): Promise<void> {
 }
 
 // commentItem renders one note oldest-first: a "You" label for human comments,
-// the authoring agent's id for agent comments, above the body text and any
-// image attachments (thumbnails linking to the full-size upload).
-function commentItem(c: Comment): HTMLElement {
-  const who = c.authorType === "user" ? "You" : (c.authorId || c.authorType);
+// "System" for system status-change comments, the authoring agent's id for
+// agent comments, above the body text and any image attachments (thumbnails
+// linking to the full-size upload).
+export function commentItem(c: Comment): HTMLElement {
+  let who: string;
+  let cls = "comment";
+  if (c.authorType === "user") {
+    who = "You";
+  } else if (c.authorType === "system") {
+    who = "System";
+    cls = "comment comment-system";
+  } else {
+    who = c.authorId || c.authorType;
+  }
   const children: (Node | string)[] = [el("div", { class: "comment-author" }, [who])];
   if (c.body) children.push(el("div", { class: "comment-body" }, [c.body]));
   if (c.attachments?.length) children.push(attachmentGallery(c.attachments));
-  return el("div", { class: "comment" }, children);
+  return el("div", { class: cls }, children);
 }
 
 async function loadEvidence(id: string): Promise<void> {
