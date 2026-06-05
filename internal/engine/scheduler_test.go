@@ -207,7 +207,7 @@ func TestLoopDrainsManyTasksInParallel(t *testing.T) {
 
 func TestPinnedAgentWaitsWhenBusy(t *testing.T) {
 	eng, st, _ := setup(t)
-	makeAgent(t, st, "free-pool", 5)        // plenty of generic capacity
+	makeAgent(t, st, "free-pool", 5)         // plenty of generic capacity
 	pin := makeAgent(t, st, "specialist", 1) // single slot, both tasks pinned to it
 	mkTask(t, st, "t1", func(t *model.Task) { t.PreferredAgentID = pin })
 	mkTask(t, st, "t2", func(t *model.Task) { t.PreferredAgentID = pin })

@@ -61,15 +61,15 @@ const (
 
 // BigTask is an outcome the human defines; the planner turns it into Tasks.
 type BigTask struct {
-	ID              string   `json:"id"`
-	Title           string   `json:"title"`       // outcome statement
-	Intent          string   `json:"intent"`      // the why + desired outcome
-	Constraints     []string `json:"constraints"` // e.g. "PCI-compliant", "works on mobile"
-	Attachments     []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
-	RepoPath        string   `json:"repoPath"`
-	Status          string   `json:"status"`          // draft|planning|planned|running|done|error
-	Error           string   `json:"error"`           // failure reason when Status == error; cleared on retry
-	PlannerAgentID  string   `json:"plannerAgentId"`  // which registered planner agent is decomposing this
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`       // outcome statement
+	Intent         string   `json:"intent"`      // the why + desired outcome
+	Constraints    []string `json:"constraints"` // e.g. "PCI-compliant", "works on mobile"
+	Attachments    []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
+	RepoPath       string   `json:"repoPath"`
+	Status         string   `json:"status"`         // draft|planning|planned|running|done|error
+	Error          string   `json:"error"`          // failure reason when Status == error; cleared on retry
+	PlannerAgentID string   `json:"plannerAgentId"` // which registered planner agent is decomposing this
 }
 
 // Plan is a proposed decomposition of a BigTask into Tasks.
@@ -86,17 +86,17 @@ type Task struct {
 	ID               string   `json:"id"`
 	BigTaskID        string   `json:"bigTaskId"`
 	Title            string   `json:"title"`
-	Spec             string   `json:"spec"`       // what to build, where, constraints
-	Acceptance       Contract `json:"acceptance"` // machine-verifiable; not authored by the implementer
+	Spec             string   `json:"spec"`        // what to build, where, constraints
+	Acceptance       Contract `json:"acceptance"`  // machine-verifiable; not authored by the implementer
 	DependsOn        []string `json:"dependsOn"`   // task IDs
 	TouchPaths       []string `json:"touchPaths"`  // files/dirs it will touch
 	Tags             []string `json:"tags"`        // capability hints for routing
 	Attachments      []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
-	RiskTier         string   `json:"riskTier"`   // low|medium|high
-	Priority         string   `json:"priority"`   // low|medium|high (human-set ordering hint)
-	Status           string   `json:"status"`     // ready|claimed|running|verifying|review|merged|blocked|failed
-	Branch           string   `json:"branch"`     // git worktree/branch
-	AgentID          string   `json:"agentId"`    // which registered agent picked it up
+	RiskTier         string   `json:"riskTier"`    // low|medium|high
+	Priority         string   `json:"priority"`    // low|medium|high (human-set ordering hint)
+	Status           string   `json:"status"`      // ready|claimed|running|verifying|review|merged|blocked|failed
+	Branch           string   `json:"branch"`      // git worktree/branch
+	AgentID          string   `json:"agentId"`     // which registered agent picked it up
 	PreferredAgentID string   `json:"preferredAgentId"`
 	Reporter         string   `json:"reporter"` // user|planner
 

@@ -46,7 +46,9 @@ func TestImageUploadAndServe(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}
-	var up struct{ URL string `json:"url"` }
+	var up struct {
+		URL string `json:"url"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &up)
 	if !strings.HasPrefix(up.URL, "/api/uploads/") || !strings.HasSuffix(up.URL, ".png") {
 		t.Fatalf("upload url = %q", up.URL)
@@ -117,7 +119,9 @@ func TestCommentAttachments(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &task)
 
 	rec = doUpload(t, h, pngBytes)
-	var up struct{ URL string `json:"url"` }
+	var up struct {
+		URL string `json:"url"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &up)
 
 	// An image-only comment (no body) is allowed and round-trips.
@@ -154,7 +158,9 @@ func TestTaskAndBigTaskAttachments(t *testing.T) {
 	h := newTestServer(t)
 
 	rec := doUpload(t, h, pngBytes)
-	var up struct{ URL string `json:"url"` }
+	var up struct {
+		URL string `json:"url"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &up)
 
 	// Task creation persists attachments and they round-trip via detail.
@@ -165,7 +171,9 @@ func TestTaskAndBigTaskAttachments(t *testing.T) {
 	var task model.Task
 	json.Unmarshal(rec.Body.Bytes(), &task)
 	rec = do(t, h, "GET", "/api/tasks/"+task.ID, nil)
-	var detail struct{ Task model.Task `json:"task"` }
+	var detail struct {
+		Task model.Task `json:"task"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &detail)
 	if len(detail.Task.Attachments) != 1 || detail.Task.Attachments[0] != up.URL {
 		t.Fatalf("task attachments = %v", detail.Task.Attachments)
