@@ -138,7 +138,11 @@ func decodeJSON(r *http.Request, v any) error {
 }
 
 func (s *Server) getVersion(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"version": s.version})
+	project := ""
+	if s.cfg != nil {
+		project = s.cfg.Project.Name
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"version": s.version, "project": project})
 }
 
 // mapStoreErr translates store errors into HTTP responses.
