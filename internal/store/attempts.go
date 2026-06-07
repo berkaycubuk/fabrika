@@ -76,6 +76,28 @@ func scanAttempt(s scanner) (*model.Attempt, error) {
 	return &a, nil
 }
 
+// RecentByAgent returns the agent's most recent attempts, newest first, capped
+// at limit. Returns nil/empty slice (no error) when the agent has no attempts.
+func (r *AttemptRepo) RecentByAgent(agentID string, limit int) ([]model.Attempt, error) {
+	rows, err := r.db.Query(
+		`SELECT id, task_id, agent_id, result, evidence, log, input_tokens, output_tokens, total_tokens FROM attempts WHERE agent_id=? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+		agentID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Attempt
+	for rows.Next() {
+		a, err := scanAttempt(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *a)
+	}
+	return out, rows.Err()
+}
+
 // TokensByAgent returns per-agent token totals summed across all attempts in
 // the project store, keyed by agent ID. Rows with an empty agent_id are skipped.
 func (r *AttemptRepo) TokensByAgent() (map[string]model.Usage, error) {
