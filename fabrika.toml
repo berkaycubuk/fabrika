@@ -1,23 +1,20 @@
-# Fabrika project manifest. Maps abstract verbs to concrete commands so the
-# tool stays stack-agnostic. Agents are NOT defined here — manage them in the UI.
-
 [project]
-name = "fabrika"
+  name = "Fabrika"
 
-[verbs]                       # abstract verb -> concrete command, run in the repo
-setup     = "cd web && npm install --silent"   # install the web UI's dev deps
-typecheck = "cd web && npx tsc --noEmit"        # type-check the TS frontend
-build     = "make build"                        # esbuild UI + go build the binary
-test      = "go test ./..."                     # Go unit tests
-# lint    =                                      # no linter configured yet
-# verify  =                                      # no spec-derived acceptance tests yet
-# e2e     =                                      # optional
-# run     = "make run"                            # optional, for preview
+[verbs]
+  setup = "cd web && npm install --silent"
+  build = "make build"
+  test = "go test ./..."
+  lint = ""
+  typecheck = "cd web && npx tsc --noEmit"
+  verify = ""
+  e2e = ""
+  run = ""
 
-[risk]                        # path globs -> tier; anything unmatched = low
-high   = ["**/migrations/**", "**/*.sql", "internal/store/**"]
-medium = ["internal/api/**", "internal/engine/**"]
+[risk]
+  high = ["**/migrations/**", "**/*.sql", "internal/store/**"]
+  medium = ["internal/api/**", "internal/engine/**"]
 
 [autonomy]
-auto_merge = ["low"]          # tiers that merge without you
-escalate   = ["medium", "high"]
+  auto_merge = ["low"]
+  escalate = ["medium", "high"]

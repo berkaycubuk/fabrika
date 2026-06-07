@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -493,6 +494,65 @@ func TestRetryRequeuesFailedTask(t *testing.T) {
 	}
 	if err := eng.Retry("nonexistent"); err == nil {
 		t.Fatal("Retry should fail for an unknown task")
+	}
+}
+
+func TestRequestChangesRequeuesReviewTask(t *testing.T) {
+	eng, st, repo := setup(t)
+	registerAgent(t, st, "printf 'done' > out.txt")
+
+	task := &model.Task{Title: "needs changes", Spec: "create out.txt"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+	if got, _ := st.Tasks.Get(task.ID); got.Status != model.TaskReview {
+		t.Fatalf("status = %q, want review", got.Status)
+	}
+
+	// Request changes returns the task to ready and records the guidance as a
+	// user comment, so the next run's prompt carries it.
+	if err := eng.RequestChanges(task.ID, "rename it to result.txt"); err != nil {
+		t.Fatalf("RequestChanges: %v", err)
+	}
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskReady {
+		t.Fatalf("status = %q, want ready after request changes", got.Status)
+	}
+	comments, err := st.Comments.ListForTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, c := range comments {
+		if c.AuthorType == "user" && c.Body == "rename it to result.txt" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("guidance comment not recorded; comments = %+v", comments)
+	}
+	// Worktree dropped so the next claim rebuilds clean.
+	if _, err := os.Stat(filepath.Join(repo, ".fabrika", "worktrees", task.ID)); !os.IsNotExist(err) {
+		t.Fatal("worktree should be removed after request changes")
+	}
+	if g := eng.taskGuidance(task.ID); !slices.Contains(g, "rename it to result.txt") {
+		t.Fatalf("taskGuidance missing the new comment: %v", g)
+	}
+
+	// Refused for anything not in review — the task is now ready.
+	if err := eng.RequestChanges(task.ID, "more"); err == nil {
+		t.Fatal("RequestChanges should be refused for a non-review task")
+	}
+	if err := eng.RequestChanges("nonexistent", "x"); err == nil {
+		t.Fatal("RequestChanges should fail for an unknown task")
+	}
+
+	// The re-queued task dispatches again with the guidance in its prompt.
+	if !eng.dispatchOnce() {
+		t.Fatal("expected the re-queued task to dispatch")
 	}
 }
 

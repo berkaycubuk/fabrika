@@ -1018,6 +1018,53 @@ func (e *Engine) Retry(taskID string) error {
 	return nil
 }
 
+// RequestChanges sends a reviewed task back for another run instead of merging
+// or kicking it back — the one-step version of "comment, reject, retry". The
+// guidance is recorded as a user comment so the next run's prompt carries it
+// (taskGuidance). Only review-state tasks qualify: failed/blocked already have
+// Retry, which picks up comments the same way.
+func (e *Engine) RequestChanges(taskID, guidance string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	t, err := e.store.Tasks.Get(taskID)
+	if err != nil {
+		return err
+	}
+	if t.Status != model.TaskReview {
+		return fmt.Errorf("task is %s, not awaiting accept", t.Status)
+	}
+
+	if guidance != "" {
+		c := &model.Comment{TaskID: taskID, AuthorType: "user", Body: guidance}
+		if err := e.store.Comments.Create(c); err != nil {
+			return err
+		}
+		e.emit("task.comment.added", c)
+	}
+
+	// Drop the reviewed worktree/branch so the next claim rebuilds clean, same
+	// as Retry: the next run starts fresh from the current base, guided by the
+	// comments rather than continuing the old diff.
+	if repo, rerr := git.Open(e.ctx, e.repoRoot); rerr == nil {
+		wt := e.worktreePath(taskID)
+		_ = repo.RemoveWorktree(e.ctx, wt)
+		_ = os.RemoveAll(wt)
+		if t.Branch != "" {
+			_ = repo.DeleteBranch(e.ctx, t.Branch)
+		}
+	}
+
+	if err := e.store.Tasks.UpdateStatus(taskID, model.TaskReady); err != nil {
+		return err
+	}
+	e.logTransition(taskID, t.Status, model.TaskReady)
+	e.emitTask(taskID)
+	e.Wake()
+	log.Printf("engine: task %q sent back for changes", t.Title)
+	return nil
+}
+
 // DeleteTask permanently removes a closed (kicked-back) task with its attempt
 // and comment history, so the Closed shelf doesn't grow forever. Only closed
 // tasks qualify: every other status either still has a UI exit of its own or

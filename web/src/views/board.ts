@@ -366,16 +366,16 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
               act(() => api.acceptTask(task.id, true));
             }})
           : el("span", {}),
+        green
+          ? button("Request changes", { onclick: () => {
+              const guidance = requireCommentInput("Describe the changes you want before sending the task back.");
+              if (guidance === null) return;
+              act(() => api.requestChangesTask(task.id, guidance));
+            }})
+          : el("span", {}),
         button("Kick back", { variant: "danger", onclick: () => {
-          const input = document.querySelector<HTMLTextAreaElement>(".comment-input");
-          const reason = input?.value.trim() ?? "";
-          if (!reason) {
-            input?.focus();
-            const compose = input?.closest(".comment-compose");
-            const errEl = compose?.querySelector<HTMLElement>(".form-error");
-            if (errEl) errEl.textContent = "A reason is required to kick a task back.";
-            return;
-          }
+          const reason = requireCommentInput("A reason is required to kick a task back.");
+          if (reason === null) return;
           act(() => api.rejectTask(task.id, reason));
         }}),
       ]),
@@ -564,6 +564,22 @@ function evidenceArtifacts(ev: Evidence | undefined): HTMLElement {
     el("div", { class: "section-h sm" }, ["Evidence"]),
     attachmentGallery(ev.artifacts),
   ]);
+}
+
+// requireCommentInput reads the open modal's comment composer for actions that
+// piggyback on it (Kick back, Request changes). When empty it surfaces `msg`
+// inline next to the composer and returns null so the caller can abort.
+function requireCommentInput(msg: string): string | null {
+  const input = document.querySelector<HTMLTextAreaElement>(".comment-input");
+  const text = input?.value.trim() ?? "";
+  if (!text) {
+    input?.focus();
+    const compose = input?.closest(".comment-compose");
+    const errEl = compose?.querySelector<HTMLElement>(".form-error");
+    if (errEl) errEl.textContent = msg;
+    return null;
+  }
+  return text;
 }
 
 // commentsSection builds the comments block of the task detail: a heading, the

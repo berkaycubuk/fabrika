@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/berkaycubuk/fabrika/internal/planner"
@@ -258,6 +259,21 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) retryTask(w http.ResponseWriter, r *http.Request) {
 	if err := s.engine.Retry(r.PathValue("id")); err != nil {
+		mapEngineErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+// requestChanges sends a review-state task back for another run. The guidance
+// is recorded as a user comment so the next run's prompt carries it; absent
+// guidance is allowed (earlier comments still ride along).
+func (s *Server) requestChanges(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Guidance string `json:"guidance"`
+	}
+	_ = decodeJSON(r, &body)
+	if err := s.engine.RequestChanges(r.PathValue("id"), strings.TrimSpace(body.Guidance)); err != nil {
 		mapEngineErr(w, err)
 		return
 	}
