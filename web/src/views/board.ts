@@ -337,6 +337,9 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
   const blockedReason = task.status === "blocked" && attempt ? firstLine(attempt.log) : "";
   const review = attempt?.evidence?.stages?.review;
   const reviewNote = review && !review.pass ? `Reviewer: ${review.output}` : "";
+  const hasAdvisoryFailure = attempt?.evidence?.stages
+    ? Object.values(attempt.evidence.stages).some(s => !s.pass && !s.skipped)
+    : false;
 
   const body = el("div", { class: "detail" }, [
     blockedReason ? el("p", { class: "blocked-q" }, [blockedReason]) : el("span", {}),
@@ -349,9 +352,14 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
     el("div", { class: "action-bar" }, [
       gateSummaryEl(attempt?.evidence),
       actionRow([
-        green
+        green && !hasAdvisoryFailure
           ? button("Merge", { variant: "primary", onclick: () => act(() => api.acceptTask(task.id)) })
-          : button("Retry", { variant: "primary", onclick: () => act(() => api.retryTask(task.id)) }),
+          : green && hasAdvisoryFailure
+            ? button("Merge anyway", { onclick: () => {
+                if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
+                act(() => api.acceptTask(task.id, true));
+              }})
+            : button("Retry", { variant: "primary", onclick: () => act(() => api.retryTask(task.id)) }),
         !green && task.branch
           ? button("Merge anyway", { variant: "danger", onclick: () => {
               if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
@@ -802,9 +810,30 @@ function stageRow(ev: Evidence): HTMLElement {
   const stages = ev?.stages ?? {};
   const chips = STAGE_ORDER.filter((s) => stages[s]).map((s) => {
     const r = stages[s];
-    const cls = r.skipped ? "stage skip" : r.pass ? "stage pass" : "stage fail";
+    const isFail = !r.skipped && !r.pass;
+    const cls = r.skipped ? "stage skip" : r.pass ? "stage pass" : "stage fail" + (isFail ? " clickable" : "");
     const mark = r.skipped ? "–" : r.pass ? "✓" : "✗";
-    return el("span", { class: cls, title: r.output ? r.output.slice(-4000) : "" }, [`${mark} ${s}`]);
+    const attrs: Record<string, string | number | boolean | EventListener | undefined> = {
+      class: cls,
+      title: isFail ? "" : (r.output ? r.output.slice(-4000) : ""),
+    };
+    if (isFail) {
+      attrs.role = "button";
+      attrs.tabindex = 0;
+      attrs.onclick = (e: Event) => {
+        const chip = e.currentTarget as HTMLElement;
+        const next = chip.nextElementSibling as HTMLElement | null;
+        if (next && next.classList.contains("stage-evidence")) {
+          next.style.display = next.style.display === "none" ? "" : "none";
+        } else {
+          const block = el("div", { class: "stage-evidence" }, [
+            el("pre", {}, [r.output ?? "(no output)"]),
+          ]);
+          chip.insertAdjacentElement("afterend", block);
+        }
+      };
+    }
+    return el("span", attrs, [`${mark} ${s}`]);
   });
   if (chips.length === 0) return el("div", { class: "stage-row" }, [el("span", { class: "muted" }, ["no gate stages"])]);
   return el("div", { class: "stage-row" }, chips);
