@@ -20,6 +20,27 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/model"
 )
 
+// DefaultTimeout bounds a single agent subprocess run when the agent does not
+// specify its own Timeout (or specifies an unparseable/non-positive one). It
+// guards the engine against a hung or runaway agent blocking the dispatch loop.
+const DefaultTimeout = 30 * time.Minute
+
+// ParseTimeout interprets an agent's configured Timeout string. It trims
+// surrounding whitespace; an empty string, a value time.ParseDuration cannot
+// parse, or a non-positive duration all fall back to DefaultTimeout. Otherwise
+// it returns the parsed duration.
+func ParseTimeout(s string) time.Duration {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return DefaultTimeout
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return DefaultTimeout
+	}
+	return d
+}
+
 // DecisionMarker is the stdout sentinel an agent emits to escalate a question
 // instead of failing. The remainder of the line is a JSON Decision payload.
 const DecisionMarker = "fabrika_DECISION:"
@@ -65,6 +86,7 @@ type AgentResult struct {
 	Comments  []string      `json:"comments"` // text after each CommentMarker, in order
 	Evidence  []EvidenceRef // files after each EvidenceMarker, in order
 	Usage     model.Usage   // token usage parsed from the last UsageMarker, if any
+	TimedOut  bool          // true when the run was aborted because the agent's own timeout elapsed, distinct from a human steer/cancel
 }
 
 // Runner invokes a registered agent against a task in a worktree.
@@ -245,8 +267,15 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	}
 	args := append(append([]string{}, shell[1:]...), command)
 
+	// Bound the run by the agent's own timeout so a hung or runaway process
+	// self-terminates instead of blocking the engine forever. This deadline is
+	// distinct from the parent ctx, which carries human steer/cancel.
+	d := ParseTimeout(a.Timeout)
+	tctx, tcancel := context.WithTimeout(ctx, d)
+	defer tcancel()
+
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, shell[0], args...)
+	cmd := exec.CommandContext(tctx, shell[0], args...)
 	cmd.Dir = worktree
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -258,6 +287,13 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	runErr := cmd.Run()
 
 	res := AgentResult{Stdout: stdout.String(), Stderr: stderr.String()}
+	// Our timeout fired and the parent ctx was NOT cancelled (so this is the
+	// agent's own deadline, not a human steer): record it as a timed-out failure.
+	// The engine's run() routes this through finishFail and retries per MaxAttempts.
+	if tctx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+		res.TimedOut = true
+		return res, fmt.Errorf("agent %q timed out after %s", a.Name, d)
+	}
 	if ee, ok := runErr.(*exec.ExitError); ok {
 		res.ExitCode = ee.ExitCode()
 	} else if runErr != nil {
