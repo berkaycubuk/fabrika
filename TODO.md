@@ -9,3 +9,5 @@
 - [ ] Do we need custom skills for fabrika specific?
 - [ ] Logging agent comments and thoughts
 - [ ] Commenting card movements. example: ready -> running
+- [ ] when using multiple fabrika instances, it is hard to see which project I'm working on. Show project name on the UI somewhere.
+- [ ] Supporting GitHub issues
