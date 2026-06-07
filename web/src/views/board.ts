@@ -10,7 +10,8 @@ import { button, pill, tag, field, formatTokens, formatTokensShort } from "../co
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release } from "../types.js";
+import { registerReleaseListener } from "../ws.js";
 import { renderDiff } from "./diff-view.js";
 import { attachmentGallery } from "./attachment.js";
 
@@ -52,14 +53,23 @@ export function renderBoard(root: HTMLElement): void {
           style: "display:none",
           onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
         }, ["Push"]),
+        // Ship button: hidden when deploy is not enabled; shows unshipped count.
+        el("button", {
+          id: "ship-btn",
+          style: "display:none",
+          onclick: () => openShipConfirm(),
+        }, ["Ship · 0"]),
         button("Create task", { onclick: openCreateTask }),
         button("Define big task", { variant: "primary", onclick: openDefine }),
       ]),
     ]),
     el("div", { id: "board-err", class: "form-error" }, []),
+    // Release strip: always visible when deploy is enabled; shows latest release.
+    el("div", { id: "release-strip", class: "release-strip", style: "display:none" }, []),
     el("div", { class: "board needs-board", id: "needs-board" }, COLUMNS.map(colSkeleton)),
   );
   refresh();
+  registerReleaseListener(updateReleaseUI);
 }
 
 function colSkeleton(c: (typeof COLUMNS)[number]): HTMLElement {
@@ -94,6 +104,7 @@ async function refresh(): Promise<void> {
   // Independent of the column fetches: a push-status hiccup (git error) should
   // never blank the board, and vice versa. Fire-and-forget with its own catch.
   void updatePushButton();
+  void updateReleaseUI();
   try {
     const [plans, decisions, reviews, audits, tasks, agents, bigTasks] = await Promise.all([
       api.listPlans(),
@@ -416,6 +427,14 @@ export function openAuditDetail(it: ReviewItem): void {
 }
 
 export function taskDetailSidebar(t: Task, agents: Agent[], onOpenDep?: (depId: string) => void): HTMLElement {
+  const releaseField = (): HTMLElement | null => {
+    if (t.status !== "merged" && !t.releaseId) return null;
+    if (t.releaseId) {
+      return asideField("Release", [el("span", { class: "release-field" }, [`#${t.releaseId.slice(0, 6)}`])]);
+    }
+    // merged but no releaseId = unshipped
+    return asideField("Release", [el("span", { class: "release-field release-unshipped" }, ["unshipped"])]);
+  };
   return buildSidebar([
     asideField("Task ID", [el("code", { class: "branch" }, [t.id])]),
     asideField("Status", [tag(t.status, `status-${t.status}`)]),
@@ -428,6 +447,7 @@ export function taskDetailSidebar(t: Task, agents: Agent[], onOpenDep?: (depId: 
         : el("span", { class: "muted" }, ["unassigned"]),
     ]),
     t.branch ? asideField("Branch", [el("code", { class: "branch" }, [t.branch])]) : null,
+    releaseField(),
     asideField("Tags", (t.tags ?? []).length
       ? (t.tags ?? []).map((lbl) => tag(lbl))
       : [el("span", { class: "muted" }, ["none"])]),
@@ -916,6 +936,132 @@ function gateSummaryEl(ev: Evidence | undefined): HTMLElement {
 
 function diffBlock(diff: string): HTMLElement {
   return renderDiff(diff);
+}
+
+// updateReleaseUI refreshes the Ship button count and the release strip with
+// the latest release state. Both controls are hidden when deploy is not wired up
+// (no releases in the store and unshipped returns an empty list on a fresh repo).
+async function updateReleaseUI(): Promise<void> {
+  const strip = document.getElementById("release-strip");
+  const shipBtn = document.getElementById("ship-btn") as HTMLButtonElement | null;
+  if (!strip && !shipBtn) return;
+  try {
+    const [releases, unshippedTasks] = await Promise.all([
+      api.listReleases(),
+      api.unshipped(),
+    ]);
+    const n = unshippedTasks.length;
+    const latest = releases.length ? releases[releases.length - 1] : null;
+    const inFlight = latest && (latest.status === "deploying" || latest.status === "baking");
+
+    // Ship button — show only when there is at least one release or unshipped task
+    // (proxy for deploy being configured). Disabled when in-flight or count is 0.
+    if (shipBtn) {
+      const deployActive = releases.length > 0 || n > 0;
+      shipBtn.style.display = deployActive ? "" : "none";
+      shipBtn.textContent = `Ship · ${n}`;
+      shipBtn.disabled = n === 0 || !!inFlight;
+    }
+
+    // Release strip
+    if (strip) {
+      if (!latest) {
+        strip.style.display = "none";
+        return;
+      }
+      strip.style.display = "";
+      clear(strip);
+      const statusClass = releaseStatusClass(latest.status);
+      const label = releaseStripLabel(latest);
+      strip.append(
+        el("span", { class: `release-strip-id ${statusClass}` }, [`#${latest.id.slice(0, 6)}`]),
+        el("span", { class: `release-strip-status ${statusClass}` }, [label]),
+        el("button", { class: "release-strip-detail", onclick: () => openReleaseDetail(latest) }, ["details"]),
+      );
+    }
+  } catch {
+    /* release UI is best-effort — never break the board */
+  }
+}
+
+function releaseStatusClass(status: string): string {
+  switch (status) {
+    case "live": return "release-live";
+    case "baking": return "release-baking";
+    case "deploying": return "release-deploying";
+    case "failed": return "release-failed";
+    case "rolled_back": return "release-rolled-back";
+    default: return "release-pending";
+  }
+}
+
+function releaseStripLabel(rel: Release): string {
+  switch (rel.status) {
+    case "deploying": return "deploying…";
+    case "baking": return "baking";
+    case "live": return "live";
+    case "failed": return `failed: ${rel.error || "unknown error"}`;
+    case "rolled_back": return "rolled back";
+    default: return rel.status;
+  }
+}
+
+function openShipConfirm(): void {
+  api.unshipped().then((tasks) => {
+    const n = tasks.length;
+    if (n === 0) return;
+    const taskList = el("ul", { class: "ship-task-list" },
+      tasks.map((t) => el("li", {}, [t.title]))
+    );
+    const body = el("div", { class: "detail" }, [
+      el("p", {}, [`Ship ${n} merged task${n !== 1 ? "s" : ""} as a new release?`]),
+      taskList,
+      actionRow([
+        button("Confirm ship", { variant: "primary", onclick: () => {
+          closeModal();
+          api.ship().then(() => updateReleaseUI()).catch((e: unknown) => {
+            alert((e as Error).message);
+          });
+        }}),
+        button("Cancel", { onclick: () => closeModal() }),
+      ]),
+    ]);
+    openModal("Ship release", body, {});
+  }).catch((e: unknown) => {
+    alert((e as Error).message);
+  });
+}
+
+function openReleaseDetail(rel: Release): void {
+  const canRollback = rel.status === "baking" || rel.status === "live";
+  const children: (Node | string)[] = [
+    asideField("SHA", [el("code", { class: "branch" }, [rel.sha.slice(0, 12)])]),
+    rel.prevSha ? asideField("Previous SHA", [el("code", { class: "branch" }, [rel.prevSha.slice(0, 12)])]) : el("span", {}),
+    asideField("Status", [tag(rel.status, `release-tag-${rel.status}`)]),
+    rel.deployedAt ? asideField("Deployed at", [el("span", {}, [rel.deployedAt])]) : el("span", {}),
+    rel.liveAt ? asideField("Live at", [el("span", {}, [rel.liveAt])]) : el("span", {}),
+    rel.error ? el("p", { class: "form-error" }, [rel.error]) : el("span", {}),
+    rel.deployLog ? el("details", { class: "log-wrap" }, [
+      el("summary", {}, ["Deploy log"]),
+      el("pre", { class: "fail-out" }, [rel.deployLog]),
+    ]) : el("span", {}),
+    rel.healthLog ? el("details", { class: "log-wrap" }, [
+      el("summary", {}, ["Health log"]),
+      el("pre", { class: "fail-out" }, [rel.healthLog]),
+    ]) : el("span", {}),
+    canRollback ? actionRow([
+      button("Rollback", { variant: "danger", onclick: () => {
+        if (!confirm(`Rollback release #${rel.id.slice(0, 6)}? This will re-deploy the previous SHA.`)) return;
+        api.rollbackRelease(rel.id).then(() => {
+          closeModal();
+          void updateReleaseUI();
+        }).catch((e: unknown) => {
+          alert((e as Error).message);
+        });
+      }}),
+    ]) : el("span", {}),
+  ];
+  openModal(`Release #${rel.id.slice(0, 6)}`, el("div", { class: "detail" }, children), {});
 }
 
 // updatePushButton shows the Push button only when the integration branch has

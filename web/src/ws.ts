@@ -1,6 +1,19 @@
 // Live event stream over WebSocket (SPECS.md §11, §10). Auto-reconnects.
 import type { FabrikaEvent } from "./types.js";
 
+export type ReleaseListener = () => void;
+const releaseListeners: ReleaseListener[] = [];
+
+// registerReleaseListener registers a callback invoked on release.updated events.
+export function registerReleaseListener(fn: ReleaseListener): void {
+  releaseListeners.push(fn);
+}
+
+// notifyReleaseListeners is called by the event loop when a release.updated event arrives.
+export function notifyReleaseListeners(): void {
+  for (const fn of releaseListeners) fn();
+}
+
 type Listener = (e: FabrikaEvent) => void;
 
 interface Handlers {
@@ -34,7 +47,9 @@ export function connectEvents(onEvent: Listener, handlers: Handlers = {}): void 
     };
     ws.onmessage = (msg) => {
       try {
-        onEvent(JSON.parse(msg.data) as FabrikaEvent);
+        const e = JSON.parse(msg.data) as FabrikaEvent;
+        if (e.type === "release.updated") notifyReleaseListeners();
+        onEvent(e);
       } catch {
         /* ignore malformed */
       }

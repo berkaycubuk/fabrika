@@ -1039,3 +1039,50 @@ button.option:hover { border-color: var(--accent); }
   .dash-hero { position: static; flex-basis: auto; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Release strip — thin bar between board header and columns */
+.release-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-8);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: var(--fs-sm);
+}
+.release-strip-id {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.release-strip-status { flex: 1; }
+.release-strip-detail {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-5);
+  cursor: pointer;
+}
+.release-strip-detail:hover { color: var(--text); border-color: var(--border-hover); }
+
+/* Release status colors */
+.release-live { color: var(--green); }
+.release-baking { color: var(--amber); }
+.release-deploying { color: var(--accent); }
+.release-failed { color: var(--red); }
+.release-rolled-back { color: var(--muted); }
+.release-pending { color: var(--muted); }
+
+/* Release field in task detail sidebar */
+.release-field { font-variant-numeric: tabular-nums; }
+.release-unshipped { color: var(--muted); }
+
+/* Ship task list in confirm modal */
+.ship-task-list {
+  margin: var(--space-6) 0;
+  padding-left: var(--space-11);
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.ship-task-list li { margin-bottom: var(--space-2); }
