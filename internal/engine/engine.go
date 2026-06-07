@@ -342,6 +342,7 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 			log.Printf("engine: set run: %v", err)
 			return model.Task{}, model.Agent{}, "", nil, false
 		}
+		e.logTransition(t.ID, t.Status, model.TaskRunning)
 		t.AgentID, t.Branch, t.Status = ag.ID, branch, model.TaskRunning
 		// Per-task context so in-flight steering can cancel this run's subprocess
 		// without disturbing the rest of the pool.
@@ -663,6 +664,7 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 	if err := e.store.Tasks.MarkMerged(task.ID, true, audit); err != nil {
 		log.Printf("engine: mark auto-merged: %v", err)
 	}
+	e.logTransition(task.ID, model.TaskVerifying, model.TaskMerged)
 	e.emitTask(task.ID)
 	log.Printf("engine: task %q -> auto-merged (tier=%s, audit=%v)", task.Title, tier, audit)
 }
@@ -981,6 +983,7 @@ func (e *Engine) Retry(taskID string) error {
 	if err := e.store.Tasks.UpdateStatus(taskID, model.TaskReady); err != nil {
 		return err
 	}
+	e.logTransition(taskID, t.Status, model.TaskReady)
 	e.emitTask(taskID)
 	e.Wake()
 	log.Printf("engine: task %q re-queued (retry)", t.Title)
@@ -1104,8 +1107,30 @@ func (e *Engine) worktreePath(taskID string) string {
 }
 
 func (e *Engine) setStatus(id, status string) {
+	t, err := e.store.Tasks.Get(id)
+	if err != nil {
+		log.Printf("engine: set status get task %s: %v", id, err)
+	}
 	if err := e.store.Tasks.UpdateStatus(id, status); err != nil {
 		log.Printf("engine: set status %s=%s: %v", id, status, err)
+	}
+	if t != nil {
+		e.logTransition(id, t.Status, status)
+	}
+}
+
+// logTransition records a task's lifecycle move as a "system" comment so the
+// status history shows up in the task's comments thread. Errors are logged,
+// never fatal — a missing comment must not fail the run.
+func (e *Engine) logTransition(taskID, from, to string) {
+	if from == to || (from == "" && to == "") {
+		return
+	}
+	c := &model.Comment{TaskID: taskID, AuthorType: "system", AuthorID: "", Body: fmt.Sprintf("%s → %s", from, to)}
+	if err := e.store.Comments.Create(c); err != nil {
+		log.Printf("engine: log transition: %v", err)
+	} else {
+		e.emit("task.comment.added", c)
 	}
 }
 

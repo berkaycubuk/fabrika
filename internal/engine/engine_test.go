@@ -668,10 +668,7 @@ func TestEvidenceArtifactIngest(t *testing.T) {
 		t.Fatalf("stored artifact: %q, %v", data, err)
 	}
 	// The run also surfaces the artifact as one agent comment with the caption.
-	comments, err := st.Comments.ListForTask(task.ID)
-	if err != nil {
-		t.Fatalf("comments: %v", err)
-	}
+	comments := nonSystemComments(t, st, task.ID)
 	if len(comments) != 1 {
 		t.Fatalf("comments = %+v, want 1", comments)
 	}
@@ -710,10 +707,26 @@ func TestEvidenceBadRefsSkipped(t *testing.T) {
 	if len(att.Evidence.Artifacts) != 0 {
 		t.Fatalf("artifacts = %v, want none", att.Evidence.Artifacts)
 	}
-	comments, _ := st.Comments.ListForTask(task.ID)
-	if len(comments) != 0 {
+	if comments := nonSystemComments(t, st, task.ID); len(comments) != 0 {
 		t.Fatalf("comments = %+v, want none", comments)
 	}
+}
+
+// nonSystemComments returns a task's comments minus the system status-transition
+// ones, so evidence assertions aren't coupled to how many transitions a run logs.
+func nonSystemComments(t *testing.T, st *store.Store, taskID string) []model.Comment {
+	t.Helper()
+	comments, err := st.Comments.ListForTask(taskID)
+	if err != nil {
+		t.Fatalf("comments: %v", err)
+	}
+	var out []model.Comment
+	for _, c := range comments {
+		if c.AuthorType != "system" {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func TestWriteHeldOutFiles(t *testing.T) {
