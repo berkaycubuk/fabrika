@@ -71,6 +71,13 @@ func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
+// RevParse resolves ref to its full commit SHA. Passing "HEAD" returns the
+// current commit's SHA.
+func (r *Repo) RevParse(ctx context.Context, ref string) (string, error) {
+	out, err := r.run(ctx, "rev-parse", ref)
+	return strings.TrimSpace(out), err
+}
+
 // AddWorktree creates a new worktree at path on a fresh branch off base.
 func (r *Repo) AddWorktree(ctx context.Context, path, branch, base string) error {
 	_, err := r.run(ctx, "worktree", "add", "-b", branch, path, base)
