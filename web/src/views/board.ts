@@ -612,7 +612,13 @@ async function loadComments(id: string): Promise<void> {
       slot.append(el("div", { class: "comment-empty muted sm" }, ["No comments yet."]));
       return;
     }
-    for (const c of comments) slot.append(commentItem(c));
+    const systemComments = comments.filter((c) => c.authorType === "system");
+    const regularComments = comments.filter((c) => c.authorType !== "system");
+    if (systemComments.length > 0) {
+      const timeline = systemComments.map((c) => c.body).join(" → ");
+      slot.append(el("div", { class: "transition-timeline" }, [timeline]));
+    }
+    for (const c of regularComments) slot.append(commentItem(c));
   } catch {
     /* comments are best-effort */
   }
@@ -624,12 +630,9 @@ async function loadComments(id: string): Promise<void> {
 // linking to the full-size upload).
 export function commentItem(c: Comment): HTMLElement {
   let who: string;
-  let cls = "comment";
+  const cls = "comment";
   if (c.authorType === "user") {
     who = "You";
-  } else if (c.authorType === "system") {
-    who = "System";
-    cls = "comment comment-system";
   } else {
     who = c.authorId || c.authorType;
   }
