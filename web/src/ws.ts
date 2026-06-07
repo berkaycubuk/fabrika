@@ -14,6 +14,19 @@ export function notifyReleaseListeners(): void {
   for (const fn of releaseListeners) fn();
 }
 
+export type IncidentListener = () => void;
+const incidentListeners: IncidentListener[] = [];
+
+// registerIncidentListener registers a callback invoked on incident.* events.
+export function registerIncidentListener(fn: IncidentListener): void {
+  incidentListeners.push(fn);
+}
+
+// notifyIncidentListeners is called by the event loop when an incident.* event arrives.
+export function notifyIncidentListeners(): void {
+  for (const fn of incidentListeners) fn();
+}
+
 type Listener = (e: FabrikaEvent) => void;
 
 interface Handlers {
@@ -49,6 +62,7 @@ export function connectEvents(onEvent: Listener, handlers: Handlers = {}): void 
       try {
         const e = JSON.parse(msg.data) as FabrikaEvent;
         if (e.type === "release.updated") notifyReleaseListeners();
+        if (e.type.startsWith("incident.")) notifyIncidentListeners();
         onEvent(e);
       } catch {
         /* ignore malformed */
