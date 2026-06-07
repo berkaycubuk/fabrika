@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN merge_commit_sha TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN release_id TEXT NOT NULL DEFAULT '';

@@ -159,7 +159,7 @@ func (r *BigTaskRepo) Delete(id string) error {
 // TaskRepo persists Tasks in the per-project store.
 type TaskRepo struct{ db *sql.DB }
 
-const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, attachments, risk_tier, priority, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted, reporter`
+const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, attachments, risk_tier, priority, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted, reporter, merge_commit_sha, release_id`
 
 // Create inserts a Task, assigning an ID and defaults if absent.
 func (r *TaskRepo) Create(t *model.Task) error {
@@ -183,11 +183,12 @@ func (r *TaskRepo) Create(t *model.Task) error {
 		return err
 	}
 	_, err = r.db.Exec(
-		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.BigTaskID, t.Title, t.Spec, string(acc),
 		jsonStrings(t.DependsOn), jsonStrings(t.TouchPaths), jsonStrings(t.Tags), jsonStrings(t.Attachments),
 		t.RiskTier, t.Priority, t.Status, t.Branch, t.AgentID, t.PreferredAgentID,
 		boolToInt(t.AutoMerged), boolToInt(t.AuditFlagged), boolToInt(t.Reverted), t.Reporter,
+		t.MergeCommitSHA, t.ReleaseID,
 	)
 	return err
 }
@@ -330,6 +331,24 @@ func (r *TaskRepo) SetReverted(id string) error {
 	return mustAffect(res)
 }
 
+// SetMergeCommitSHA records the git commit SHA captured at merge time.
+func (r *TaskRepo) SetMergeCommitSHA(id, sha string) error {
+	res, err := r.db.Exec(`UPDATE tasks SET merge_commit_sha=? WHERE id=?`, sha, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
+// SetReleaseID records the release that covers this task.
+func (r *TaskRepo) SetReleaseID(id, releaseID string) error {
+	res, err := r.db.Exec(`UPDATE tasks SET release_id=? WHERE id=?`, releaseID, id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
 // DeleteByBigTask removes every task belonging to a big task. The project tables
 // carry no foreign keys, so deletion is explicit; removing zero rows is not an error.
 func (r *TaskRepo) DeleteByBigTask(bigTaskID string) error {
@@ -352,7 +371,7 @@ func scanTask(s scanner) (*model.Task, error) {
 	var autoMerged, auditFlagged, reverted int
 	err := s.Scan(&t.ID, &t.BigTaskID, &t.Title, &t.Spec, &acc, &dependsOn, &touchPaths, &tags, &attachments,
 		&t.RiskTier, &t.Priority, &t.Status, &t.Branch, &t.AgentID, &t.PreferredAgentID,
-		&autoMerged, &auditFlagged, &reverted, &t.Reporter)
+		&autoMerged, &auditFlagged, &reverted, &t.Reporter, &t.MergeCommitSHA, &t.ReleaseID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
