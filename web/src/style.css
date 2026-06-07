@@ -653,7 +653,7 @@ button.option:hover { border-color: var(--accent); }
   transform: translateY(-1px);
   box-shadow: var(--shadow-card-hover);
 }
-.needs-card-title { font-weight: 600; font-size: var(--fs-lg); line-height: 1.45; }
+.needs-card-title { font-weight: 600; font-size: var(--fs-lg); line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .needs-card-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .board-col[data-col="approve"] .needs-card { border-left-color: var(--accent); }
 .board-col[data-col="decide"] .needs-card { border-left-color: var(--amber); }
