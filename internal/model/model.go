@@ -34,6 +34,14 @@ const (
 	DecisionOpen     = "open"
 	DecisionAnswered = "answered"
 
+	// Release.Status
+	ReleasePending    = "pending"
+	ReleaseDeploying  = "deploying"
+	ReleaseBaking     = "baking"
+	ReleaseLive       = "live"
+	ReleaseFailed     = "failed"
+	ReleaseRolledBack = "rolled_back"
+
 	// Risk tiers
 	RiskLow    = "low"
 	RiskMedium = "medium"
@@ -108,6 +116,21 @@ type Task struct {
 
 	MergeCommitSHA string `json:"mergeCommitSha"` // captured at merge time
 	ReleaseID      string `json:"releaseId"`      // set when a release covers this task
+}
+
+// Release is a deployment of a merged SHA, progressing through a deploy/bake
+// lifecycle to live (or failed/rolled_back). See SPECS-PHASE4 §3.2.
+type Release struct {
+	ID         string `json:"id"`
+	SHA        string `json:"sha"`
+	PrevSHA    string `json:"prevSha"`
+	Status     string `json:"status"` // pending|deploying|baking|live|failed|rolled_back
+	DeployLog  string `json:"deployLog"`
+	HealthLog  string `json:"healthLog"`
+	Error      string `json:"error"`
+	CreatedAt  string `json:"createdAt"`
+	DeployedAt string `json:"deployedAt"`
+	LiveAt     string `json:"liveAt"`
 }
 
 // Agent is a registered worker, defined and managed in the UI, persisted in the
