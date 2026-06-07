@@ -91,6 +91,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/push/status", s.pushStatus)
 	mux.HandleFunc("POST /api/push", s.pushMain)
 
+	// --- Releases (Phase 4) ---
+	mux.HandleFunc("GET /api/releases", s.listReleases)
+	mux.HandleFunc("POST /api/releases/ship", s.shipRelease)
+	mux.HandleFunc("GET /api/releases/unshipped", s.unshippedReleases)
+	mux.HandleFunc("GET /api/releases/{id}", s.getRelease)
+	mux.HandleFunc("POST /api/releases/{id}/rollback", s.rollbackRelease)
+
 	// --- Planner: plans + decisions (Phase 2) ---
 	mux.HandleFunc("GET /api/plans", s.listPlans)
 	mux.HandleFunc("GET /api/plans/{id}", s.getPlan)
