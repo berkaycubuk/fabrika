@@ -686,6 +686,11 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 		log.Printf("engine: auto-merge %q conflict: %v (-> review)", task.Title, err)
 		return
 	}
+	if sha, err := repo.RevParse(e.ctx, "HEAD"); err == nil {
+		_ = e.store.Tasks.SetMergeCommitSHA(task.ID, sha)
+	} else {
+		log.Printf("engine: RevParse after auto-merge: %v", err)
+	}
 	_ = repo.RemoveWorktree(e.ctx, wt)
 
 	audit := e.sample(e.auditRate())
@@ -838,6 +843,11 @@ func (e *Engine) Accept(taskID string, force bool) error {
 	}
 	if err := repo.Merge(e.ctx, base, t.Branch); err != nil {
 		return fmt.Errorf("merge failed: %w", err)
+	}
+	if sha, err := repo.RevParse(e.ctx, "HEAD"); err == nil {
+		_ = e.store.Tasks.SetMergeCommitSHA(taskID, sha)
+	} else {
+		log.Printf("engine: RevParse after accept merge: %v", err)
 	}
 	_ = repo.RemoveWorktree(e.ctx, e.worktreePath(taskID))
 	e.setStatus(taskID, model.TaskMerged)
