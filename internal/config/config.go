@@ -130,9 +130,9 @@ func (c *Config) Validate() error {
 
 	if c.Deploy.Mode != "" {
 		validModes := map[string]bool{
-			"manual":   true,
+			"manual":    true,
 			"per-merge": true,
-			"interval": true,
+			"interval":  true,
 		}
 		if !validModes[c.Deploy.Mode] {
 			return fmt.Errorf("[deploy].mode: unknown mode %q (must be manual, per-merge, or interval)", c.Deploy.Mode)

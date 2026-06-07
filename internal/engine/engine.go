@@ -38,10 +38,10 @@ type EventFunc func(eventType string, payload any)
 
 // Settings keys read from the global store to tune the scheduler at runtime.
 const (
-	settingWIPCap          = "wip_cap"             // global max concurrently-running tasks (0 = unlimited)
-	settingRoute           = "route_tier_"         // + tier -> agentID: per-risk-tier routing override
-	settingAuditPct        = "audit_rate"          // 0..1: share of auto-merged PRs sampled for human audit
-	settingMutation        = "mutation_testing"    // "on" enables the mutation-testing gate validator
+	settingWIPCap              = "wip_cap"              // global max concurrently-running tasks (0 = unlimited)
+	settingRoute               = "route_tier_"          // + tier -> agentID: per-risk-tier routing override
+	settingAuditPct            = "audit_rate"           // 0..1: share of auto-merged PRs sampled for human audit
+	settingMutation            = "mutation_testing"     // "on" enables the mutation-testing gate validator
 	settingQuarantineThreshold = "quarantine_threshold" // consecutive fails before an agent is skipped
 )
 
