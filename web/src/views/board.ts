@@ -367,7 +367,15 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
             }})
           : el("span", {}),
         button("Kick back", { variant: "danger", onclick: () => {
-          const reason = prompt("Reason for kicking this back? (optional)") ?? "";
+          const input = document.querySelector<HTMLTextAreaElement>(".comment-input");
+          const reason = input?.value.trim() ?? "";
+          if (!reason) {
+            input?.focus();
+            const compose = input?.closest(".comment-compose");
+            const errEl = compose?.querySelector<HTMLElement>(".form-error");
+            if (errEl) errEl.textContent = "A reason is required to kick a task back.";
+            return;
+          }
           act(() => api.rejectTask(task.id, reason));
         }}),
       ]),
