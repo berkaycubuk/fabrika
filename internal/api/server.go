@@ -103,6 +103,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 
+	// --- Config (per-repo fabrika.toml manifest) ---
+	mux.HandleFunc("GET /api/config", s.getConfig)
+	mux.HandleFunc("PUT /api/config", s.putConfig)
+
 	// --- Version ---
 	mux.HandleFunc("GET /api/version", s.getVersion)
 
