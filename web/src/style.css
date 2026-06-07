@@ -850,6 +850,26 @@ button.option:hover { border-color: var(--accent); }
 .detail { display: flex; flex-direction: column; gap: var(--space-6); }
 .detail .card-actions { margin-top: var(--space-3); }
 
+/* Sticky accept-gate action bar */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-6) 0;
+  margin-top: var(--space-3);
+}
+.action-bar .card-actions { margin-top: 0; }
+.gate-summary {
+  font-size: var(--fs-md);
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ── Engine room dashboard (analytics style) ─────────────────────────────── */
 .content:has(.dash) { max-width: none; }
 

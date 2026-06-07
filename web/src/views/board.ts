@@ -346,20 +346,23 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
     !green && attempt ? failureBlock(attempt) : el("span", {}),
     evidenceArtifacts(attempt?.evidence),
     diff ? diffBlock(diff) : el("p", { class: "muted" }, ["(no diff produced)"]),
-    actionRow([
-      green
-        ? button("Merge", { variant: "primary", onclick: () => act(() => api.acceptTask(task.id)) })
-        : button("Retry", { variant: "primary", onclick: () => act(() => api.retryTask(task.id)) }),
-      !green && task.branch
-        ? button("Merge anyway", { variant: "danger", onclick: () => {
-            if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
-            act(() => api.acceptTask(task.id, true));
-          }})
-        : el("span", {}),
-      button("Kick back", { variant: "danger", onclick: () => {
-        const reason = prompt("Reason for kicking this back? (optional)") ?? "";
-        act(() => api.rejectTask(task.id, reason));
-      }}),
+    el("div", { class: "action-bar" }, [
+      gateSummaryEl(attempt?.evidence),
+      actionRow([
+        green
+          ? button("Merge", { variant: "primary", onclick: () => act(() => api.acceptTask(task.id)) })
+          : button("Retry", { variant: "primary", onclick: () => act(() => api.retryTask(task.id)) }),
+        !green && task.branch
+          ? button("Merge anyway", { variant: "danger", onclick: () => {
+              if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
+              act(() => api.acceptTask(task.id, true));
+            }})
+          : el("span", {}),
+        button("Kick back", { variant: "danger", onclick: () => {
+          const reason = prompt("Reason for kicking this back? (optional)") ?? "";
+          act(() => api.rejectTask(task.id, reason));
+        }}),
+      ]),
     ]),
     commentsSection(task.id),
   ]);
@@ -848,6 +851,20 @@ function failureBlock(attempt: Attempt): HTMLElement {
   }
   if (children.length === 0) return el("span", {});
   return el("div", { class: "failure" }, children);
+}
+
+function gateSummaryEl(ev: Evidence | undefined): HTMLElement {
+  const stages = ev?.stages ?? {};
+  const entries = Object.entries(stages);
+  const failedNames = entries
+    .filter(([, r]) => !r.pass && !r.skipped)
+    .map(([name]) => `✗ ${name}`);
+  const passedCount = entries.filter(([, r]) => r.pass && !r.skipped).length;
+  if (failedNames.length === 0 && passedCount === 0) {
+    return el("div", { class: "gate-summary muted" }, ["no gate stages"]);
+  }
+  const parts = [...failedNames, `${passedCount} passed`];
+  return el("div", { class: "gate-summary" }, [parts.join(" · ")]);
 }
 
 function diffBlock(diff: string): HTMLElement {
