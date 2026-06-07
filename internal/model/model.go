@@ -105,6 +105,9 @@ type Task struct {
 	AutoMerged   bool `json:"autoMerged"`   // merged by the machine (risk-tier auto-merge), no human accept
 	AuditFlagged bool `json:"auditFlagged"` // auto-merged but sampled for post-merge human audit
 	Reverted     bool `json:"reverted"`     // recorded as a change-failure (merged, then reverted/fixed)
+
+	MergeCommitSHA string `json:"mergeCommitSha"` // captured at merge time
+	ReleaseID      string `json:"releaseId"`      // set when a release covers this task
 }
 
 // Agent is a registered worker, defined and managed in the UI, persisted in the
