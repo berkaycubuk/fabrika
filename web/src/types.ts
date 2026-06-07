@@ -44,6 +44,20 @@ export interface Task {
   auditFlagged: boolean;
   reverted: boolean;
   reporter: string;
+  releaseId?: string;
+}
+
+export interface Release {
+  id: string;
+  sha: string;
+  prevSha: string;
+  status: string; // pending|deploying|baking|live|failed|rolled_back
+  deployLog: string;
+  healthLog: string;
+  error: string;
+  createdAt: string;
+  deployedAt: string;
+  liveAt: string;
 }
 
 export interface StageResult {
