@@ -37,10 +37,11 @@ type EventFunc func(eventType string, payload any)
 
 // Settings keys read from the global store to tune the scheduler at runtime.
 const (
-	settingWIPCap   = "wip_cap"          // global max concurrently-running tasks (0 = unlimited)
-	settingRoute    = "route_tier_"      // + tier -> agentID: per-risk-tier routing override
-	settingAuditPct = "audit_rate"       // 0..1: share of auto-merged PRs sampled for human audit
-	settingMutation = "mutation_testing" // "on" enables the mutation-testing gate validator
+	settingWIPCap          = "wip_cap"             // global max concurrently-running tasks (0 = unlimited)
+	settingRoute           = "route_tier_"         // + tier -> agentID: per-risk-tier routing override
+	settingAuditPct        = "audit_rate"          // 0..1: share of auto-merged PRs sampled for human audit
+	settingMutation        = "mutation_testing"    // "on" enables the mutation-testing gate validator
+	settingQuarantineThreshold = "quarantine_threshold" // consecutive fails before an agent is skipped
 )
 
 // runInfo records what an in-flight task is doing, for slot accounting and
@@ -275,6 +276,20 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 		free[ri.agentID]--
 	}
 
+	if th := e.quarantineThreshold(); th > 0 {
+		for i := range agents {
+			recent, err := e.store.Attempts.RecentByAgent(agents[i].ID, th)
+			if err != nil {
+				log.Printf("engine: quarantine check for %q: %v", agents[i].Name, err)
+				continue
+			}
+			if agent.Quarantined(recent, th) {
+				log.Printf("engine: agent %q quarantined for this dispatch pass", agents[i].Name)
+				free[agents[i].ID] = 0
+			}
+		}
+	}
+
 	byID := map[string]model.Task{}
 	for _, t := range tasks {
 		byID[t.ID] = t
@@ -358,6 +373,19 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 // unlimited). A malformed value is treated as unlimited.
 func (e *Engine) wipCap() int {
 	v, err := e.store.Settings.Get(settingWIPCap)
+	if err != nil || v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// quarantineThreshold reads the quarantine threshold from settings (0/unset/malformed/negative = disabled).
+func (e *Engine) quarantineThreshold() int {
+	v, err := e.store.Settings.Get(settingQuarantineThreshold)
 	if err != nil || v == "" {
 		return 0
 	}
