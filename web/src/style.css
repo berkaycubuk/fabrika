@@ -239,6 +239,7 @@ input, textarea, select {
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 textarea { resize: vertical; font-family: var(--mono); font-size: var(--fs-md); }
+textarea.config-toml { min-height: 480px; font-size: var(--fs-base); line-height: 1.6; }
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--accent);

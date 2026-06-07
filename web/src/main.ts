@@ -7,6 +7,7 @@ import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
+import { renderConfig } from "./views/config.js";
 import type { FabrikaEvent } from "./types.js";
 
 interface Nav {
@@ -19,6 +20,7 @@ const NAV: Nav[] = [
   { id: "board", label: "Board", render: renderBoard },
   { id: "factory", label: "Factory", render: renderFactory },
   { id: "agents", label: "Agents", render: renderAgents },
+  { id: "settings", label: "Settings", render: renderConfig },
 ];
 
 let current = "board";

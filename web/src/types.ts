@@ -169,6 +169,28 @@ export interface FabrikaEvent {
   payload: unknown;
 }
 
+export interface ConfigManifest {
+  project: { name: string };
+  verbs: {
+    setup?: string;
+    build?: string;
+    test?: string;
+    lint?: string;
+    typecheck?: string;
+    verify?: string;
+    e2e?: string;
+    run?: string;
+  };
+  risk: {
+    high?: string[];
+    medium?: string[];
+  };
+  autonomy: {
+    auto_merge?: string[];
+    escalate?: string[];
+  };
+}
+
 // Fixed gate stage order (mirrors internal/gate stageOrder) for stable display,
 // followed by the Phase 3 advisory stages (reviewer verdict + mutation testing).
 export const STAGE_ORDER = ["setup", "typecheck", "lint", "build", "test", "verify", "e2e", "review", "mutation"];
