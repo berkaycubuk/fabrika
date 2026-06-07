@@ -1128,8 +1128,9 @@ func (e *Engine) AckAudit(taskID string) error {
 }
 
 // Revert records a merged task as a change-failure (it feeds change-failure-rate)
-// and clears any audit flag. The git revert itself stays with the human — Fabrika
-// won't rewrite main on its own.
+// and clears any audit flag. When the merge captured a commit SHA (Phase 4+),
+// a new revert task is spawned to run through the normal dispatch -> gates ->
+// review/auto-merge pipeline.
 func (e *Engine) Revert(taskID string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -1140,11 +1141,38 @@ func (e *Engine) Revert(taskID string) error {
 	if t.Status != model.TaskMerged {
 		return fmt.Errorf("task is %s, not merged", t.Status)
 	}
+
+	// Pre-Phase-4 merges have no captured SHA to revert, so only the
+	// change-failure flag is recorded.
+	if t.MergeCommitSHA == "" {
+		if err := e.store.Tasks.SetReverted(taskID); err != nil {
+			return err
+		}
+		e.emitTask(taskID)
+		log.Printf("engine: task %q marked reverted (change-failure)", t.Title)
+		return nil
+	}
+
+	// Spawn a revert task that flows through the normal dispatch -> gates ->
+	// review/auto-merge pipeline.
+	revertTask := model.Task{
+		BigTaskID: t.BigTaskID,
+		Title:     "Revert: " + t.Title,
+		Spec:      fmt.Sprintf("Run `git revert -m 1 %s` to revert the changes from the merged task.\n\nOriginal task spec for context:\n%s", t.MergeCommitSHA, t.Spec),
+		Priority:  model.PriorityHigh,
+		RiskTier:  t.RiskTier,
+	}
+	if err := e.store.Tasks.Create(&revertTask); err != nil {
+		return err
+	}
+	e.emit("task.created", revertTask)
+
+	// Mark the original task as reverted.
 	if err := e.store.Tasks.SetReverted(taskID); err != nil {
 		return err
 	}
 	e.emitTask(taskID)
-	log.Printf("engine: task %q marked reverted (change-failure)", t.Title)
+	log.Printf("engine: task %q marked reverted (change-failure); spawned revert task %q", t.Title, revertTask.ID)
 	return nil
 }
 
