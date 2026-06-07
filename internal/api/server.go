@@ -98,6 +98,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/releases/{id}", s.getRelease)
 	mux.HandleFunc("POST /api/releases/{id}/rollback", s.rollbackRelease)
 
+	// --- Incidents (Phase 4) ---
+	mux.HandleFunc("GET /api/incidents", s.listIncidents)
+	mux.HandleFunc("POST /api/incidents/{id}/ignore", s.ignoreIncident)
+	mux.HandleFunc("POST /api/incidents/{id}/resolve", s.resolveIncident)
+
 	// --- Planner: plans + decisions (Phase 2) ---
 	mux.HandleFunc("GET /api/plans", s.listPlans)
 	mux.HandleFunc("GET /api/plans/{id}", s.getPlan)
