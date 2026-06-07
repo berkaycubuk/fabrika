@@ -42,6 +42,12 @@ const (
 	ReleaseFailed     = "failed"
 	ReleaseRolledBack = "rolled_back"
 
+	// Incident.Status
+	IncidentOpen     = "open"
+	IncidentFixing   = "fixing"
+	IncidentResolved = "resolved"
+	IncidentIgnored  = "ignored"
+
 	// Risk tiers
 	RiskLow    = "low"
 	RiskMedium = "medium"
@@ -53,8 +59,9 @@ const (
 	PriorityHigh   = "high"
 
 	// Task reporter: who created the task
-	ReporterUser    = "user"
-	ReporterPlanner = "planner"
+	ReporterUser     = "user"
+	ReporterPlanner  = "planner"
+	ReporterIncident = "incident"
 
 	// Agent roles
 	RoleImplementer = "implementer"
@@ -131,6 +138,23 @@ type Release struct {
 	CreatedAt  string `json:"createdAt"`
 	DeployedAt string `json:"deployedAt"`
 	LiveAt     string `json:"liveAt"`
+}
+
+// Incident is a deduplicated production error, fingerprinted and counted, that
+// may be triaged into a fixing task. See SPECS-PHASE4 §3.3.
+type Incident struct {
+	ID               string `json:"id"`
+	Fingerprint      string `json:"fingerprint"`
+	Title            string `json:"title"`
+	Stack            string `json:"stack"`
+	Payload          string `json:"payload"`
+	Count            int    `json:"count"`
+	FirstSeen        string `json:"firstSeen"`
+	LastSeen         string `json:"lastSeen"`
+	Status           string `json:"status"` // open|fixing|resolved|ignored
+	TaskID           string `json:"taskId"`
+	SuspectReleaseID string `json:"suspectReleaseId"`
+	SuspectTaskID    string `json:"suspectTaskId"`
 }
 
 // Agent is a registered worker, defined and managed in the UI, persisted in the
