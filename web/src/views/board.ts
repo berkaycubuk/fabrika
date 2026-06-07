@@ -405,12 +405,9 @@ export function openAuditDetail(it: ReviewItem): void {
   loadComments(task.id);
 }
 
-// openTaskDetail covers the non-gate lifecycle cards (ready/running/verifying/
-// merged/closed): spec + meta, live steering for in-flight work, retry/delete
-// for kicked-back work, and lazily-loaded gate evidence (stages + diff) from
-// the latest attempt.
-export function openTaskDetail(t: Task, agents: Agent[]): void {
-  const side = buildSidebar([
+export function taskDetailSidebar(t: Task, agents: Agent[]): HTMLElement {
+  return buildSidebar([
+    asideField("Task ID", [el("code", { class: "branch" }, [t.id])]),
     asideField("Status", [tag(t.status, `status-${t.status}`)]),
     asideField("Risk", [tag(t.riskTier, `risk-${t.riskTier}`)]),
     t.priority ? asideField("Priority", [tag(t.priority, `priority-${t.priority}`)]) : null,
@@ -431,6 +428,14 @@ export function openTaskDetail(t: Task, agents: Agent[]): void {
       ? asideField("Touches", (t.touchPaths ?? []).map((p) => el("code", { class: "verify-cmd" }, [p])))
       : null,
   ]);
+}
+
+// openTaskDetail covers the non-gate lifecycle cards (ready/running/verifying/
+// merged/closed): spec + meta, live steering for in-flight work, retry/delete
+// for kicked-back work, and lazily-loaded gate evidence (stages + diff) from
+// the latest attempt.
+export function openTaskDetail(t: Task, agents: Agent[]): void {
+  const side = taskDetailSidebar(t, agents);
 
   const children: (Node | string)[] = [];
   if (t.spec) children.push(el("p", { class: "card-spec" }, [t.spec]));
