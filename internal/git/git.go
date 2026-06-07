@@ -84,6 +84,13 @@ func (r *Repo) AddWorktree(ctx context.Context, path, branch, base string) error
 	return err
 }
 
+// AddWorktreeDetached creates a new worktree at path in detached HEAD state
+// at ref. RemoveWorktree is the corresponding cleanup.
+func (r *Repo) AddWorktreeDetached(ctx context.Context, path, ref string) error {
+	_, err := r.run(ctx, "worktree", "add", "--detach", path, ref)
+	return err
+}
+
 // RemoveWorktree removes a worktree (force, since it may contain agent output).
 func (r *Repo) RemoveWorktree(ctx context.Context, path string) error {
 	_, err := r.run(ctx, "worktree", "remove", "--force", path)
@@ -95,6 +102,26 @@ func (r *Repo) RemoveWorktree(ctx context.Context, path string) error {
 func (r *Repo) DeleteBranch(ctx context.Context, branch string) error {
 	_, err := r.run(ctx, "branch", "-D", branch)
 	return err
+}
+
+// RevList returns the commit SHAs in range rng (e.g. "prevsha..sha" or a bare
+// SHA). It runs `git rev-list` in the repo root, one SHA per line. An empty
+// rng returns an empty slice with no error.
+func (r *Repo) RevList(ctx context.Context, rng string) ([]string, error) {
+	if rng == "" {
+		return nil, nil
+	}
+	out, err := r.run(ctx, "rev-list", rng)
+	if err != nil {
+		return nil, err
+	}
+	var shas []string
+	for _, line := range strings.Split(out, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			shas = append(shas, s)
+		}
+	}
+	return shas, nil
 }
 
 // Diff returns the unified diff of branch relative to base (base...branch).
