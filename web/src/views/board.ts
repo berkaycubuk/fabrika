@@ -382,16 +382,7 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
     ]),
     commentsSection(task.id),
   ]);
-  const side = buildSidebar([
-    asideField("Status", [tag(task.status, `status-${task.status}`)]),
-    asideField("Risk", [tag(task.riskTier, `risk-${task.riskTier}`)]),
-    asideField("Assignee", [
-      task.agentId
-        ? tag(agentName(agents, task.agentId), "agent")
-        : el("span", { class: "muted" }, ["unassigned"]),
-    ]),
-    task.branch ? asideField("Branch", [el("code", { class: "branch" }, [task.branch])]) : null,
-  ]);
+  const side = taskDetailSidebar(task, agents);
   openTaskId = task.id;
   openModal(task.title, body, { wide: true, sidebar: side });
   loadComments(task.id);
