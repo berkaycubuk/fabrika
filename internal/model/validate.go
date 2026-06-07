@@ -1,6 +1,11 @@
 package model
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+)
 
 // Validators for the package's status fields. Callers use these instead of
 // comparing against raw string literals, keeping the magic strings defined once
@@ -59,4 +64,27 @@ func ValidReporter(s string) bool {
 // ValidAttemptResult reports whether s is a defined Attempt.Result.
 func ValidAttemptResult(s string) bool {
 	return oneOf(s, ResultPass, ResultFail, ResultEscalated)
+}
+
+// ValidateAgent returns a descriptive error for the first problem found in a,
+// or nil when a is well-formed. An empty Roles slice is allowed.
+func ValidateAgent(a Agent) error {
+	if strings.TrimSpace(a.Name) == "" {
+		return fmt.Errorf("agent name is required")
+	}
+	if strings.TrimSpace(a.Command) == "" {
+		return fmt.Errorf("agent command is required")
+	}
+	for _, role := range a.Roles {
+		if !ValidAgentRole(role) {
+			return fmt.Errorf("invalid agent role: %q", role)
+		}
+	}
+	if a.Timeout != "" {
+		d, err := time.ParseDuration(a.Timeout)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("agent timeout must be a positive duration like \"20m\"")
+		}
+	}
+	return nil
 }
