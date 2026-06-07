@@ -718,11 +718,17 @@ button.option:hover { border-color: var(--accent); }
   background: var(--bg);
 }
 .comment-author { font-size: var(--fs-base); font-weight: 600; color: var(--text); margin-bottom: var(--space-1); }
-.comment-system { border-left-color: var(--muted); opacity: 0.75; }
-.comment-system .comment-author { color: var(--muted); }
 .comment-body { font-size: var(--fs-md); color: var(--text); white-space: pre-wrap; }
 .comment-empty { padding: var(--space-2) 0; }
 .comment-compose { display: flex; flex-direction: column; gap: var(--space-4); }
+.transition-timeline {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  opacity: 0.7;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+}
 /* Image attachments (comments, task/big-task creation + detail) */
 .attachments { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); }
 .attachments:empty { display: none; }
