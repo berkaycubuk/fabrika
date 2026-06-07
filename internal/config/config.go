@@ -17,40 +17,40 @@ const FileName = "fabrika.toml"
 
 // Config is the parsed fabrika.toml.
 type Config struct {
-	Project  Project  `toml:"project"`
-	Verbs    Verbs    `toml:"verbs"`
-	Risk     Risk     `toml:"risk"`
-	Autonomy Autonomy `toml:"autonomy"`
+	Project  Project  `toml:"project" json:"project"`
+	Verbs    Verbs    `toml:"verbs" json:"verbs"`
+	Risk     Risk     `toml:"risk" json:"risk"`
+	Autonomy Autonomy `toml:"autonomy" json:"autonomy"`
 }
 
 // Project identifies the repo.
 type Project struct {
-	Name string `toml:"name"`
+	Name string `toml:"name" json:"name"`
 }
 
 // Verbs map abstract gate stages to concrete shell commands. Empty verbs mean
 // that stage is skipped. Order of execution is fixed by the gate, not here.
 type Verbs struct {
-	Setup     string `toml:"setup"`
-	Build     string `toml:"build"`
-	Test      string `toml:"test"`
-	Lint      string `toml:"lint"`
-	Typecheck string `toml:"typecheck"`
-	Verify    string `toml:"verify"`
-	E2E       string `toml:"e2e"`
-	Run       string `toml:"run"`
+	Setup     string `toml:"setup" json:"setup"`
+	Build     string `toml:"build" json:"build"`
+	Test      string `toml:"test" json:"test"`
+	Lint      string `toml:"lint" json:"lint"`
+	Typecheck string `toml:"typecheck" json:"typecheck"`
+	Verify    string `toml:"verify" json:"verify"`
+	E2E       string `toml:"e2e" json:"e2e"`
+	Run       string `toml:"run" json:"run"`
 }
 
 // Risk maps path globs to a tier. Anything unmatched is treated as low.
 type Risk struct {
-	High   []string `toml:"high"`
-	Medium []string `toml:"medium"`
+	High   []string `toml:"high" json:"high"`
+	Medium []string `toml:"medium" json:"medium"`
 }
 
 // Autonomy declares which risk tiers auto-merge versus escalate to the human.
 type Autonomy struct {
-	AutoMerge []string `toml:"auto_merge"`
-	Escalate  []string `toml:"escalate"`
+	AutoMerge []string `toml:"auto_merge" json:"auto_merge"`
+	Escalate  []string `toml:"escalate" json:"escalate"`
 }
 
 // Load reads and parses the manifest at the given repo root.
