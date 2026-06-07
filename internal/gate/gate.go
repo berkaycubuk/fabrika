@@ -10,6 +10,8 @@ package gate
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
 	"os/exec"
 
 	"github.com/berkaycubuk/fabrika/internal/config"
@@ -79,21 +81,47 @@ func (r *CommandRunner) Run(ctx context.Context, workdir string, verbs config.Ve
 	return ev, nil
 }
 
-// runStage runs each command in sequence; the stage fails on the first non-zero
-// exit. Output is concatenated.
-func (r *CommandRunner) runStage(ctx context.Context, workdir string, cmds []string) model.StageResult {
-	var out bytes.Buffer
+// RunCommand runs a single command through the configured shell in workdir,
+// capturing combined stdout+stderr. env entries are appended to os.Environ() on
+// the child process. On non-zero exit the output is still returned alongside a
+// non-nil error.
+func (r *CommandRunner) RunCommand(ctx context.Context, workdir, command string, env []string) (string, error) {
+	out, err := r.runShell(ctx, workdir, command, env)
+	if err != nil {
+		return out, fmt.Errorf("command %q: %w", command, err)
+	}
+	return out, nil
+}
+
+// runShell executes a single command through the configured shell in workdir.
+// env is appended to os.Environ() when non-empty. Returns combined stdout+stderr
+// and the raw error from cmd.Run.
+func (r *CommandRunner) runShell(ctx context.Context, workdir, command string, env []string) (string, error) {
 	shell := r.Shell
 	if len(shell) == 0 {
 		shell = []string{"bash", "-c"}
 	}
+	args := append(append([]string{}, shell[1:]...), command)
+	cmd := exec.CommandContext(ctx, shell[0], args...)
+	cmd.Dir = workdir
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	err := cmd.Run()
+	return out.String(), err
+}
+
+// runStage runs each command in sequence; the stage fails on the first non-zero
+// exit. Output is concatenated.
+func (r *CommandRunner) runStage(ctx context.Context, workdir string, cmds []string) model.StageResult {
+	var out bytes.Buffer
 	for _, c := range cmds {
-		args := append(append([]string{}, shell[1:]...), c)
-		cmd := exec.CommandContext(ctx, shell[0], args...)
-		cmd.Dir = workdir
-		cmd.Stdout = &out
-		cmd.Stderr = &out
-		if err := cmd.Run(); err != nil {
+		output, err := r.runShell(ctx, workdir, c, nil)
+		out.WriteString(output)
+		if err != nil {
 			exit := 1
 			if ee, ok := err.(*exec.ExitError); ok {
 				exit = ee.ExitCode()
