@@ -21,7 +21,21 @@ type Config struct {
 	Verbs    Verbs    `toml:"verbs" json:"verbs"`
 	Risk     Risk     `toml:"risk" json:"risk"`
 	Autonomy Autonomy `toml:"autonomy" json:"autonomy"`
+	Deploy   Deploy   `toml:"deploy" json:"deploy"`
 }
+
+// Deploy describes how (and whether) to deploy after a merge. An absent
+// [deploy] section or an empty Command means deployment is disabled.
+type Deploy struct {
+	Mode        string `toml:"mode" json:"mode"`
+	Command     string `toml:"command" json:"command"`
+	Health      string `toml:"health" json:"health"`
+	Rollback    string `toml:"rollback" json:"rollback"`
+	BakeMinutes int    `toml:"bake_minutes" json:"bakeMinutes"`
+}
+
+// Enabled reports whether deployment is configured (non-empty Command).
+func (d Deploy) Enabled() bool { return d.Command != "" }
 
 // Project identifies the repo.
 type Project struct {
@@ -73,8 +87,7 @@ func Load(repoRoot string) (*Config, error) {
 	return &c, nil
 }
 
-// Validate checks [autonomy] semantics: every listed tier must be "low",
-// "medium", or "high", and no tier may appear in both auto_merge and escalate.
+// Validate checks [autonomy] and [deploy] semantics.
 func (c *Config) Validate() error {
 	validTiers := map[string]bool{
 		tierLow:    true,
@@ -100,6 +113,21 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("[autonomy]: tier %q appears in both auto_merge and escalate", t)
 		}
 	}
+
+	if c.Deploy.Mode != "" {
+		validModes := map[string]bool{
+			"manual":   true,
+			"per-merge": true,
+			"interval": true,
+		}
+		if !validModes[c.Deploy.Mode] {
+			return fmt.Errorf("[deploy].mode: unknown mode %q (must be manual, per-merge, or interval)", c.Deploy.Mode)
+		}
+	}
+	if c.Deploy.BakeMinutes < 0 {
+		return fmt.Errorf("[deploy].bake_minutes: must be >= 0, got %d", c.Deploy.BakeMinutes)
+	}
+
 	return nil
 }
 
