@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment } from "./types.js";
+import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -104,4 +104,7 @@ export const api = {
   getSettings: () => req<Record<string, string>>("GET", "/api/settings"),
   putSettings: (s: Record<string, string>) =>
     req<Record<string, string>>("PUT", "/api/settings", s),
+
+  getConfig: () => req<ConfigManifest>("GET", "/api/config"),
+  putConfig: (m: ConfigManifest) => req<ConfigManifest>("PUT", "/api/config", m),
 };
