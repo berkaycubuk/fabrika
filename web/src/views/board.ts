@@ -405,7 +405,7 @@ export function openAuditDetail(it: ReviewItem): void {
   loadComments(task.id);
 }
 
-export function taskDetailSidebar(t: Task, agents: Agent[]): HTMLElement {
+export function taskDetailSidebar(t: Task, agents: Agent[], onOpenDep?: (depId: string) => void): HTMLElement {
   return buildSidebar([
     asideField("Task ID", [el("code", { class: "branch" }, [t.id])]),
     asideField("Status", [tag(t.status, `status-${t.status}`)]),
@@ -422,7 +422,8 @@ export function taskDetailSidebar(t: Task, agents: Agent[]): HTMLElement {
       ? (t.tags ?? []).map((lbl) => tag(lbl))
       : [el("span", { class: "muted" }, ["none"])]),
     (t.dependsOn ?? []).length
-      ? asideField("Depends on", (t.dependsOn ?? []).map((dep) => tag(dep.slice(0, 6), "dep")))
+      ? asideField("Depends on", (t.dependsOn ?? []).map((dep) =>
+          el("span", { class: "tag dep clickable", style: "cursor:pointer", role: "button", onclick: onOpenDep ? () => onOpenDep(dep) : undefined }, [dep.slice(0, 6)])))
       : null,
     (t.touchPaths ?? []).length
       ? asideField("Touches", (t.touchPaths ?? []).map((p) => el("code", { class: "verify-cmd" }, [p])))
@@ -435,7 +436,14 @@ export function taskDetailSidebar(t: Task, agents: Agent[]): HTMLElement {
 // for kicked-back work, and lazily-loaded gate evidence (stages + diff) from
 // the latest attempt.
 export function openTaskDetail(t: Task, agents: Agent[]): void {
-  const side = taskDetailSidebar(t, agents);
+  const onOpenDep = (depId: string) => {
+    api.getTask(depId).then((result) => {
+      openTaskDetail(result.task, agents);
+    }).catch((e) => {
+      alert((e as Error).message);
+    });
+  };
+  const side = taskDetailSidebar(t, agents, onOpenDep);
 
   const children: (Node | string)[] = [];
   if (t.spec) children.push(el("p", { class: "card-spec" }, [t.spec]));
