@@ -339,6 +339,20 @@ button:disabled:hover { border-color: var(--border); }
 .stage.pass { color: var(--green); border-color: color-mix(in srgb, var(--pill-green) 40%, transparent); }
 .stage.fail { color: var(--red); border-color: color-mix(in srgb, var(--border-red) 50%, transparent); }
 .stage.skip { color: var(--muted); }
+.stage.clickable { cursor: pointer; }
+.stage-evidence {
+  flex-basis: 100%;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+.stage-evidence pre {
+  margin: 0;
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 .diff-wrap summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: var(--fs-md); }
 pre.diff {
