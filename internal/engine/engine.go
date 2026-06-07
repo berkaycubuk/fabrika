@@ -28,6 +28,7 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/git"
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/berkaycubuk/fabrika/internal/planner"
+	releasemgr "github.com/berkaycubuk/fabrika/internal/release"
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
@@ -93,6 +94,8 @@ type Engine struct {
 	// sample decides, per auto-merge, whether to flag a PR for post-merge audit.
 	// Overridable in tests for determinism; defaults to a rate-based RNG.
 	sample func(rate float64) bool
+
+	release *releasemgr.Manager
 }
 
 // New constructs an Engine rooted at repoRoot (the target repo). emit may be nil.
@@ -100,7 +103,11 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 	if emit == nil {
 		emit = func(string, any) {}
 	}
-	return &Engine{
+	var deploy config.Deploy
+	if cfg != nil {
+		deploy = cfg.Deploy
+	}
+	e := &Engine{
 		store:    s,
 		cfg:      cfg,
 		repoRoot: repoRoot,
@@ -121,12 +128,24 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 			return rand.Float64() < rate
 		},
 	}
+	e.release = releasemgr.NewManager(releasemgr.Deps{
+		Releases: s.Releases,
+		Tasks:    s.Tasks,
+		Deploy:   deploy,
+		RepoRoot: repoRoot,
+		Cmd:      engineCommander{},
+		Git:      engineGitter{repoRoot: repoRoot},
+		Emit:     emit,
+		Now:      time.Now,
+	})
+	return e
 }
 
 // Start launches the dispatch loop until ctx is cancelled.
 func (e *Engine) Start(ctx context.Context) {
 	e.ctx = ctx
 	e.recoverOrphans()
+	e.release.ResumeBakeTimers()
 	go e.loop()
 }
 
