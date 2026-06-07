@@ -22,6 +22,20 @@ type Config struct {
 	Risk     Risk     `toml:"risk" json:"risk"`
 	Autonomy Autonomy `toml:"autonomy" json:"autonomy"`
 	Deploy   Deploy   `toml:"deploy" json:"deploy"`
+	Feedback Feedback `toml:"feedback" json:"feedback"`
+}
+
+// Feedback declares optional feedback sources that Fabrika polls for signals.
+// An absent [feedback] section (zero sources) is valid and disables the feature.
+type Feedback struct {
+	Sources []FeedbackSource `toml:"sources" json:"sources"`
+}
+
+// FeedbackSource is a single feedback signal provider.
+type FeedbackSource struct {
+	Type        string `toml:"type" json:"type"`
+	Command     string `toml:"command" json:"command"`
+	PollSeconds int    `toml:"poll_seconds" json:"pollSeconds"`
 }
 
 // Deploy describes how (and whether) to deploy after a merge. An absent
@@ -126,6 +140,22 @@ func (c *Config) Validate() error {
 	}
 	if c.Deploy.BakeMinutes < 0 {
 		return fmt.Errorf("[deploy].bake_minutes: must be >= 0, got %d", c.Deploy.BakeMinutes)
+	}
+
+	validFeedbackTypes := map[string]bool{
+		"command": true,
+		"sentry":  true,
+	}
+	for i, s := range c.Feedback.Sources {
+		if !validFeedbackTypes[s.Type] {
+			return fmt.Errorf("[feedback].sources[%d].type: unknown type %q (must be command or sentry)", i, s.Type)
+		}
+		if s.PollSeconds < 10 {
+			return fmt.Errorf("[feedback].sources[%d].poll_seconds: must be >= 10, got %d", i, s.PollSeconds)
+		}
+		if s.Type == "command" && s.Command == "" {
+			return fmt.Errorf("[feedback].sources[%d].command: must be non-empty when type is %q", i, s.Type)
+		}
 	}
 
 	return nil
