@@ -183,7 +183,7 @@ func TestDispatchNormalizesCommitTrailers(t *testing.T) {
 		t.Fatal("task should have a branch after dispatch")
 	}
 
-	const fabrikaTrailer = "Co-authored-by: fabrika <fabrika@berkaycubuk.com>"
+	const fabrikaTrailer = "Co-authored-by: fabrika <noreply@fabrika-ai.com>"
 	hashes := strings.Fields(gitOut(t, repo, "rev-list", "main.."+got.Branch))
 	if len(hashes) == 0 {
 		t.Fatal("expected at least one commit on the branch")

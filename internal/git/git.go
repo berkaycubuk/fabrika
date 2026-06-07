@@ -20,7 +20,7 @@ import (
 // CoAuthorTrailer is the canonical co-author trailer line Fabrika appends to
 // commits it creates on an agent's behalf. The casing matches GitHub's
 // recognized "Co-authored-by:" trailer so the attribution renders in the UI.
-const CoAuthorTrailer = "Co-authored-by: fabrika <fabrika@berkaycubuk.com>"
+const CoAuthorTrailer = "Co-authored-by: fabrika <noreply@fabrika-ai.com>"
 
 // WithCoAuthor returns msg with the fabrika co-author trailer appended in a
 // properly-formatted trailer block: a blank line separates the body from the

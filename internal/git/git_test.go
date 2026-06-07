@@ -175,7 +175,7 @@ func TestWorktreeAndDiff(t *testing.T) {
 }
 
 func TestCoAuthorTrailer(t *testing.T) {
-	const want = "Co-authored-by: fabrika <fabrika@berkaycubuk.com>"
+	const want = "Co-authored-by: fabrika <noreply@fabrika-ai.com>"
 	if CoAuthorTrailer != want {
 		t.Fatalf("CoAuthorTrailer = %q, want %q", CoAuthorTrailer, want)
 	}

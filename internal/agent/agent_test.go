@@ -34,7 +34,7 @@ func TestRenderCommandModel(t *testing.T) {
 
 func TestRenderPromptCoAuthor(t *testing.T) {
 	out := RenderPrompt(model.Task{Title: "x"}, nil, nil, nil, "")
-	if !strings.Contains(out, "Co-authored-by: fabrika <fabrika@berkaycubuk.com>") {
+	if !strings.Contains(out, "Co-authored-by: fabrika <noreply@fabrika-ai.com>") {
 		t.Fatalf("RenderPrompt output missing fabrika co-author instruction:\n%s", out)
 	}
 }

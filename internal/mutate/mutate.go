@@ -37,12 +37,8 @@ var operators = []swap{
 	{" && ", " || "},
 	{" >= ", " < "},
 	{" <= ", " > "},
-	{" > ", " <= "},
-	{" < ", " >= "},
 	{"true", "false"},
-	{"false", "true"},
 	{" + ", " - "},
-	{" - ", " + "},
 }
 
 // Generate returns candidate mutants for a file's content, at most one per line
