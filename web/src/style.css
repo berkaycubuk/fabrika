@@ -425,7 +425,7 @@ pre.diff {
   border-right: 1px solid var(--border);
   background: rgba(255,255,255,0.02);
 }
-.ln-txt { padding: 0 0 0 var(--space-5); flex: 1; min-width: 0; }
+.ln-txt { padding: 0 0 0 var(--space-5); flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dl.add { background: color-mix(in srgb, var(--green) 8%, transparent); }
 .dl.add .ln-old, .dl.add .ln-new { background: color-mix(in srgb, var(--green) 6%, transparent); }
 .dl.add .ln-txt { color: var(--green); }
