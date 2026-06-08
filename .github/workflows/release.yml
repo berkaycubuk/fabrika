@@ -1,0 +1,36 @@
+name: Release
+
+# Publish a GitHub Release with cross-compiled binaries whenever a vX.Y.Z tag
+# is pushed. Cut one with `make tag VERSION=v0.1.0`.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required to create the release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Builds web/dist once, then cross-compiles linux/macos (amd64+arm64)
+      # tarballs + checksums.txt into dist/. VERSION is the pushed tag.
+      - name: Build release archives
+        run: make dist VERSION=${{ github.ref_name }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          generate_release_notes: true
