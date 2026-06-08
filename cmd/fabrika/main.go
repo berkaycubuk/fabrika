@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -71,7 +72,7 @@ func main() {
 
 func run(args []string) error {
 	// Subcommand dispatch: `fabrika init` scaffolds a manifest,
-	// `fabrika version` prints the build version.
+	// `fabrika version` prints the build version, `fabrika help` prints usage.
 	if len(args) > 0 {
 		switch args[0] {
 		case "init":
@@ -79,22 +80,61 @@ func run(args []string) error {
 		case "version":
 			fmt.Println("fabrika " + versionString())
 			return nil
+		case "help":
+			printHelp()
+			return nil
 		}
 	}
 
 	fs := flag.NewFlagSet("fabrika", flag.ContinueOnError)
+	// Suppress flag package's own output; we handle all output ourselves.
+	fs.SetOutput(io.Discard)
+
 	port := fs.Int("port", defaultPort, "HTTP port for the UI/API")
 	noOpen := fs.Bool("no-open", false, "do not open the browser on start")
 	showVersion := fs.Bool("version", false, "print the version and exit")
+	showV := fs.Bool("v", false, "print the version and exit")
+	showHelp := fs.Bool("help", false, "print usage and exit")
+	showH := fs.Bool("h", false, "print usage and exit")
+
 	if err := fs.Parse(args); err != nil {
-		return err
+		// Unknown flag: flag package output is suppressed above, so print
+		// our own error to stderr and exit non-zero.
+		fmt.Fprintf(os.Stderr, "fabrika: %v\n", err)
+		fmt.Fprintln(os.Stderr, "Run 'fabrika --help' for usage.")
+		os.Exit(1)
 	}
-	if *showVersion {
+
+	if *showHelp || *showH {
+		printHelp()
+		return nil
+	}
+	if *showVersion || *showV {
 		fmt.Println("fabrika " + versionString())
 		return nil
 	}
 
 	return cmdServe(*port, !*noOpen)
+}
+
+func printHelp() {
+	fmt.Print(`Usage: fabrika [flags] [command]
+
+fabrika is a local, single-binary orchestrator for coding agents.
+
+Commands:
+  init     Scaffold a fabrika.toml in the current directory
+  version  Print the version and exit
+  help     Print this usage message and exit
+
+Flags:
+  -port N    HTTP port for the UI/API (default 7777)
+  -no-open   Do not open the browser on start
+  -version   Print the version and exit
+  -v         Print the version and exit (shorthand)
+  -help      Print this usage message and exit
+  -h         Print this usage message and exit (shorthand)
+`)
 }
 
 // cmdInit scaffolds a fabrika.toml in the current directory.
