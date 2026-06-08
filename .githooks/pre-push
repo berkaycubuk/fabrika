@@ -1,0 +1,11 @@
+#!/bin/sh
+# pre-push hook: block pushes that contain unformatted Go.
+# Mirrors the CI `make fmt-check` step so the gofmt failure can't reach CI.
+# git passes `<remote> <url>` as args and ref updates on stdin; we ignore both.
+
+unformatted="$(gofmt -l internal/ cmd/)"
+if [ -n "$unformatted" ]; then
+	echo "Go files not formatted:"
+	echo "$unformatted"
+	exit 1
+fi
