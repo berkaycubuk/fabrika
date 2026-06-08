@@ -15,6 +15,7 @@ import { registerReleaseListener, registerIncidentListener } from "../ws.js";
 import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
 import { attachmentGallery } from "./attachment.js";
+import { ciBadge } from "./ci-badge.js";
 
 type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -267,6 +268,8 @@ function taskCard(t: Task, agents: Agent[]): HTMLElement {
   if (t.agentId) meta.push(agentPhoto(agents, t.agentId));
   meta.push(tag(t.riskTier, `risk-${t.riskTier}`));
   if (t.priority && t.priority !== "medium") meta.push(tag(t.priority, `priority-${t.priority}`));
+  const badge = ciBadge(t);
+  if (badge) meta.push(badge);
   const pl = pushStatusLabel(t);
   if (pl) meta.push(tag(pl, `push-${pl}`));
   return card(t.title, meta, () => openTaskDetail(t, agents));

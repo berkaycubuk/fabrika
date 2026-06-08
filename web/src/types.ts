@@ -46,6 +46,8 @@ export interface Task {
   reverted: boolean;
   reporter: string;
   releaseId?: string;
+  ciStatus?: string;
+  ciRunUrl?: string;
 }
 
 export interface Release {
