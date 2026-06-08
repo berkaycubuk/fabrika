@@ -106,7 +106,7 @@ func NewPoller(d Deps) *Poller {
 // PollOnce runs one tick: executes the CI command, parses its output, matches
 // runs to tasks, and for each match updates the CI status and emits task.updated.
 // When a task transitions to "failure" for the first time a high-priority fix
-// task is spawned (mirroring incident-driven fix tasks). Logs and returns any
+// task is spawned. Logs and returns any
 // error without panicking.
 func (p *Poller) PollOnce(ctx context.Context) error {
 	out, err := p.d.Cmd.RunCommand(ctx, p.d.RepoRoot, p.d.Command, nil)
@@ -160,7 +160,7 @@ func (p *Poller) spawnFixTask(t *model.Task) error {
 		Title:    "Fix CI failure: " + t.Title,
 		Spec:     fmt.Sprintf("CI failed for task %q.\n\nCI run: %s\n\nOriginal spec:\n%s", t.Title, t.CIRunURL, t.Spec),
 		Priority: model.PriorityHigh,
-		Reporter: model.ReporterIncident,
+		Reporter: model.ReporterCI,
 	}
 	if err := p.d.Tasks.Create(fix); err != nil {
 		return err
