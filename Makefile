@@ -54,24 +54,11 @@ check: lint
 hooks:
 	git config core.hooksPath .githooks
 
-# Platforms to cross-compile for `make dist` (os/arch).
-PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
-
-# Cross-compile release archives into dist/. The UI is built once (web/dist is
-# embedded into every platform binary), then pure-Go sqlite lets CGO_ENABLED=0
-# cross-compile each target without a C toolchain.
-dist: web
-	rm -rf dist && mkdir -p dist
-	@for platform in $(PLATFORMS); do \
-		os=$${platform%/*}; arch=$${platform#*/}; \
-		echo "building $$os/$$arch ($(VERSION))..."; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
-			go build -ldflags "$(LDFLAGS)" -o dist/fabrika ./cmd/fabrika || exit 1; \
-		tar -czf dist/fabrika_$(VERSION)_$${os}_$${arch}.tar.gz -C dist fabrika; \
-		rm dist/fabrika; \
-	done
-	cd dist && shasum -a 256 *.tar.gz > checksums.txt
-	@echo "release archives in dist/:" && ls dist/
+# Local dry-run of the full release (archives, .deb, checksums) into dist/ via
+# GoReleaser — no tag, no publish. Mirrors exactly what CI does on a tag push.
+# Requires goreleaser (brew install goreleaser).
+dist:
+	goreleaser release --snapshot --clean
 
 # Cut a release: tag the current commit and push it (triggers the release
 # workflow). Usage: make tag VERSION=v0.1.0

@@ -1,36 +1,35 @@
 name: Release
 
-# Publish a GitHub Release with cross-compiled binaries whenever a vX.Y.Z tag
-# is pushed. Cut one with `make tag VERSION=v0.1.0`.
+# On a vX.Y.Z tag push, GoReleaser builds the UI, cross-compiles the binaries,
+# packages the .deb, updates the Homebrew tap, and publishes the GitHub Release.
+# Cut one with: make tag VERSION=v0.1.0
 on:
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: write # required to create the release and upload assets
+  contents: write # create the release and upload assets
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # GoReleaser needs full history + tags
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      # Builds web/dist once, then cross-compiles linux/macos (amd64+arm64)
-      # tarballs + checksums.txt into dist/. VERSION is the pushed tag.
-      - name: Build release archives
-        run: make dist VERSION=${{ github.ref_name }}
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: goreleaser/goreleaser-action@v6
         with:
-          files: |
-            dist/*.tar.gz
-            dist/checksums.txt
-          generate_release_notes: true
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Repo-scoped PAT that can push to berkaycubuk/homebrew-tap.
+          # Add under Settings → Secrets → Actions. Required only for the brew step.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

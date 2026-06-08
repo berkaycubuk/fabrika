@@ -1,0 +1,79 @@
+# GoReleaser config — builds the release artifacts and publishes them to GitHub.
+# Validate locally:  goreleaser check
+# Dry-run a build:   make dist   (== goreleaser release --snapshot --clean)
+# Cut a real release: make tag VERSION=v0.1.0  (pushes the tag; CI does the rest)
+version: 2
+
+project_name: fabrika
+
+before:
+  hooks:
+    # The web UI is embedded via go:embed, so web/dist must exist before the Go
+    # build. Built once here; every platform binary embeds the same assets.
+    - bash -c "cd web && npm ci && npm run build"
+
+builds:
+  - id: fabrika
+    main: ./cmd/fabrika
+    binary: fabrika
+    env:
+      - CGO_ENABLED=0 # pure-Go sqlite → cross-compile without a C toolchain
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Tag }}
+
+archives:
+  - id: fabrika
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+# Debian/Ubuntu package: installs fabrika to /usr/bin via apt.
+nfpms:
+  - id: fabrika
+    package_name: fabrika
+    vendor: Berkay Cubuk
+    homepage: https://github.com/berkaycubuk/fabrika
+    maintainer: Berkay Cubuk <berkay@berkaycubuk.com>
+    description: Single Go binary orchestrating local coding agents.
+    formats:
+      - deb
+    bindir: /usr/bin
+
+# Homebrew cask pushed to github.com/berkaycubuk/homebrew-tap.
+# REQUIRES (before first tag): create that repo, and add a repo-scoped PAT as
+# the HOMEBREW_TAP_TOKEN secret on this repo. Without both, the brew step fails
+# (the binaries/.deb still upload). Comment this block out to skip Homebrew.
+# The post-install hook strips com.apple.quarantine so the unsigned binary runs
+# without the macOS Gatekeeper "developer cannot be verified" prompt.
+homebrew_casks:
+  - name: fabrika
+    repository:
+      owner: berkaycubuk
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/berkaycubuk/fabrika
+    description: Single Go binary orchestrating local coding agents.
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/fabrika"]
+          end
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+
+release:
+  github:
+    owner: berkaycubuk
+    name: fabrika
+  draft: false
