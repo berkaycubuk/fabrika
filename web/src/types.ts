@@ -212,4 +212,10 @@ export interface ConfigManifest {
 // followed by the Phase 3 advisory stages (reviewer verdict + mutation testing).
 export const STAGE_ORDER = ["setup", "typecheck", "lint", "build", "test", "verify", "e2e", "review", "mutation"];
 
+export interface Convention {
+  id: string;
+  rule: string;
+  status: string;
+}
+
 export const ROLES = ["implementer", "planner", "reviewer"];
