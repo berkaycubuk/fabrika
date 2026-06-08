@@ -11,7 +11,8 @@ const (
 	BigTaskPlanned  = "planned"
 	BigTaskRunning  = "running"
 	BigTaskDone     = "done"
-	BigTaskError    = "error" // planning failed; Error holds a human-readable reason
+	BigTaskBacklog = "backlog" // parked idea; not yet planned/implemented
+	BigTaskError   = "error"  // planning failed; Error holds a human-readable reason
 
 	// Plan.Status
 	PlanProposed = "proposed"
@@ -82,7 +83,7 @@ type BigTask struct {
 	Constraints    []string `json:"constraints"` // e.g. "PCI-compliant", "works on mobile"
 	Attachments    []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
 	RepoPath       string   `json:"repoPath"`
-	Status         string   `json:"status"`         // draft|planning|planned|running|done|error
+	Status         string   `json:"status"`         // backlog|draft|planning|planned|running|done|error
 	Error          string   `json:"error"`          // failure reason when Status == error; cleared on retry
 	PlannerAgentID string   `json:"plannerAgentId"` // which registered planner agent is decomposing this
 	PlanFeedback   string   `json:"planFeedback"`   // asks the planner to re-think its plan
