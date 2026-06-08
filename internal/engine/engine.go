@@ -742,7 +742,8 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 	// catches it. Survivors mean the tests are too weak to trust autonomously.
 	mutationOK := true
 	if e.mutationEnabled() && e.cfg != nil && e.cfg.Verbs.Test != "" {
-		res := e.runMutation(ctx, wt, changed, task.Acceptance.LockedGlobs)
+		ranges := changedLineRanges(ev.Diff)
+		res := e.runMutation(ctx, wt, changed, task.Acceptance.LockedGlobs, ranges)
 		mutationOK = res.Pass()
 		ev.Stages["mutation"] = model.StageResult{Pass: mutationOK, Output: mutationSummary(res)}
 	}

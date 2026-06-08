@@ -86,7 +86,9 @@ func (e *Engine) mutationEnabled() bool {
 
 // runMutation perturbs the task's changed source files (excluding test files and
 // locked globs) and confirms the repo's test verb catches the perturbation.
-func (e *Engine) runMutation(ctx context.Context, wt string, changed, lockedGlobs []string) mutate.Result {
+// ranges restricts mutation to specific source lines per file; a file absent
+// from the map is mutated in full (RunScoped fallback).
+func (e *Engine) runMutation(ctx context.Context, wt string, changed, lockedGlobs []string, ranges map[string][]mutate.LineRange) mutate.Result {
 	files := mutableFiles(changed, lockedGlobs)
 	testCmd := e.cfg.Verbs.Test
 	test := func(ctx context.Context) bool {
@@ -94,7 +96,7 @@ func (e *Engine) runMutation(ctx context.Context, wt string, changed, lockedGlob
 		cmd.Dir = wt
 		return cmd.Run() == nil
 	}
-	return mutate.Run(ctx, wt, files, test, mutationBudget)
+	return mutate.RunScoped(ctx, wt, files, ranges, test, mutationBudget)
 }
 
 // mutableFiles selects changed files worth mutating: it drops test files (whose
