@@ -36,6 +36,11 @@ func ValidPlanStatus(s string) bool {
 	return oneOf(s, PlanProposed, PlanApproved, PlanRejected)
 }
 
+// ValidConventionStatus reports whether s is a defined Convention.Status.
+func ValidConventionStatus(s string) bool {
+	return oneOf(s, ConventionProposed, ConventionApproved, ConventionRejected)
+}
+
 // ValidDecisionStatus reports whether s is a defined Decision.Status.
 func ValidDecisionStatus(s string) bool {
 	return oneOf(s, DecisionOpen, DecisionAnswered)

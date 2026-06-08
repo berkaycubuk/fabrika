@@ -31,6 +31,11 @@ const (
 	TaskFailed    = "failed"
 	TaskClosed    = "closed" // human dismissed without merging (engine extension)
 
+	// Convention.Status
+	ConventionProposed = "proposed"
+	ConventionApproved = "approved"
+	ConventionRejected = "rejected"
+
 	// Decision.Status (engine extension; the spec models answer presence only)
 	DecisionOpen     = "open"
 	DecisionAnswered = "answered"
@@ -239,6 +244,7 @@ type Comment struct {
 
 // Convention is standing context injected into future specs + agent runs.
 type Convention struct {
-	ID   string `json:"id"`
-	Rule string `json:"rule"`
+	ID     string `json:"id"`
+	Rule   string `json:"rule"`
+	Status string `json:"status"` // proposed|approved|rejected
 }
