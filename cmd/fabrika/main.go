@@ -108,7 +108,11 @@ func cmdInit() error {
 		return err
 	}
 	fmt.Printf("Created %s\n", path)
-	fmt.Println("Edit it to map your repo's build/verify verbs, then run `fabrika`.")
+	if d := config.DetectStack(cwd); d.Stack != "" {
+		fmt.Println(d.Message)
+	} else {
+		fmt.Println("Edit it to map your repo's build/verify verbs, then run `fabrika`.")
+	}
 	return nil
 }
 
