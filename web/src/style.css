@@ -656,6 +656,23 @@ button.option:hover { border-color: var(--accent); }
 .board-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-10); }
 .header-actions { display: flex; gap: var(--space-5); flex-shrink: 0; }
 
+.board-search {
+  flex: 0 1 220px;
+  padding: var(--space-4) var(--space-7);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.board-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.board-search::placeholder { color: var(--muted); }
+
 .needs-board { margin-top: var(--space-9); flex: 1; min-height: 0; overflow: auto; align-items: flex-start; }
 .board-col-body { display: flex; flex-direction: column; }
 
