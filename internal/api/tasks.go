@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -18,8 +19,37 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []model.Task{}
 	}
+	tasks = filterTasks(tasks, r.URL.Query())
 	tasks = s.engine.PushAnnotate(r.Context(), tasks)
 	writeJSON(w, http.StatusOK, tasks)
+}
+
+// filterTasks applies additive query-parameter filtering to the task slice.
+// Each supported param (status, agentId, riskTier) accepts a single value or a
+// comma-separated list (OR within a param); different params combine with AND.
+// An absent or empty param applies no constraint on its field.
+func filterTasks(tasks []model.Task, q url.Values) []model.Task {
+	matches := func(values, field string) bool {
+		values = strings.TrimSpace(values)
+		if values == "" {
+			return true
+		}
+		for _, v := range strings.Split(values, ",") {
+			if strings.TrimSpace(v) == field {
+				return true
+			}
+		}
+		return false
+	}
+	out := []model.Task{}
+	for _, t := range tasks {
+		if matches(q.Get("status"), t.Status) &&
+			matches(q.Get("agentId"), t.AgentID) &&
+			matches(q.Get("riskTier"), t.RiskTier) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // taskDetail bundles a task with its attempt history for the detail view.
