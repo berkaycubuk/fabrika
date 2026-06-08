@@ -9,7 +9,6 @@ import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
 import { renderConfig } from "./views/config.js";
-import { renderIncidents, onIncidentEvent } from "./views/incidents.js";
 import type { FabrikaEvent } from "./types.js";
 
 interface Nav {
@@ -22,7 +21,6 @@ const NAV: Nav[] = [
   { id: "board", label: "Board", render: renderBoard },
   { id: "factory", label: "Factory", render: renderFactory },
   { id: "agents", label: "Agents", render: renderAgents },
-  { id: "incidents", label: "Incidents", render: renderIncidents },
   { id: "settings", label: "Settings", render: renderConfig },
 ];
 
@@ -104,7 +102,6 @@ function main(): void {
     onBoardEvent(e);
     onFactoryEvent();
     if (e.type.startsWith("agent.")) onAgentEvent();
-    if (e.type.startsWith("incident.")) onIncidentEvent();
   }, {
     // Link is up — reflect it immediately, even before any event arrives.
     onConnect: () => setConn("live"),
@@ -115,7 +112,6 @@ function main(): void {
       onBoardEvent();
       onFactoryEvent();
       onAgentEvent();
-      onIncidentEvent();
     },
     onDisconnect: () => setConn("reconnecting"),
   });
