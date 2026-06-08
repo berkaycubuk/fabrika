@@ -39,21 +39,29 @@ func (s *Server) assemblePlan(p model.Plan) (planView, error) {
 	return planView{Plan: p, BigTask: bt}, nil
 }
 
-// listPlans returns every plan assembled for the Approve view (newest-first).
-func (s *Server) listPlans(w http.ResponseWriter, r *http.Request) {
+// collectPlans returns every plan assembled for the Approve view.
+func (s *Server) collectPlans() ([]planView, error) {
 	plans, err := s.store.Plans.List()
 	if err != nil {
-		mapStoreErr(w, err)
-		return
+		return nil, err
 	}
 	out := []planView{}
 	for _, p := range plans {
 		pv, err := s.assemblePlan(p)
 		if err != nil {
-			mapStoreErr(w, err)
-			return
+			return nil, err
 		}
 		out = append(out, pv)
+	}
+	return out, nil
+}
+
+// listPlans returns every plan assembled for the Approve view (newest-first).
+func (s *Server) listPlans(w http.ResponseWriter, r *http.Request) {
+	out, err := s.collectPlans()
+	if err != nil {
+		mapStoreErr(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -107,15 +115,24 @@ func (s *Server) revisePlan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "revising"})
 }
 
-// listDecisions returns the open decision queue (plan- and task-level).
-func (s *Server) listDecisions(w http.ResponseWriter, r *http.Request) {
+// collectDecisions returns open decisions from the store.
+func (s *Server) collectDecisions() ([]model.Decision, error) {
 	ds, err := s.store.Decisions.ListOpen()
 	if err != nil {
-		mapStoreErr(w, err)
-		return
+		return nil, err
 	}
 	if ds == nil {
 		ds = []model.Decision{}
+	}
+	return ds, nil
+}
+
+// listDecisions returns the open decision queue (plan- and task-level).
+func (s *Server) listDecisions(w http.ResponseWriter, r *http.Request) {
+	ds, err := s.collectDecisions()
+	if err != nil {
+		mapStoreErr(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, ds)
 }

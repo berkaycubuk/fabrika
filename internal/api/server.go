@@ -106,6 +106,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/releases/{id}", s.getRelease)
 	mux.HandleFunc("POST /api/releases/{id}/rollback", s.rollbackRelease)
 
+	// --- Attention: unified judgment feed ---
+	mux.HandleFunc("GET /api/attention", s.getAttention)
+
 	// --- Planner: plans + decisions (Phase 2) ---
 	mux.HandleFunc("GET /api/plans", s.listPlans)
 	mux.HandleFunc("GET /api/plans/{id}", s.getPlan)
