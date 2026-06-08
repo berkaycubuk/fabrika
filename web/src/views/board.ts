@@ -19,7 +19,7 @@ import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
 import { attachmentGallery } from "./attachment.js";
 import { ciBadge } from "./ci-badge.js";
-import { emptyFilter, matchesFilter, countLabel, type CardFilter, type Filterable } from "./board-filter.js";
+import { emptyFilter, matchesFilter, countLabel, distinctValues, type CardFilter, type Filterable } from "./board-filter.js";
 
 let filterState: CardFilter = emptyFilter();
 let storedPlans: Plan[] = [];
@@ -31,6 +31,7 @@ let storedAgents: Agent[] = [];
 let storedBigTasks: BigTask[] = [];
 
 type CardItem = { el: HTMLElement; filterable: Filterable };
+const colCards: Record<string, CardItem[]> = {};
 
 type ColId = "backlog" | "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -102,9 +103,20 @@ export function renderBoard(root: HTMLElement): void {
 }
 
 function colSkeleton(c: (typeof COLUMNS)[number]): HTMLElement {
+  const filterBtn = el("button", {
+    class: "col-filter-btn",
+    title: "Filter column",
+    onclick: (e: Event) => {
+      e.stopPropagation();
+      openColFilter(c.id, filterBtn);
+    },
+  }, ["\u25BD"]);
   const head = el("div", { class: "board-col-head" }, [
     c.gate ? el("span", { class: "gate-dot", title: "needs you" }, []) : el("span", {}),
-    c.label,
+    el("span", { class: "board-col-label-group" }, [
+      c.label,
+      filterBtn,
+    ]),
     el("span", { class: "count", "data-count": c.id }, []),
   ]);
   return el("div", { class: "board-col" + (c.gate ? " gate" : ""), "data-col": c.id }, [
@@ -136,6 +148,11 @@ function setupBoardKeys(): void {
       return;
     }
     if (e.key === "Escape") {
+      const openMenu = document.querySelector(".col-filter-menu");
+      if (openMenu) {
+        openMenu.remove();
+        return;
+      }
       const input = document.getElementById("board-search") as HTMLInputElement | null;
       if (input && (document.activeElement === input || filterState.search.trim() !== "")) {
         input.value = "";
@@ -205,11 +222,112 @@ function fillColumn(id: string, cards: CardItem[]): void {
   const total = cards.length;
   const filtered = cards.filter((c) => matchesFilter(c.filterable, filterState));
   if (count) count.textContent = countLabel(filtered.length, total);
+  colCards[id] = cards;
+  const btn = document.querySelector(`[data-col="${id}"] .col-filter-btn`);
+  if (btn) {
+    const active = filterState.risk.length > 0 || filterState.agent.length > 0 || filterState.status.length > 0;
+    btn.classList.toggle("active", active);
+  }
+  const existingMenu = document.querySelector(`[data-col="${id}"] .col-filter-menu`);
+  if (existingMenu) existingMenu.remove();
   if (filtered.length === 0) {
     body.append(el("div", { class: "board-empty" }, ["empty"]));
     return;
   }
   for (const c of filtered) body.append(c.el);
+}
+
+function openColFilter(colId: string, btn: HTMLElement): void {
+  const existing = document.querySelector(".col-filter-menu");
+  if (existing) {
+    if (existing.closest(`[data-col="${colId}"]`)) {
+      existing.remove();
+      return;
+    }
+    existing.remove();
+  }
+  const cards = colCards[colId] || [];
+  const filterables = cards.map((c) => c.filterable);
+  const risks = distinctValues(filterables, "riskTier");
+  const agentIds = distinctValues(filterables, "agentId");
+  const statuses = distinctValues(filterables, "pushStatus");
+
+  const rows: HTMLElement[] = [];
+  const onChange = () => paint();
+
+  if (risks.length > 0) {
+    rows.push(el("div", { class: "col-filter-group" }, [
+      el("div", { class: "col-filter-label" }, ["Risk"]),
+      ...risks.map((r) => {
+        const ckd = filterState.risk.includes(r);
+        return el("label", { class: "col-filter-checkbox" }, [
+          el("input", {
+            type: "checkbox",
+            checked: ckd,
+            onchange: () => {
+              if (ckd) filterState.risk = filterState.risk.filter((x) => x !== r);
+              else filterState.risk = [...filterState.risk, r];
+              onChange();
+            },
+          }),
+          r,
+        ]);
+      }),
+    ]));
+  }
+  if (agentIds.length > 0) {
+    rows.push(el("div", { class: "col-filter-group" }, [
+      el("div", { class: "col-filter-label" }, ["Agent"]),
+      ...agentIds.map((id) => {
+        const ckd = filterState.agent.includes(id);
+        const display = storedAgents.find((a) => a.id === id)?.name ?? id;
+        return el("label", { class: "col-filter-checkbox" }, [
+          el("input", {
+            type: "checkbox",
+            checked: ckd,
+            onchange: () => {
+              if (ckd) filterState.agent = filterState.agent.filter((x) => x !== id);
+              else filterState.agent = [...filterState.agent, id];
+              onChange();
+            },
+          }),
+          display,
+        ]);
+      }),
+    ]));
+  }
+  if (statuses.length > 0) {
+    rows.push(el("div", { class: "col-filter-group" }, [
+      el("div", { class: "col-filter-label" }, ["Push Status"]),
+      ...statuses.map((s) => {
+        const ckd = filterState.status.includes(s);
+        return el("label", { class: "col-filter-checkbox" }, [
+          el("input", {
+            type: "checkbox",
+            checked: ckd,
+            onchange: () => {
+              if (ckd) filterState.status = filterState.status.filter((x) => x !== s);
+              else filterState.status = [...filterState.status, s];
+              onChange();
+            },
+          }),
+          s,
+        ]);
+      }),
+    ]));
+  }
+  if (rows.length === 0) return;
+
+  const menu = el("div", { class: "col-filter-menu" }, rows);
+  btn.after(menu);
+
+  const clickOut = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node) && e.target !== btn) {
+      menu.remove();
+      document.removeEventListener("click", clickOut);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", clickOut), 0);
 }
 
 function paint(): void {
