@@ -5,7 +5,7 @@
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { button, pill, formatTokens } from "../components.js";
-import type { Metrics, AgentMetrics } from "../types.js";
+import type { Metrics, AgentMetrics, Convention } from "../types.js";
 
 const BARS = ["var(--accent)", "var(--tan)", "var(--teal)", "var(--green)", "var(--amber)", "var(--red)"];
 
@@ -49,7 +49,9 @@ async function refresh(): Promise<void> {
       autonomyControls(m),
       el("div", { class: "section-h sm" }, ["Agents by share of work"]),
       shareTable(m),
+      el("div", { id: "factory-conventions" }, [el("div", { class: "muted sm" }, ["Loading conventions…"])]),
     );
+    renderConventions();
   } catch (e) {
     clear(body);
     body.append(el("p", { class: "form-error" }, [(e as Error).message]));
@@ -155,6 +157,37 @@ function shareTable(m: Metrics): HTMLElement {
     ]),
     tbody,
   ]);
+}
+
+async function renderConventions(): Promise<void> {
+  const slot = document.getElementById("factory-conventions");
+  if (!slot) return;
+  try {
+    const cs: Convention[] = await api.listConventions("proposed");
+    clear(slot);
+    slot.append(el("div", { class: "section-h sm" }, ["Proposed conventions"]));
+    if (cs.length === 0) {
+      slot.append(el("p", { class: "muted sm" }, ["No proposed conventions."]));
+      return;
+    }
+    for (const c of cs) {
+      const self = el("div", { class: "convention-item" }, [
+        el("div", { class: "convention-rule" }, [c.rule]),
+        el("div", { class: "card-actions" }, [
+          button("Approve", { variant: "primary", onclick: () => {
+            api.approveConvention(c.id).then(renderConventions).catch((e: unknown) => alert((e as Error).message));
+          }}),
+          button("Reject", { variant: "danger", onclick: () => {
+            api.rejectConvention(c.id).then(renderConventions).catch((e: unknown) => alert((e as Error).message));
+          }}),
+        ]),
+      ]);
+      slot.append(self);
+    }
+  } catch (e) {
+    clear(slot);
+    slot.append(el("p", { class: "form-error" }, [(e as Error).message]));
+  }
 }
 
 function stat(label: string, value: string, unit?: string): HTMLElement {
