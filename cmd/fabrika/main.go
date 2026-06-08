@@ -21,6 +21,7 @@ import (
 
 	"github.com/berkaycubuk/fabrika/internal/api"
 	"github.com/berkaycubuk/fabrika/internal/config"
+	"github.com/berkaycubuk/fabrika/internal/observability"
 	"github.com/berkaycubuk/fabrika/internal/store"
 	"github.com/berkaycubuk/fabrika/web"
 )
@@ -114,6 +115,16 @@ func cmdInit() error {
 // cmdServe loads the manifest, opens the stores, and serves the UI/API until
 // interrupted.
 func cmdServe(port int, openBrowser bool) error {
+	env := "production"
+	if version == "dev" {
+		env = "development"
+	}
+	flush, err := observability.Init(observability.ResolveDSN(), versionString(), env)
+	if err != nil {
+		log.Printf("fabrika: sentry init: %v", err)
+	}
+	defer flush()
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
