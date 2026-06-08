@@ -39,7 +39,7 @@ jobs:
           version: latest
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Repo-scoped PAT that can push to berkaycubuk/homebrew-tap.
-          # Add under Settings → Secrets → Actions. Required only for the brew step.
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # No GitHub release (private source) — artifacts upload to R2 via the
+          # blobs uploader using these S3-compatible credentials.
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

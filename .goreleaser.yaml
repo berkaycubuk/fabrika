@@ -1,4 +1,5 @@
-# GoReleaser config — builds the release artifacts and publishes them to GitHub.
+# GoReleaser config — builds the release artifacts and uploads them to a
+# Cloudflare R2 bucket (no public GitHub release; source repo is private).
 # Validate locally:  goreleaser check
 # Dry-run a build:   make dist   (== goreleaser release --snapshot --clean)
 # Cut a real release: make tag VERSION=v0.1.0  (pushes the tag; CI does the rest)
@@ -44,36 +45,25 @@ nfpms:
       - deb
     bindir: /usr/bin
 
-# Homebrew cask pushed to github.com/berkaycubuk/homebrew-tap.
-# REQUIRES (before first tag): create that repo, and add a repo-scoped PAT as
-# the HOMEBREW_TAP_TOKEN secret on this repo. Without both, the brew step fails
-# (the binaries/.deb still upload). Comment this block out to skip Homebrew.
-# The post-install hook strips com.apple.quarantine so the unsigned binary runs
-# without the macOS Gatekeeper "developer cannot be verified" prompt.
-homebrew_casks:
-  - name: fabrika
-    repository:
-      owner: berkaycubuk
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: https://github.com/berkaycubuk/fabrika
-    description: Single Go binary orchestrating local coding agents.
-    hooks:
-      post:
-        install: |
-          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/fabrika"]
-          end
-
 checksum:
   name_template: "checksums.txt"
 
 changelog:
-  use: github
+  # Local git log, not the GitHub API — the source repo is private and we don't
+  # publish a GitHub release anyway.
+  use: git
   sort: asc
 
+# Source repo is private, so no public GitHub release. Artifacts go to R2.
 release:
-  github:
-    owner: berkaycubuk
-    name: fabrika
-  draft: false
+  disable: "true"
+
+# Upload archives, .deb packages and checksums to a Cloudflare R2 bucket (R2 is
+# S3-compatible). Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+# (R2 S3 API token) in the CI env. Replace the two ALL-CAPS placeholders below.
+blobs:
+  - provider: s3
+    region: auto
+    endpoint: "https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com"
+    bucket: "public-stuff"
+    directory: "tool-binaries/fabrika/{{ .Version }}"
