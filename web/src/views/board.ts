@@ -6,6 +6,9 @@
 // view. (SPECS §10.)
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
+import { showToast } from "./toast.js";
+import { undoToastSpec } from "./undo-actions.js";
+import type { ToastSpec } from "./undo-actions.js";
 import { button, pill, tag, field, formatTokens, formatTokensShort } from "../components.js";
 import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
@@ -381,17 +384,17 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
       gateSummaryEl(attempt?.evidence),
       actionRow([
         green && !hasAdvisoryFailure
-          ? button("Merge", { variant: "primary", onclick: () => act(() => api.acceptTask(task.id)) })
+          ? button("Merge", { variant: "primary", onclick: () => act(() => api.acceptTask(task.id), () => undoToastSpec("accept", task)) })
           : green && hasAdvisoryFailure
             ? button("Merge anyway", { onclick: () => {
                 if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
-                act(() => api.acceptTask(task.id, true));
+                act(() => api.acceptTask(task.id, true), () => undoToastSpec("accept", task));
               }})
             : button("Retry", { variant: "primary", onclick: () => act(() => api.retryTask(task.id)) }),
         !green && task.branch
           ? button("Merge anyway", { variant: "danger", onclick: () => {
               if (!confirm(`Gates failed on "${task.title}". Merge its work into the base branch anyway?`)) return;
-              act(() => api.acceptTask(task.id, true));
+              act(() => api.acceptTask(task.id, true), () => undoToastSpec("accept", task));
             }})
           : el("span", {}),
         green
@@ -404,7 +407,7 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
         button("Kick back", { variant: "danger", onclick: () => {
           const reason = requireCommentInput("A reason is required to kick a task back.");
           if (reason === null) return;
-          act(() => api.rejectTask(task.id, reason));
+          act(() => api.rejectTask(task.id, reason), () => undoToastSpec("reject", task));
         }}),
       ]),
     ]),
@@ -1138,9 +1141,13 @@ async function pushMain(btn: HTMLButtonElement): Promise<void> {
   }
 }
 
-async function act(fn: () => Promise<unknown>): Promise<void> {
+async function act(fn: () => Promise<unknown>, spec?: () => ToastSpec): Promise<void> {
   try {
     await fn();
+    if (spec) {
+      const s = spec();
+      showToast({ message: s.message, undo: { label: s.label, onUndo: s.onUndo } });
+    }
     closeModal();
     refresh();
   } catch (e) {
