@@ -17,8 +17,9 @@ import { renderDiff } from "./diff-view.js";
 import { attachmentGallery } from "./attachment.js";
 import { ciBadge } from "./ci-badge.js";
 
-type ColId = "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
+type ColId = "backlog" | "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
+  { id: "backlog", label: "Backlog" },
   { id: "planning", label: "Planning" },
   { id: "approve", label: "Approve", gate: true },
   { id: "decide", label: "Decide", gate: true },
@@ -132,6 +133,7 @@ async function refresh(): Promise<void> {
     // (or stalls). Once planned, the proposed Plan takes over in Approve; once
     // running/done its tasks carry it forward — so only draft/planning/error
     // land here.
+    fillColumn("backlog", bigTasks.filter((b) => b.status === "backlog").map((b) => bigTaskCard(b, agents)));
     fillColumn("planning", bigTasks.filter((b) => PRE_PLAN.includes(b.status)).map((b) => bigTaskCard(b, agents)));
     fillColumn("approve", plans.filter((p) => p.status === "proposed").map((p) => planCard(p, agents)));
     fillColumn("decide", decisions.map(decideCard));
@@ -216,6 +218,15 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
         : el("span", {}),
       button("Delete request", { variant: "danger", onclick: () => {
         if (!confirm(`Delete "${b.title}"? This removes the plan request and its proposed tasks.`)) return;
+        act(() => api.deleteBigTask(b.id));
+      }}),
+    ]));
+  }
+  if (b.status === "backlog") {
+    children.push(actionRow([
+      button("Move to planning", { variant: "primary", onclick: () => act(() => api.promoteBigTask(b.id)) }),
+      button("Delete", { variant: "danger", onclick: () => {
+        if (!confirm(`Delete "${b.title}"?`)) return;
         act(() => api.deleteBigTask(b.id));
       }}),
     ]));
@@ -761,7 +772,29 @@ function openDefine(): void {
     field("Images", el("div", { class: "attach-field" }, [attach.previews, ...attach.controls])),
     field("Constraints", constraints),
     err,
-    el("div", { class: "form-actions" }, [button("Define big task", { variant: "primary", type: "submit" })]),
+    el("div", { class: "form-actions" }, [
+      button("Define big task", { variant: "primary", type: "submit" }),
+      button("Save to backlog", { onclick: async () => {
+        if (!title.value.trim() || !intent.value.trim()) {
+          err.textContent = "Title and intent are required.";
+          return;
+        }
+        err.textContent = "";
+        try {
+          await api.createBigTask({
+            title: title.value.trim(),
+            intent: intent.value.trim(),
+            constraints: lines(constraints.value),
+            attachments: attach.urls(),
+            status: "backlog",
+          });
+          closeModal();
+          refresh();
+        } catch (e2) {
+          err.textContent = (e2 as Error).message;
+        }
+      }}),
+    ]),
   ]);
   openModal("Define a big task", form, {
     subtitle: "Describe an outcome in plain intent — a planner agent decomposes it into tasks for your approval.",
