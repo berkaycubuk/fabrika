@@ -835,8 +835,11 @@ func TestWriteHeldOutFiles(t *testing.T) {
 func TestRetryCarriesHumanGuidanceAndLastFailure(t *testing.T) {
 	eng, st, _ := setup(t)
 	a := &model.Agent{
-		Name:    "fake",
-		Command: "grep -v fabrika_ {prompt_file}",
+		Name: "fake",
+		// Echo the prompt (so the log carries the rendered guidance) and make a
+		// real edit (so the branch diff is non-empty and the verification gate —
+		// where the held-out check fails — actually runs).
+		Command: "grep -v fabrika_ {prompt_file}; printf 'x' > out.txt",
 		Roles:   []string{model.RoleImplementer},
 		Enabled: true,
 	}
@@ -886,5 +889,75 @@ func TestRetryCarriesHumanGuidanceAndLastFailure(t *testing.T) {
 		if !strings.Contains(att.Log, want) {
 			t.Fatalf("retry prompt missing %q:\n%s", want, att.Log)
 		}
+	}
+}
+
+// An agent that commits nothing yields an empty branch diff. Such a no-op must
+// fail (and never auto-merge) even though the gate would pass trivially against
+// the unchanged tree — otherwise a do-nothing run is silently reported as merged.
+func TestEmptyDiffFailsInsteadOfMerging(t *testing.T) {
+	eng, st, _ := setup(t)
+	a := &model.Agent{
+		Name:    "noop",
+		Command: "true", // makes no file changes
+		Roles:   []string{model.RoleImplementer},
+		Enabled: true,
+	}
+	if err := st.Agents.Create(a); err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{
+		Title:      "does nothing",
+		Spec:       "no-op",
+		Acceptance: model.Contract{VerifyCmds: []string{"true"}}, // gate would pass
+	}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected dispatch")
+	}
+
+	got, _ := st.Tasks.Get(task.ID)
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status = %q, want failed (empty diff must not merge)", got.Status)
+	}
+	att, err := st.Attempts.LatestForTask(task.ID)
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if att.Result != model.ResultFail {
+		t.Fatalf("result = %q, want fail", att.Result)
+	}
+	if st, ok := att.Evidence.Stages["diff"]; !ok || st.Pass {
+		t.Fatalf("expected a failed \"diff\" stage, got %+v", att.Evidence.Stages)
+	}
+}
+
+// Attachments live in the global .fabrika/uploads dir, outside the worktree the
+// agent is sandboxed to. stageAttachments must copy them into the worktree so
+// the agent can actually read them; otherwise the read is rejected as an
+// external directory and the agent runs blind to its mockups/screenshots.
+func TestStageAttachmentsCopiesIntoWorktree(t *testing.T) {
+	eng, _, repo := setup(t)
+	uploads := filepath.Join(repo, ".fabrika", "uploads")
+	if err := os.MkdirAll(uploads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(uploads, "shot.png"), []byte("PNG"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wt := t.TempDir()
+	got := eng.stageAttachments(wt, []string{"/api/uploads/shot.png", "/api/uploads/missing.png"})
+	if len(got) != 1 {
+		t.Fatalf("staged %v, want exactly the one existing attachment", got)
+	}
+	if !strings.HasPrefix(got[0], wt) {
+		t.Fatalf("staged path %q is not inside the worktree %q", got[0], wt)
+	}
+	data, err := os.ReadFile(got[0])
+	if err != nil || string(data) != "PNG" {
+		t.Fatalf("read staged copy: err=%v data=%q", err, data)
 	}
 }

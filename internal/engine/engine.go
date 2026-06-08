@@ -502,6 +502,40 @@ func (e *Engine) attachmentPaths(urls []string) []string {
 	return out
 }
 
+// stageAttachments copies the task's uploaded images into the worktree (under a
+// gitignored .fabrika/ path) and returns the in-worktree paths. The agent runs
+// sandboxed to its worktree, so attachments referenced at their global
+// .fabrika/uploads location are unreadable (rejected as an external directory);
+// staging a copy inside the worktree makes them readable. The worktree's
+// .gitignore excludes /.fabrika/, so the copies never enter the branch diff.
+// Best-effort: an attachment that can't be staged is skipped, not fatal.
+func (e *Engine) stageAttachments(wt string, urls []string) []string {
+	srcs := e.attachmentPaths(urls)
+	if len(srcs) == 0 {
+		return nil
+	}
+	dir := filepath.Join(wt, ".fabrika", "attachments")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("engine: stage attachments: mkdir: %v", err)
+		return nil
+	}
+	var out []string
+	for _, src := range srcs {
+		data, err := os.ReadFile(src)
+		if err != nil {
+			log.Printf("engine: stage attachment %s: %v", src, err)
+			continue
+		}
+		dst := filepath.Join(dir, filepath.Base(src))
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			log.Printf("engine: stage attachment %s: %v", dst, err)
+			continue
+		}
+		out = append(out, dst)
+	}
+	return out
+}
+
 // pathsOverlap reports whether any path in a equals or contains (or is contained
 // by) any path in b, treating entries as path prefixes.
 func pathsOverlap(a, b []string) bool {
@@ -545,7 +579,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	// attempt's evidence is summarized so the agent corrects instead of repeats.
 	conventions, _ := e.store.Conventions.List()
 	promptFile, cleanup, err := writeTempPrompt(agent.RenderPrompt(
-		task, conventions, e.attachmentPaths(task.Attachments),
+		task, conventions, e.stageAttachments(wt, task.Attachments),
 		e.taskGuidance(task.ID), e.lastFailureSummary(task.ID)))
 	if err != nil {
 		log.Printf("engine: write prompt: %v", err)
@@ -627,6 +661,20 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	e.setStatus(task.ID, model.TaskVerifying)
 	e.mu.Unlock()
 	e.emitTask(task.ID)
+
+	// An empty branch diff means the agent committed nothing — it gave up or
+	// never edited files. The gate would pass trivially against the unchanged
+	// tree and the task would auto-merge as a silent no-op, discarding any
+	// uncommitted work with the worktree. Fail it instead (auto-retries within
+	// budget) so a do-nothing run is never reported as a success.
+	if strings.TrimSpace(diff) == "" {
+		ev := model.Evidence{Stages: map[string]model.StageResult{
+			"diff": {Pass: false, Output: "agent produced no changes — empty branch diff; nothing to verify or merge"},
+		}, Artifacts: artifactURLs}
+		e.finishFail(task, ag, ev, "EMPTY DIFF: agent produced no changes\n\n"+logText, agentRes.Usage)
+		log.Printf("engine: task %q failed: empty diff (agent produced no changes)", task.Title)
+		return
+	}
 
 	// Integrity: the implementer may not touch locked test files, nor the paths
 	// the planner-authored held-out files will occupy. A violation fails the task
