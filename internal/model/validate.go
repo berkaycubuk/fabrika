@@ -28,7 +28,7 @@ func ValidTaskStatus(s string) bool {
 func ValidBigTaskStatus(s string) bool {
 	return oneOf(s,
 		BigTaskDraft, BigTaskPlanning, BigTaskPlanned, BigTaskRunning,
-		BigTaskDone, BigTaskError)
+		BigTaskDone, BigTaskError, BigTaskBacklog)
 }
 
 // ValidPlanStatus reports whether s is a defined Plan.Status.
