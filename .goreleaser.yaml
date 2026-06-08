@@ -31,7 +31,9 @@ builds:
 archives:
   - id: fabrika
     formats: [tar.gz]
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Version-less filenames — the version lives in the R2 directory path, so the
+    # latest/ channel always has the same names and install.sh needs no version.
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
 # Debian/Ubuntu package: installs fabrika to /usr/bin via apt.
 nfpms:
@@ -44,6 +46,8 @@ nfpms:
     formats:
       - deb
     bindir: /usr/bin
+    # Version-less name to match the archives (version is in the R2 path).
+    file_name_template: "{{ .ProjectName }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
@@ -60,10 +64,17 @@ release:
 
 # Upload archives, .deb packages and checksums to a Cloudflare R2 bucket (R2 is
 # S3-compatible). Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
-# (R2 S3 API token) in the CI env. Replace the two ALL-CAPS placeholders below.
+# (R2 S3 API token) in the CI env. Each release is written twice: once under its
+# version (permanent history) and once under latest/ (overwritten every release,
+# so install.sh can fetch the newest without knowing the version).
 blobs:
   - provider: s3
     region: auto
     endpoint: "https://6225e73450cd1a0a1e9121273f8a6111.r2.cloudflarestorage.com"
     bucket: "public-stuff"
     directory: "tool-binaries/fabrika/{{ .Version }}"
+  - provider: s3
+    region: auto
+    endpoint: "https://6225e73450cd1a0a1e9121273f8a6111.r2.cloudflarestorage.com"
+    bucket: "public-stuff"
+    directory: "tool-binaries/fabrika/latest"

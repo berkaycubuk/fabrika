@@ -11,6 +11,36 @@ build/test/verify and only surfaces what needs your judgment. See
 > in the **Accept** queue → you merge (to `main`) or kick back. Dispatch is
 > single-flight; parallel scheduling (Phase 1) and a planner (Phase 2) are next.
 
+## Install
+
+**macOS / Linux — one line:**
+
+```sh
+curl -fsSL https://static.berkaycubuk.com/tool-binaries/fabrika/install.sh | sh
+```
+
+Downloads the right binary for your OS/arch and installs it to `/usr/local/bin`.
+Installing via `curl` means macOS does **not** quarantine the binary, so it runs
+without a Gatekeeper prompt. Override the version or location if you like:
+
+```sh
+FABRIKA_VERSION=0.1.0 FABRIKA_INSTALL_DIR=~/.local/bin \
+  curl -fsSL https://static.berkaycubuk.com/tool-binaries/fabrika/install.sh | sh
+```
+
+**Debian / Ubuntu (`.deb`):**
+
+```sh
+curl -fLO https://static.berkaycubuk.com/tool-binaries/fabrika/latest/fabrika_amd64.deb
+sudo apt install ./fabrika_amd64.deb     # or fabrika_arm64.deb
+```
+
+**Manual download:** grab a tarball from
+`https://static.berkaycubuk.com/tool-binaries/fabrika/latest/` (or a pinned
+`…/<version>/`), `tar -xzf` it, and move `fabrika` onto your `PATH`. If you
+downloaded via a browser on macOS, clear the quarantine flag once:
+`xattr -dr com.apple.quarantine fabrika`.
+
 ## Build
 
 Requires Go 1.22+ and Node 18+ (for the esbuild UI bundle).

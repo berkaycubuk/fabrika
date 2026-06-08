@@ -1,8 +1,8 @@
 name: Release
 
 # On a vX.Y.Z tag push, GoReleaser builds the UI, cross-compiles the binaries,
-# packages the .deb, updates the Homebrew tap, and publishes the GitHub Release.
-# Cut one with: make tag VERSION=v0.1.0
+# packages the .deb, and uploads everything to the R2 bucket. A final step pushes
+# install.sh to the bucket's base path. Cut a release with: make tag VERSION=v0.1.0
 on:
   push:
     tags:
@@ -16,7 +16,7 @@ on:
         required: true
 
 permissions:
-  contents: write # create the release and upload assets
+  contents: read # just checks out the source; artifacts go to R2, not a GitHub release
 
 jobs:
   release:
@@ -43,3 +43,17 @@ jobs:
           # blobs uploader using these S3-compatible credentials.
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+      # The install.sh lives at the bucket's base path (not per-version), so the
+      # curl one-liner is stable. Re-uploaded each release to keep it current.
+      - name: Upload install.sh to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          aws s3 cp install.sh \
+            s3://public-stuff/tool-binaries/fabrika/install.sh \
+            --endpoint-url https://6225e73450cd1a0a1e9121273f8a6111.r2.cloudflarestorage.com \
+            --content-type text/x-shellscript
+
