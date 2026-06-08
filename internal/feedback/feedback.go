@@ -89,9 +89,9 @@ func Fingerprint(e Event) string {
 // commandSource is a Source backed by a shell command whose stdout is a JSON
 // array of event objects.
 type commandSource struct {
-	cmd      Commander
-	workdir  string
-	command  string
+	cmd     Commander
+	workdir string
+	command string
 }
 
 func (s *commandSource) Poll(ctx context.Context) ([]Event, error) {

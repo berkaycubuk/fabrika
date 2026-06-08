@@ -170,6 +170,6 @@ func TestPollOnce_MalformedJSON(t *testing.T) {
 func TestStart_NoopOnEmptyCommand(t *testing.T) {
 	p := NewPoller(Deps{Command: ""})
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // immediately cancelled
+	cancel()     // immediately cancelled
 	p.Start(ctx) // must not launch a goroutine / must not panic
 }
