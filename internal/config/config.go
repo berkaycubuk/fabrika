@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -156,10 +157,66 @@ func Scaffold(repoRoot string) (string, error) {
 	if _, err := os.Stat(path); err == nil {
 		return path, fmt.Errorf("%s already exists", FileName)
 	}
-	if err := os.WriteFile(path, []byte(template), 0o644); err != nil {
+	d := DetectStack(repoRoot)
+	content := template
+	if d.Stack != "" {
+		content = buildTemplate(repoRoot, d)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return path, fmt.Errorf("write %s: %w", path, err)
 	}
 	return path, nil
+}
+
+// buildTemplate produces a fabrika.toml body with detected verbs uncommented.
+func buildTemplate(repoRoot string, d Detection) string {
+	name := filepath.Base(repoRoot)
+	if name == "" || name == "." {
+		name = "my-app"
+	}
+
+	var verbs strings.Builder
+	if d.Verbs.Setup != "" {
+		fmt.Fprintf(&verbs, "setup     = %q\n", d.Verbs.Setup)
+	}
+	if d.Verbs.Build != "" {
+		fmt.Fprintf(&verbs, "build     = %q\n", d.Verbs.Build)
+	}
+	if d.Verbs.Test != "" {
+		fmt.Fprintf(&verbs, "test      = %q\n", d.Verbs.Test)
+	}
+	if d.Verbs.Lint != "" {
+		fmt.Fprintf(&verbs, "lint      = %q\n", d.Verbs.Lint)
+	}
+	if d.Verbs.Typecheck != "" {
+		fmt.Fprintf(&verbs, "typecheck = %q\n", d.Verbs.Typecheck)
+	}
+	if d.Verbs.Verify != "" {
+		fmt.Fprintf(&verbs, "verify    = %q\n", d.Verbs.Verify)
+	}
+	if d.Verbs.E2E != "" {
+		fmt.Fprintf(&verbs, "e2e       = %q\n", d.Verbs.E2E)
+	}
+	if d.Verbs.Run != "" {
+		fmt.Fprintf(&verbs, "run       = %q\n", d.Verbs.Run)
+	}
+
+	return fmt.Sprintf(`# Fabrika project manifest — %s
+# Maps abstract verbs to concrete commands so the tool stays stack-agnostic.
+
+[project]
+name = %q
+
+[verbs]
+%s
+[risk]
+high   = ["**/auth/**", "**/payments/**", "migrations/**", "**/*.sql"]
+medium = ["src/api/**"]
+
+[autonomy]
+auto_merge = ["low"]
+escalate   = ["medium", "high"]
+`, d.Message, name, verbs.String())
 }
 
 const template = `# Fabrika project manifest. Maps abstract verbs to concrete commands so the
