@@ -382,3 +382,57 @@ func (s *Server) rejectTask(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "closed"})
 }
+
+type batchResult struct {
+	ID  string `json:"id"`
+	OK  bool   `json:"ok"`
+	Err string `json:"error,omitempty"`
+}
+
+func (s *Server) acceptBatch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeErr(w, http.StatusBadRequest, "ids is required")
+		return
+	}
+	results := make([]batchResult, len(body.IDs))
+	for i, id := range body.IDs {
+		results[i] = batchResult{ID: id}
+		if err := s.engine.Accept(id, false); err != nil {
+			results[i].Err = err.Error()
+		} else {
+			results[i].OK = true
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+func (s *Server) retryBatch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeErr(w, http.StatusBadRequest, "ids is required")
+		return
+	}
+	results := make([]batchResult, len(body.IDs))
+	for i, id := range body.IDs {
+		results[i] = batchResult{ID: id}
+		if err := s.engine.Retry(id); err != nil {
+			results[i].Err = err.Error()
+		} else {
+			results[i].OK = true
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
