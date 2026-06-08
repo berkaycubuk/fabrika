@@ -47,6 +47,11 @@ func (s *Server) Start(ctx context.Context) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
+	// --- Conventions (global store) ---
+	mux.HandleFunc("GET /api/conventions", s.listConventions)
+	mux.HandleFunc("POST /api/conventions", s.createConvention)
+	mux.HandleFunc("DELETE /api/conventions/{id}", s.deleteConvention)
+
 	// --- Agents (global store) ---
 	mux.HandleFunc("GET /api/agents", s.listAgents)
 	mux.HandleFunc("POST /api/agents", s.createAgent)
