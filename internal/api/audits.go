@@ -7,15 +7,11 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
-// listAudits returns auto-merged tasks sampled for a post-merge audit and not yet
-// acknowledged or reverted, each with its latest attempt's evidence. This is the
-// trust backstop for autonomy: a random share of machine-merged work the human
-// still eyeballs after the fact (SPECS §13 Phase 3).
-func (s *Server) listAudits(w http.ResponseWriter, r *http.Request) {
+// collectAudits gathers auto-merged, audit-flagged, non-reverted tasks.
+func (s *Server) collectAudits() ([]reviewItem, error) {
 	tasks, err := s.store.Tasks.List()
 	if err != nil {
-		mapStoreErr(w, err)
-		return
+		return nil, err
 	}
 	items := []reviewItem{}
 	for _, t := range tasks {
@@ -24,10 +20,22 @@ func (s *Server) listAudits(w http.ResponseWriter, r *http.Request) {
 		}
 		att, err := s.store.Attempts.LatestForTask(t.ID)
 		if err != nil && err != store.ErrNotFound {
-			mapStoreErr(w, err)
-			return
+			return nil, err
 		}
 		items = append(items, reviewItem{Task: t, Attempt: att})
+	}
+	return items, nil
+}
+
+// listAudits returns auto-merged tasks sampled for a post-merge audit and not yet
+// acknowledged or reverted, each with its latest attempt's evidence. This is the
+// trust backstop for autonomy: a random share of machine-merged work the human
+// still eyeballs after the fact (SPECS §13 Phase 3).
+func (s *Server) listAudits(w http.ResponseWriter, r *http.Request) {
+	items, err := s.collectAudits()
+	if err != nil {
+		mapStoreErr(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, items)
 }

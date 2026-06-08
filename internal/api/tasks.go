@@ -303,13 +303,11 @@ type reviewItem struct {
 	Attempt *model.Attempt `json:"attempt"`
 }
 
-// listReviews returns tasks awaiting the human: green (review), red (failed),
-// and escalated (blocked), each with its latest attempt's evidence.
-func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
+// collectReviews gathers tasks awaiting the human: review, failed, blocked.
+func (s *Server) collectReviews() ([]reviewItem, error) {
 	tasks, err := s.store.Tasks.List()
 	if err != nil {
-		mapStoreErr(w, err)
-		return
+		return nil, err
 	}
 	items := []reviewItem{}
 	for _, t := range tasks {
@@ -317,11 +315,21 @@ func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
 		case model.TaskReview, model.TaskFailed, model.TaskBlocked:
 			att, err := s.store.Attempts.LatestForTask(t.ID)
 			if err != nil && err != store.ErrNotFound {
-				mapStoreErr(w, err)
-				return
+				return nil, err
 			}
 			items = append(items, reviewItem{Task: t, Attempt: att})
 		}
+	}
+	return items, nil
+}
+
+// listReviews returns tasks awaiting the human: green (review), red (failed),
+// and escalated (blocked), each with its latest attempt's evidence.
+func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
+	items, err := s.collectReviews()
+	if err != nil {
+		mapStoreErr(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, items)
 }
