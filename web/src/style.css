@@ -649,12 +649,13 @@ button.option:hover { border-color: var(--accent); }
 /* Jira-style scrolling: the board itself is the scroll container (both axes)
    and the column heads stick to its top edge, so however long one column
    (Merged) grows you always see which column you're in. One shared vertical
-   scrollbar — no per-column scrolling. Columns stretch to equal height. */
+   scrollbar — no per-column scrolling. Columns size independently to their own
+   content height, so each panel background extends to its last card. */
 .content:has(.needs-board) { max-width: none; display: flex; flex-direction: column; overflow-y: hidden; }
 .board-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-10); }
 .header-actions { display: flex; gap: var(--space-5); flex-shrink: 0; }
 
-.needs-board { margin-top: var(--space-9); flex: 1; min-height: 0; overflow: auto; align-items: stretch; }
+.needs-board { margin-top: var(--space-9); flex: 1; min-height: 0; overflow: auto; align-items: flex-start; }
 .board-col-body { display: flex; flex-direction: column; }
 
 .needs-card {
