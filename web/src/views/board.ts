@@ -12,6 +12,7 @@ import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
 import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release } from "../types.js";
 import { registerReleaseListener, registerIncidentListener } from "../ws.js";
+import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
 import { attachmentGallery } from "./attachment.js";
 
@@ -266,6 +267,8 @@ function taskCard(t: Task, agents: Agent[]): HTMLElement {
   if (t.agentId) meta.push(agentPhoto(agents, t.agentId));
   meta.push(tag(t.riskTier, `risk-${t.riskTier}`));
   if (t.priority && t.priority !== "medium") meta.push(tag(t.priority, `priority-${t.priority}`));
+  const pl = pushStatusLabel(t);
+  if (pl) meta.push(tag(pl, `push-${pl}`));
   return card(t.title, meta, () => openTaskDetail(t, agents));
 }
 

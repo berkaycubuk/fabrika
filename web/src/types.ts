@@ -42,6 +42,7 @@ export interface Task {
   preferredAgentId: string;
   autoMerged: boolean;
   auditFlagged: boolean;
+  pushed?: boolean;
   reverted: boolean;
   reporter: string;
   releaseId?: string;
