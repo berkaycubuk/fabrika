@@ -770,7 +770,7 @@ function openDefine(): void {
     err,
     el("div", { class: "form-actions" }, [
       button("Define big task", { variant: "primary", type: "submit" }),
-      button("Save to backlog", { onclick: async () => {
+      button("Save to backlog", { type: "button", onclick: async () => {
         if (!title.value.trim() || !intent.value.trim()) {
           err.textContent = "Title and intent are required.";
           return;
