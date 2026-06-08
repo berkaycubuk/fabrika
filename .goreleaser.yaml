@@ -64,6 +64,6 @@ release:
 blobs:
   - provider: s3
     region: auto
-    endpoint: "https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com"
+    endpoint: "https://6225e73450cd1a0a1e9121273f8a6111.r2.cloudflarestorage.com"
     bucket: "public-stuff"
     directory: "tool-binaries/fabrika/{{ .Version }}"
