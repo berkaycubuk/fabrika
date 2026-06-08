@@ -1,4 +1,4 @@
-.PHONY: all web build run test clean dev install uninstall fmt-check vet lint check
+.PHONY: all web build run test clean dev install uninstall fmt-check vet lint check hooks
 
 # Installation prefix for `make install` (override with `make install PREFIX=...`).
 PREFIX ?= /usr/local
@@ -49,3 +49,7 @@ lint: fmt-check vet
 
 check: lint
 	go test ./...
+
+# Install the committed git hooks (runs gofmt -l on push).
+hooks:
+	git config core.hooksPath .githooks
