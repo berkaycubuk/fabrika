@@ -126,6 +126,17 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Backlog items are parked as-is: no Preflight, no planning, no tasks.
+	if bt.Status == model.BigTaskBacklog {
+		bt.ID = ""
+		if err := s.store.BigTasks.Create(&bt); err != nil {
+			mapStoreErr(w, err)
+			return
+		}
+		s.hub.Broadcast(Event{Type: "bigtask.created", Payload: bt})
+		writeJSON(w, http.StatusCreated, bt)
+		return
+	}
 	// Preflight the repo synchronously so a missing initial commit (or non-repo)
 	// surfaces here as a clear 400, instead of failing silently in the async
 	// planner with a raw git error the UI never sees.
@@ -168,6 +179,51 @@ func (s *Server) createBigTask(w http.ResponseWriter, r *http.Request) {
 	s.engine.Wake()
 
 	writeJSON(w, http.StatusCreated, bt)
+}
+
+// promoteBigTask moves a backlog BigTask into the planning flow. It runs the
+// same decomposition logic createBigTask uses for a freshly created draft.
+func (s *Server) promoteBigTask(w http.ResponseWriter, r *http.Request) {
+	bt, err := s.store.BigTasks.Get(r.PathValue("id"))
+	if err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	if bt.Status != model.BigTaskBacklog {
+		writeErr(w, http.StatusConflict, "big task is "+bt.Status+", not in backlog")
+		return
+	}
+	if err := s.engine.Preflight(r.Context()); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, ok := s.engine.PlannerAgent(); ok {
+		if err := s.store.BigTasks.UpdateStatus(bt.ID, model.BigTaskDraft); err != nil {
+			mapStoreErr(w, err)
+			return
+		}
+		bt.Status = model.BigTaskDraft
+		s.engine.PlanBigTask(*bt)
+		writeJSON(w, http.StatusOK, bt)
+		return
+	}
+	plan := planner.Passthrough(*bt)
+	for i := range plan.Tasks {
+		t := plan.Tasks[i]
+		if err := s.store.Tasks.Create(&t); err != nil {
+			mapStoreErr(w, err)
+			return
+		}
+		s.hub.Broadcast(Event{Type: "task.created", Payload: t})
+	}
+	if err := s.store.BigTasks.UpdateStatus(bt.ID, model.BigTaskRunning); err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	bt.Status = model.BigTaskRunning
+	s.hub.Broadcast(Event{Type: "bigtask.updated", Payload: bt})
+	s.engine.Wake()
+	writeJSON(w, http.StatusOK, bt)
 }
 
 // replanBigTask re-queues an errored plan request for planning, so a planner
