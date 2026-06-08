@@ -551,6 +551,78 @@ pre.fail-out {
   padding: 1px var(--space-3);
   border-radius: var(--radius);
 }
+.board-col-label-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.col-filter-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0 var(--space-2);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 120ms ease;
+  position: relative;
+}
+.col-filter-btn:hover { color: var(--text); border-color: transparent; }
+.col-filter-btn.active {
+  color: var(--accent);
+}
+.col-filter-btn.active::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius);
+  background: var(--accent);
+}
+.col-filter-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-5) var(--space-6);
+  min-width: 150px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-2);
+}
+.col-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.col-filter-label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.col-filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  cursor: pointer;
+  padding: var(--space-1) 0;
+}
+.col-filter-checkbox input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--accent);
+}
 .board-empty {
   color: var(--muted);
   opacity: 0.55;
