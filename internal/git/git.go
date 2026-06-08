@@ -192,6 +192,27 @@ func (r *Repo) Ahead(ctx context.Context, remote, branch string) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(out))
 }
 
+// Pushed reports whether sha has already been pushed to remote/branch. It
+// reads the local remote-tracking ref only — no network round-trip. If that
+// ref does not exist (branch never pushed), it returns (false, nil) without
+// error. A commit is considered pushed when it is an ancestor of the tip of
+// the remote ref, which includes the tip itself.
+func (r *Repo) Pushed(ctx context.Context, remote, branch, sha string) (bool, error) {
+	remoteRef := remote + "/" + branch
+	if _, err := r.run(ctx, "rev-parse", "--verify", "--quiet", remoteRef); err != nil {
+		return false, nil
+	}
+	cmd := exec.CommandContext(ctx, "git", "merge-base", "--is-ancestor", sha, remoteRef)
+	cmd.Dir = r.Root
+	if _, _, err := runCmd(cmd); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, fmt.Errorf("git merge-base --is-ancestor %s %s: %w", sha, remoteRef, err)
+	}
+	return true, nil
+}
+
 // Push pushes branch to remote, setting upstream tracking (-u). It pushes the
 // ref by name, so the result is independent of which branch is checked out.
 // git writes its human-readable summary ("To <url> ... main -> main" or
