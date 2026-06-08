@@ -2,6 +2,7 @@
 // for the per-card action panels (approve, decide, accept, audit). One modal at
 // a time; Esc or a backdrop click closes it.
 import { el } from "./dom.js";
+import { button } from "./components.js";
 
 let overlay: HTMLElement | null = null;
 
@@ -42,6 +43,49 @@ export function closeModal(): void {
   overlay.remove();
   overlay = null;
   document.removeEventListener("keydown", onEsc);
+}
+
+export function promptModal(
+  opts: { title: string; placeholder?: string; submitLabel?: string; value?: string },
+  onSubmit: (text: string) => void,
+  onCancel?: () => void,
+): void {
+  const textarea = el("textarea", {
+    class: "prompt-input comment-input",
+    rows: "4",
+    placeholder: opts.placeholder ?? "",
+    value: opts.value ?? "",
+  }) as HTMLTextAreaElement;
+
+  const submit = () => {
+    const trimmed = textarea.value.trim();
+    if (!trimmed) return;
+    closeModal();
+    onSubmit(trimmed);
+  };
+
+  const cancel = () => {
+    closeModal();
+    onCancel?.();
+  };
+
+  textarea.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  });
+
+  const body = el("div", {}, [
+    textarea,
+    el("div", { class: "form-actions" }, [
+      button("Cancel", { onclick: cancel }),
+      button(opts.submitLabel ?? "Submit", { variant: "primary", onclick: submit }),
+    ]),
+  ]);
+
+  openModal(opts.title, body);
+  textarea.focus();
 }
 
 function onEsc(e: KeyboardEvent): void {

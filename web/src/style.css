@@ -240,6 +240,7 @@ input, textarea, select {
 }
 textarea { resize: vertical; font-family: var(--mono); font-size: var(--fs-md); }
 textarea.config-toml { min-height: 480px; font-size: var(--fs-base); line-height: 1.6; }
+textarea.prompt-input { min-height: 120px; }
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--accent);
