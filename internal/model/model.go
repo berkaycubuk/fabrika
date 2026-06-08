@@ -124,6 +124,12 @@ type Task struct {
 	MergeCommitSHA string `json:"mergeCommitSha"` // captured at merge time
 	ReleaseID      string `json:"releaseId"`      // set when a release covers this task
 
+	// CIStatus is the last-known CI result for this task's pushed commit.
+	// Allowed values: "" (no signal yet) | "pending" | "success" | "failure".
+	CIStatus string `json:"ciStatus"`
+	// CIRunURL is the URL of the CI run that produced CIStatus.
+	CIRunURL string `json:"ciRunUrl"`
+
 	// Pushed is computed at read time: true when the merged work's commit is
 	// reachable from the remote-tracking ref for the base branch.
 	Pushed bool `json:"pushed"`
