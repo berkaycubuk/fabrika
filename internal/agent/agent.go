@@ -64,9 +64,12 @@ const UsageMarker = "fabrika_USAGE:"
 
 // ReviewVerdict is a reviewer agent's first-pass judgment on a branch (SPECS §7,
 // §13). Approve gates auto-merge; Notes surface to the human when it's kicked up.
+// ProposedConventions are short, reusable rules the reviewer noticed in the diff
+// that could become project-wide conventions.
 type ReviewVerdict struct {
-	Approve bool   `json:"approve"`
-	Notes   string `json:"notes"`
+	Approve             bool     `json:"approve"`
+	Notes               string   `json:"notes"`
+	ProposedConventions []string `json:"proposedConventions"`
 }
 
 // EvidenceRef is one artifact an agent pointed at via EvidenceMarker: a path
@@ -212,8 +215,9 @@ func RenderReviewPrompt(t model.Task, diff string, conventions []model.Conventio
 	b.WriteString("\n```\n\n")
 	b.WriteString("## Verdict\n")
 	b.WriteString("Do NOT modify any files. End your output with a single line:\n")
-	fmt.Fprintf(&b, "`%s {\"approve\": true|false, \"notes\": \"...\"}`\n", ReviewMarker)
+	fmt.Fprintf(&b, "`%s {\"approve\": true|false, \"notes\": \"...\", \"proposedConventions\": [\"rule one\", \"rule two\"]}`\n", ReviewMarker)
 	b.WriteString("Approve only if the change is correct, scoped, and safe to merge.\n")
+	b.WriteString("If you notice recurring patterns in the diff that could become project-wide conventions, suggest up to 3 short, reusable rules in `proposedConventions`. Omit the field or use an empty array if nothing stands out.\n")
 	return b.String()
 }
 
