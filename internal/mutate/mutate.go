@@ -103,11 +103,42 @@ type Result struct {
 // weakness) — it never blocks merge on absence of signal.
 func (r Result) Pass() bool { return len(r.Survived) == 0 }
 
+// LineRange is an inclusive, 1-based span of source lines.
+type LineRange struct{ Start, End int }
+
+// inRange reports whether 1-based line n falls in any of the given ranges. An
+// empty/nil ranges slice means "no restriction" — every line is eligible — which
+// is what makes scoping in RunScoped optional.
+func inRange(n int, ranges []LineRange) bool {
+	if len(ranges) == 0 {
+		return true
+	}
+	for _, r := range ranges {
+		if n >= r.Start && n <= r.End {
+			return true
+		}
+	}
+	return false
+}
+
 // Run mutates each file (paths relative to dir) one mutant at a time, runs the
 // test func, and records whether the suite caught it. It always restores the
 // file's original bytes, even on test failure or context cancellation. It stops
 // after budget mutants total (across files) to stay bounded; 0 means unbounded.
 func Run(ctx context.Context, dir string, files []string, test TestFunc, budget int) Result {
+	return RunScoped(ctx, dir, files, nil, test, budget)
+}
+
+// RunScoped is Run restricted to specific source lines per file. For each file
+// rel, only a mutant whose 1-based line satisfies inRange(m.Line, ranges[rel])
+// is written and tested; mutants on other lines are skipped entirely (not
+// written, not tested, not counted). A file absent from the map, or mapped to a
+// nil/empty slice, is mutated in full — so passing a nil map reproduces Run.
+//
+// Candidates are generated over the whole file (no per-file cap) so that
+// range-excluded lines can't consume the budget and starve in-range lines below
+// them; the loop-level budget check bounds the total mutants tested.
+func RunScoped(ctx context.Context, dir string, files []string, ranges map[string][]LineRange, test TestFunc, budget int) Result {
 	var res Result
 	if test == nil {
 		res.Skipped = "no test command configured"
@@ -122,12 +153,14 @@ func Run(ctx context.Context, dir string, files []string, test TestFunc, budget 
 		if err != nil {
 			continue // file vanished (e.g. deleted by the change) — nothing to mutate
 		}
-		remaining := budget - res.Tested
-		mutants := Generate(rel, string(original), remaining)
+		mutants := Generate(rel, string(original), 0)
 		for _, m := range mutants {
 			if ctx.Err() != nil {
 				res.Skipped = "cancelled"
 				return res
+			}
+			if !inRange(m.Line, ranges[rel]) {
+				continue // outside the requested scope — skip before testing
 			}
 			if m.Mutated == string(original) {
 				continue // no-op mutation
