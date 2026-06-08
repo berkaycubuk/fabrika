@@ -23,6 +23,14 @@ type Config struct {
 	Autonomy Autonomy `toml:"autonomy" json:"autonomy"`
 	Deploy   Deploy   `toml:"deploy" json:"deploy"`
 	Feedback Feedback `toml:"feedback" json:"feedback"`
+	CI       CI       `toml:"ci" json:"ci"`
+}
+
+// CI configures the CI run poller. An absent [ci] section or an empty Command
+// disables the poller.
+type CI struct {
+	Command     string `toml:"command" json:"command"`
+	PollSeconds int    `toml:"poll_seconds" json:"pollSeconds"`
 }
 
 // Feedback declares optional feedback sources that Fabrika polls for signals.
@@ -156,6 +164,10 @@ func (c *Config) Validate() error {
 		if s.Type == "command" && s.Command == "" {
 			return fmt.Errorf("[feedback].sources[%d].command: must be non-empty when type is %q", i, s.Type)
 		}
+	}
+
+	if c.CI.Command != "" && c.CI.PollSeconds < 10 {
+		return fmt.Errorf("[ci].poll_seconds: must be >= 10 when command is set, got %d", c.CI.PollSeconds)
 	}
 
 	return nil
