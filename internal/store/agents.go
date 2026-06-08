@@ -99,6 +99,24 @@ func (r *AgentRepo) List() ([]model.Agent, error) {
 	return out, rows.Err()
 }
 
+// ListEnabled returns enabled agents ordered by name.
+func (r *AgentRepo) ListEnabled() ([]model.Agent, error) {
+	rows, err := r.db.Query(`SELECT ` + agentCols + ` FROM agents WHERE enabled = 1 ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Agent
+	for rows.Next() {
+		a, err := scanAgent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *a)
+	}
+	return out, rows.Err()
+}
+
 func scanAgent(s scanner) (*model.Agent, error) {
 	var a model.Agent
 	var roles, tags string
