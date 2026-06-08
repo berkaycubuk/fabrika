@@ -25,7 +25,6 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/agent"
 	cimgr "github.com/berkaycubuk/fabrika/internal/ci"
 	"github.com/berkaycubuk/fabrika/internal/config"
-	feedbackmgr "github.com/berkaycubuk/fabrika/internal/feedback"
 	"github.com/berkaycubuk/fabrika/internal/gate"
 	"github.com/berkaycubuk/fabrika/internal/git"
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -98,8 +97,7 @@ type Engine struct {
 	sample func(rate float64) bool
 
 	release  *releasemgr.Manager
-	feedback *feedbackmgr.Manager
-	ci       *cimgr.Poller
+	ci *cimgr.Poller
 }
 
 // New constructs an Engine rooted at repoRoot (the target repo). emit may be nil.
@@ -142,19 +140,6 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		Emit:     emit,
 		Now:      time.Now,
 	})
-	var feedbackSources []config.FeedbackSource
-	if cfg != nil {
-		feedbackSources = cfg.Feedback.Sources
-	}
-	e.feedback = feedbackmgr.NewManager(feedbackmgr.Deps{
-		Incidents: s.Incidents,
-		Tasks:     s.Tasks,
-		Sources:   feedbackSources,
-		RepoRoot:  repoRoot,
-		Cmd:       engineCommander{},
-		Emit:      emit,
-		Now:       time.Now,
-	})
 	var ciCommand string
 	var ciPollSeconds int
 	if cfg != nil {
@@ -177,7 +162,6 @@ func (e *Engine) Start(ctx context.Context) {
 	e.ctx = ctx
 	e.recoverOrphans()
 	e.release.ResumeBakeTimers()
-	e.feedback.Start(ctx)
 	e.ci.Start(ctx)
 	go e.loop()
 }
