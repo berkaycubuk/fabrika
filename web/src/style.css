@@ -380,12 +380,13 @@ pre.diff {
 .dl.hunk { color: var(--accent); }
 
 /* Per-file structured diff view */
-.diff-view { margin: var(--space-5) 0 0; font-family: var(--mono); font-size: var(--fs-base); }
+.diff-view { margin: var(--space-5) 0 0; font-family: var(--mono); font-size: var(--fs-base); width: 100%; }
 .diff-summary { color: var(--muted); font-size: var(--fs-base); margin: 0 0 var(--space-3); }
 .diff-file {
   border: 1px solid var(--border);
   background: var(--bg-code);
   margin-bottom: var(--space-2);
+  width: 100%;
 }
 .diff-file > summary {
   display: flex;
@@ -417,11 +418,11 @@ pre.diff {
 .diff-badge-renamed  { background: color-mix(in srgb, var(--tan) 18%, transparent); color: var(--tan); }
 .diff-path { flex: 1; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff-stats { color: var(--muted); font-size: var(--fs-sm); flex-shrink: 0; }
-.diff-body { overflow-x: auto; }
+.diff-body { overflow-x: auto; width: 100%; }
 .diff-binary { padding: var(--space-4) var(--space-6); color: var(--muted); font-style: italic; }
 
 /* Structured diff lines — override base .dl for rows that have gutter spans */
-.dl.add, .dl.del, .dl.context { display: flex; align-items: stretch; color: var(--text); }
+.dl.add, .dl.del, .dl.context { display: flex; align-items: stretch; color: var(--text); min-width: 100%; }
 .ln-old, .ln-new {
   min-width: 44px;
   padding: 0 var(--space-3);
@@ -432,7 +433,7 @@ pre.diff {
   border-right: 1px solid var(--border);
   background: rgba(255,255,255,0.02);
 }
-.ln-txt { padding: 0 0 0 var(--space-5); flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ln-txt { padding: 0 0 0 var(--space-5); flex: 1; min-width: 0; white-space: pre; }
 .dl.add { background: color-mix(in srgb, var(--green) 8%, transparent); }
 .dl.add .ln-old, .dl.add .ln-new { background: color-mix(in srgb, var(--green) 6%, transparent); }
 .dl.add .ln-txt { color: var(--green); }
