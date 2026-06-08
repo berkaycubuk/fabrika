@@ -18,6 +18,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []model.Task{}
 	}
+	tasks = s.engine.PushAnnotate(r.Context(), tasks)
 	writeJSON(w, http.StatusOK, tasks)
 }
 
@@ -41,6 +42,10 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if attempts == nil {
 		attempts = []model.Attempt{}
+	}
+	enriched := s.engine.PushAnnotate(r.Context(), []model.Task{*t})
+	if len(enriched) == 1 {
+		t = &enriched[0]
 	}
 	writeJSON(w, http.StatusOK, taskDetail{Task: *t, Attempts: attempts})
 }

@@ -123,6 +123,10 @@ type Task struct {
 
 	MergeCommitSHA string `json:"mergeCommitSha"` // captured at merge time
 	ReleaseID      string `json:"releaseId"`      // set when a release covers this task
+
+	// Pushed is computed at read time: true when the merged work's commit is
+	// reachable from the remote-tracking ref for the base branch.
+	Pushed bool `json:"pushed"`
 }
 
 // Release is a deployment of a merged SHA, progressing through a deploy/bake

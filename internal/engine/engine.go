@@ -977,6 +977,48 @@ func pickRemote(remotes []string) (string, error) {
 	return "", fmt.Errorf("multiple remotes (%s); none named origin", strings.Join(remotes, ", "))
 }
 
+// annotatePushed sets t.Pushed for each merged task whose merge commit is
+// reachable from the remote-tracking ref for the given remote/branch. Non-merged
+// tasks and tasks with an empty MergeCommitSHA are left as Pushed=false without
+// touching git. On a Pushed error the field stays false (best-effort).
+func annotatePushed(ctx context.Context, repo *git.Repo, remote, branch string, tasks []model.Task) []model.Task {
+	for i := range tasks {
+		if tasks[i].Status != model.TaskMerged || tasks[i].MergeCommitSHA == "" {
+			continue
+		}
+		pushed, err := repo.Pushed(ctx, remote, branch, tasks[i].MergeCommitSHA)
+		if err != nil {
+			continue
+		}
+		tasks[i].Pushed = pushed
+	}
+	return tasks
+}
+
+// PushAnnotate enriches a task slice by setting Pushed on every merged task
+// whose work has been pushed to the remote. It is best-effort: on any error
+// (no repo, no remote, etc.) the input slice is returned unchanged so that
+// an API handler never errors just because a remote isn't configured.
+func (e *Engine) PushAnnotate(ctx context.Context, tasks []model.Task) []model.Task {
+	repo, err := git.Open(ctx, e.repoRoot)
+	if err != nil {
+		return tasks
+	}
+	branch, err := repo.CurrentBranch(ctx)
+	if err != nil {
+		return tasks
+	}
+	remotes, err := repo.Remotes(ctx)
+	if err != nil {
+		return tasks
+	}
+	remote, err := pickRemote(remotes)
+	if err != nil {
+		return tasks
+	}
+	return annotatePushed(ctx, repo, remote, branch, tasks)
+}
+
 // Reject dismisses a task without merging, cleaning up its worktree. For an
 // in-flight (running) task it steers it to a stop: it cancels the task's context
 // to kill the subprocess and lets that run's goroutine finalize it as closed with
