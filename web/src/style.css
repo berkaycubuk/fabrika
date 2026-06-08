@@ -309,6 +309,13 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 .tag.reporter-planner { color: var(--accent); }
 .verify-cmd { background: var(--panel-2); padding: var(--space-1) var(--space-4); border-radius: var(--radius); }
 
+.ci-fail {
+  color: var(--red);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .placeholder { display: flex; flex-direction: column; gap: var(--space-5); align-items: flex-start; }
 
 /* Accept queue */
