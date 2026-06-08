@@ -75,6 +75,23 @@ func (e *Engine) runReviewer(ctx context.Context, rev model.Agent, task model.Ta
 			notes = "rejected"
 		}
 	}
+	count := 0
+	for _, raw := range verdict.ProposedConventions {
+		if count >= 3 {
+			break
+		}
+		rule := strings.TrimSpace(raw)
+		if rule == "" {
+			continue
+		}
+		conv := &model.Convention{Rule: rule, Status: model.ConventionProposed}
+		if cerr := e.store.Conventions.Create(conv); cerr != nil {
+			log.Printf("engine: persist proposed convention: %v", cerr)
+			continue
+		}
+		e.emit("convention.created", *conv)
+		count++
+	}
 	return verdict.Approve, notes
 }
 
