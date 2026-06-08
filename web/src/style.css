@@ -1095,30 +1095,3 @@ button.option:hover { border-color: var(--accent); }
 }
 .ship-task-list li { margin-bottom: var(--space-2); }
 
-/* Incident banner — warning strip above the board columns */
-.incident-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-3) var(--space-8);
-  border-bottom: 1px solid color-mix(in srgb, var(--pill-amber) 40%, transparent);
-  background: color-mix(in srgb, var(--pill-amber) 8%, transparent);
-  font-size: var(--fs-sm);
-}
-.incident-banner-icon { color: var(--amber); }
-.incident-banner-msg { flex: 1; color: var(--amber); }
-.incident-banner-link {
-  color: var(--muted);
-  text-decoration: none;
-  border: 1px solid var(--border);
-  padding: var(--space-1) var(--space-5);
-  font-size: var(--fs-sm);
-}
-.incident-banner-link:hover { color: var(--text); border-color: var(--border-hover); }
-
-/* Incidents list view */
-.incident-card { display: flex; flex-direction: column; }
-.pill.incident-open {
-  background: color-mix(in srgb, var(--pill-red) 16%, transparent);
-  color: var(--red);
-}

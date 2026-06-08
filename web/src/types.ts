@@ -208,21 +208,6 @@ export interface ConfigManifest {
   };
 }
 
-export interface Incident {
-  id: string;
-  fingerprint: string;
-  title: string;
-  stack: string;
-  payload: string;
-  count: number;
-  firstSeen: string;
-  lastSeen: string;
-  status: string; // open|fixing|resolved|ignored
-  taskId: string;
-  suspectReleaseId: string;
-  suspectTaskId: string;
-}
-
 // Fixed gate stage order (mirrors internal/gate stageOrder) for stable display,
 // followed by the Phase 3 advisory stages (reviewer verdict + mutation testing).
 export const STAGE_ORDER = ["setup", "typecheck", "lint", "build", "test", "verify", "e2e", "review", "mutation"];

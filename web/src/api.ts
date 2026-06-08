@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Release, Incident } from "./types.js";
+import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Release } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -110,11 +110,6 @@ export const api = {
 
   getConfig: () => req<ConfigManifest>("GET", "/api/config"),
   putConfig: (m: ConfigManifest) => req<ConfigManifest>("PUT", "/api/config", m),
-
-  // Incidents (Phase 4)
-  listIncidents: (status?: string) => req<Incident[]>("GET", status ? `/api/incidents?status=${encodeURIComponent(status)}` : "/api/incidents"),
-  ignoreIncident: (id: string) => req<void>("POST", `/api/incidents/${id}/ignore`),
-  resolveIncident: (id: string) => req<void>("POST", `/api/incidents/${id}/resolve`),
 
   // Releases (Phase 4)
   listReleases: () => req<Release[]>("GET", "/api/releases"),

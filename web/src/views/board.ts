@@ -11,7 +11,7 @@ import { openModal, closeModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
 import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release } from "../types.js";
-import { registerReleaseListener, registerIncidentListener } from "../ws.js";
+import { registerReleaseListener } from "../ws.js";
 import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
 import { attachmentGallery } from "./attachment.js";
@@ -67,15 +67,12 @@ export function renderBoard(root: HTMLElement): void {
       ]),
     ]),
     el("div", { id: "board-err", class: "form-error" }, []),
-    // Incident banner: shown when any open incident exists.
-    el("div", { id: "incident-banner", class: "incident-banner", style: "display:none" }, []),
     // Release strip: always visible when deploy is enabled; shows latest release.
     el("div", { id: "release-strip", class: "release-strip", style: "display:none" }, []),
     el("div", { class: "board needs-board", id: "needs-board" }, COLUMNS.map(colSkeleton)),
   );
   refresh();
   registerReleaseListener(updateReleaseUI);
-  registerIncidentListener(updateIncidentBanner);
 }
 
 function colSkeleton(c: (typeof COLUMNS)[number]): HTMLElement {
@@ -111,7 +108,6 @@ async function refresh(): Promise<void> {
   // never blank the board, and vice versa. Fire-and-forget with its own catch.
   void updatePushButton();
   void updateReleaseUI();
-  void updateIncidentBanner();
   try {
     const [plans, decisions, reviews, audits, tasks, agents, bigTasks] = await Promise.all([
       api.listPlans(),
@@ -979,36 +975,6 @@ function gateSummaryEl(ev: Evidence | undefined): HTMLElement {
 
 function diffBlock(diff: string): HTMLElement {
   return renderDiff(diff);
-}
-
-// updateIncidentBanner fetches open incidents and shows a warning strip if any exist.
-// Best-effort — a fetch failure never breaks the board.
-async function updateIncidentBanner(): Promise<void> {
-  const banner = document.getElementById("incident-banner");
-  if (!banner) return;
-  try {
-    const incidents = await api.listIncidents("open");
-    if (!incidents || incidents.length === 0) {
-      banner.style.display = "none";
-      return;
-    }
-    banner.style.display = "";
-    clear(banner);
-    const n = incidents.length;
-    banner.append(
-      el("span", { class: "incident-banner-icon" }, ["⚠"]),
-      el("span", { class: "incident-banner-msg" }, [
-        `${n} open incident${n !== 1 ? "s" : ""}`,
-      ]),
-      el("a", {
-        href: "#incidents",
-        class: "incident-banner-link",
-        onclick: (e: Event) => { e.preventDefault(); location.hash = "incidents"; },
-      }, ["view →"]),
-    );
-  } catch {
-    /* best-effort — never break the board */
-  }
 }
 
 // updateReleaseUI refreshes the Ship button count and the release strip with
