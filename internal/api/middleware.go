@@ -1,10 +1,47 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/berkaycubuk/fabrika/internal/observability"
 )
+
+var reportPanic = func(err error) { observability.CaptureError(err) }
+
+func recoverPanics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pw := &recoverWriter{ResponseWriter: w}
+		defer func() {
+			if rv := recover(); rv != nil {
+				err := fmt.Errorf("panic: %v", rv)
+				reportPanic(err)
+				if !pw.wroteHeader {
+					w.WriteHeader(http.StatusInternalServerError)
+				}
+			}
+		}()
+		next.ServeHTTP(pw, r)
+	})
+}
+
+type recoverWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *recoverWriter) WriteHeader(code int) {
+	if !w.wroteHeader {
+		w.wroteHeader = true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *recoverWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
 
 // statusRecorder captures the response status for logging.
 type statusRecorder struct {
