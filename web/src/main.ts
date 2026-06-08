@@ -4,6 +4,7 @@
 import { el } from "./dom.js";
 import { brand } from "./brand.js";
 import { connectEvents } from "./ws.js";
+import { initObservability } from "./observability.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
@@ -86,6 +87,7 @@ function setConn(state: "live" | "reconnecting"): void {
 }
 
 function main(): void {
+  initObservability();
   const app = document.getElementById("app")!;
   const content = el("main", { class: "content" });
   app.append(el("div", { class: "layout" }, [sidebar(), content]));
