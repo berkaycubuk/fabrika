@@ -11,3 +11,5 @@
 - [ ] Commenting card movements. example: ready -> running
 - [ ] when using multiple fabrika instances, it is hard to see which project I'm working on. Show project name on the UI somewhere.
 - [ ] Supporting GitHub issues
+- [ ] when a github workflow fails show it on the ui
+- [ ] todo list or scratchpad like a feature to tinker
