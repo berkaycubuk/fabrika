@@ -287,12 +287,12 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	tasks, err := e.store.Tasks.List()
+	tasks, err := e.store.Tasks.ListByStatus(model.TaskReady)
 	if err != nil {
 		log.Printf("engine: list tasks: %v", err)
 		return model.Task{}, model.Agent{}, "", nil, false
 	}
-	agents, err := e.store.Agents.List()
+	agents, err := e.store.Agents.ListEnabled()
 	if err != nil {
 		log.Printf("engine: list agents: %v", err)
 		return model.Task{}, model.Agent{}, "", nil, false
@@ -326,22 +326,30 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 		}
 	}
 
-	byID := map[string]model.Task{}
+	depIDs := make([]string, 0, len(tasks))
+	seenDep := map[string]bool{}
 	for _, t := range tasks {
-		byID[t.ID] = t
+		for _, dep := range t.DependsOn {
+			if !seenDep[dep] {
+				seenDep[dep] = true
+				depIDs = append(depIDs, dep)
+			}
+		}
+	}
+	statusByID, err := e.store.Tasks.StatusByIDs(depIDs)
+	if err != nil {
+		log.Printf("engine: dep status lookup: %v", err)
+		return model.Task{}, model.Agent{}, "", nil, false
 	}
 	tierRoutes := e.tierRoutes()
 
 	// List is newest-first; iterate oldest-first so tasks run FIFO.
 	for i := len(tasks) - 1; i >= 0; i-- {
 		t := tasks[i]
-		if t.Status != model.TaskReady {
-			continue
-		}
 		if _, busy := e.running[t.ID]; busy {
 			continue // an auto-retried run hasn't released its slot yet (markDone pending)
 		}
-		if !depsSatisfied(t, byID) {
+		if !depsSatisfied(t, statusByID) {
 			continue // a prerequisite hasn't merged yet
 		}
 		if e.collides(t.TouchPaths) {
@@ -461,10 +469,9 @@ func (e *Engine) collides(paths []string) bool {
 }
 
 // depsSatisfied reports whether every task this one DependsOn has merged.
-func depsSatisfied(t model.Task, byID map[string]model.Task) bool {
+func depsSatisfied(t model.Task, statusByID map[string]string) bool {
 	for _, dep := range t.DependsOn {
-		d, ok := byID[dep]
-		if !ok || d.Status != model.TaskMerged {
+		if statusByID[dep] != model.TaskMerged {
 			return false
 		}
 	}
