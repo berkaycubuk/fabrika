@@ -7,7 +7,18 @@ import (
 )
 
 func (s *Server) listConventions(w http.ResponseWriter, r *http.Request) {
-	conventions, err := s.store.Conventions.List()
+	status := r.URL.Query().Get("status")
+	var conventions []model.Convention
+	var err error
+	if status == "" {
+		conventions, err = s.store.Conventions.ListAll()
+	} else {
+		if !model.ValidConventionStatus(status) {
+			writeErr(w, http.StatusBadRequest, "invalid status")
+			return
+		}
+		conventions, err = s.store.Conventions.ListByStatus(status)
+	}
 	if err != nil {
 		mapStoreErr(w, err)
 		return
@@ -43,4 +54,22 @@ func (s *Server) deleteConvention(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) approveConvention(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.store.Conventions.SetStatus(id, model.ConventionApproved); err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": model.ConventionApproved})
+}
+
+func (s *Server) rejectConvention(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.store.Conventions.SetStatus(id, model.ConventionRejected); err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": model.ConventionRejected})
 }

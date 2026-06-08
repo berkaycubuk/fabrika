@@ -51,6 +51,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/conventions", s.listConventions)
 	mux.HandleFunc("POST /api/conventions", s.createConvention)
 	mux.HandleFunc("DELETE /api/conventions/{id}", s.deleteConvention)
+	mux.HandleFunc("POST /api/conventions/{id}/approve", s.approveConvention)
+	mux.HandleFunc("POST /api/conventions/{id}/reject", s.rejectConvention)
 
 	// --- Agents (global store) ---
 	mux.HandleFunc("GET /api/agents", s.listAgents)
