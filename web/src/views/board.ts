@@ -19,6 +19,18 @@ import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
 import { attachmentGallery } from "./attachment.js";
 import { ciBadge } from "./ci-badge.js";
+import { emptyFilter, matchesFilter, countLabel, type CardFilter, type Filterable } from "./board-filter.js";
+
+let filterState: CardFilter = emptyFilter();
+let storedPlans: Plan[] = [];
+let storedDecisions: Decision[] = [];
+let storedReviews: ReviewItem[] = [];
+let storedAudits: ReviewItem[] = [];
+let storedTasks: Task[] = [];
+let storedAgents: Agent[] = [];
+let storedBigTasks: BigTask[] = [];
+
+type CardItem = { el: HTMLElement; filterable: Filterable };
 
 type ColId = "backlog" | "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -52,6 +64,16 @@ export function renderBoard(root: HTMLElement): void {
           " columns need you — click any card to act or steer.",
         ]),
       ]),
+      el("input", {
+        id: "board-search",
+        class: "board-search",
+        type: "text",
+        placeholder: "Search cards…",
+        oninput: (e: Event) => {
+          filterState.search = (e.target as HTMLInputElement).value;
+          paint();
+        },
+      }),
       el("div", { class: "header-actions" }, [
         // Hidden until pushStatus reports unpushed commits (see updatePushButton).
         el("button", {
@@ -74,6 +96,7 @@ export function renderBoard(root: HTMLElement): void {
     el("div", { id: "release-strip", class: "release-strip", style: "display:none" }, []),
     el("div", { class: "board needs-board", id: "needs-board" }, COLUMNS.map(colSkeleton)),
   );
+  setupBoardKeys();
   refresh();
   registerReleaseListener(updateReleaseUI);
 }
@@ -88,6 +111,41 @@ function colSkeleton(c: (typeof COLUMNS)[number]): HTMLElement {
     head,
     el("div", { class: "board-col-body", "data-body": c.id }, []),
   ]);
+}
+
+function isEditing(): boolean {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName.toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  return (el as HTMLElement).isContentEditable;
+}
+
+let boardKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+
+function setupBoardKeys(): void {
+  if (boardKeyHandler) {
+    document.removeEventListener("keydown", boardKeyHandler);
+  }
+  boardKeyHandler = (e: KeyboardEvent) => {
+    if (!document.getElementById("needs-board")) return;
+    if (e.key === "/" && !isEditing()) {
+      e.preventDefault();
+      const input = document.getElementById("board-search") as HTMLInputElement | null;
+      input?.focus();
+      return;
+    }
+    if (e.key === "Escape") {
+      const input = document.getElementById("board-search") as HTMLInputElement | null;
+      if (input && (document.activeElement === input || filterState.search.trim() !== "")) {
+        input.value = "";
+        filterState = emptyFilter();
+        paint();
+        input.blur();
+      }
+    }
+  };
+  document.addEventListener("keydown", boardKeyHandler);
 }
 
 // Monotonic generation token: bumped at the start of every refresh() and
@@ -125,43 +183,57 @@ async function refresh(): Promise<void> {
     // our (now stale) results so we don't paint over fresher columns.
     if (gen !== refreshGen) return;
     if (errBox) errBox.textContent = "";
-    const auditIds = new Set(audits.map((a) => a.task.id));
-    const byStatus = (s: string) => tasks.filter((t) => t.status === s);
-
-    // Pre-plan big tasks: show the submitted request while the planner works
-    // (or stalls). Once planned, the proposed Plan takes over in Approve; once
-    // running/done its tasks carry it forward — so only draft/planning/error
-    // land here.
-    fillColumn("backlog", bigTasks.filter((b) => b.status === "backlog").map((b) => bigTaskCard(b, agents)));
-    fillColumn("planning", bigTasks.filter((b) => PRE_PLAN.includes(b.status)).map((b) => bigTaskCard(b, agents)));
-    fillColumn("approve", plans.filter((p) => p.status === "proposed").map((p) => planCard(p, agents)));
-    fillColumn("decide", decisions.map(decideCard));
-    fillColumn("ready", byStatus("ready").map((t) => taskCard(t, agents)));
-    fillColumn("running", tasks.filter((t) => IN_FLIGHT.includes(t.status)).map((t) => taskCard(t, agents)));
-    fillColumn("verifying", byStatus("verifying").map((t) => taskCard(t, agents)));
-    fillColumn("accept", reviews.map((r) => reviewCard(r, agents)));
-    fillColumn("audit", audits.map(auditCard));
-    fillColumn("merged", byStatus("merged").filter((t) => !auditIds.has(t.id)).map((t) => taskCard(t, agents)));
-    // Kicked-back tasks land here instead of vanishing: every dead end keeps a
-    // UI exit (retry or delete from the card detail).
-    fillColumn("closed", byStatus("closed").map((t) => taskCard(t, agents)));
+    storedPlans = plans;
+    storedDecisions = decisions;
+    storedReviews = reviews;
+    storedAudits = audits;
+    storedTasks = tasks;
+    storedAgents = agents;
+    storedBigTasks = bigTasks;
+    paint();
   } catch (e) {
     if (gen !== refreshGen) return;
     if (errBox) errBox.textContent = (e as Error).message;
   }
 }
 
-function fillColumn(id: string, cards: HTMLElement[]): void {
+function fillColumn(id: string, cards: CardItem[]): void {
   const body = document.querySelector(`[data-body="${id}"]`);
   const count = document.querySelector(`[data-count="${id}"]`);
   if (!body) return;
   body.replaceChildren();
-  if (count) count.textContent = cards.length ? String(cards.length) : "";
-  if (cards.length === 0) {
+  const total = cards.length;
+  const filtered = cards.filter((c) => matchesFilter(c.filterable, filterState));
+  if (count) count.textContent = countLabel(filtered.length, total);
+  if (filtered.length === 0) {
     body.append(el("div", { class: "board-empty" }, ["empty"]));
     return;
   }
-  for (const c of cards) body.append(c);
+  for (const c of filtered) body.append(c.el);
+}
+
+function paint(): void {
+  const board = document.getElementById("needs-board");
+  if (!board) return;
+  const errBox = document.getElementById("board-err");
+  try {
+    const auditIds = new Set(storedAudits.map((a) => a.task.id));
+    const byStatus = (s: string) => storedTasks.filter((t) => t.status === s);
+
+    fillColumn("backlog", storedBigTasks.filter((b) => b.status === "backlog").map((b) => bigTaskCard(b, storedAgents)));
+    fillColumn("planning", storedBigTasks.filter((b) => PRE_PLAN.includes(b.status)).map((b) => bigTaskCard(b, storedAgents)));
+    fillColumn("approve", storedPlans.filter((p) => p.status === "proposed").map((p) => planCard(p, storedAgents)));
+    fillColumn("decide", storedDecisions.map(decideCard));
+    fillColumn("ready", byStatus("ready").map((t) => taskCard(t, storedAgents)));
+    fillColumn("running", storedTasks.filter((t) => IN_FLIGHT.includes(t.status)).map((t) => taskCard(t, storedAgents)));
+    fillColumn("verifying", byStatus("verifying").map((t) => taskCard(t, storedAgents)));
+    fillColumn("accept", storedReviews.map((r) => reviewCard(r, storedAgents)));
+    fillColumn("audit", storedAudits.map(auditCard));
+    fillColumn("merged", byStatus("merged").filter((t) => !auditIds.has(t.id)).map((t) => taskCard(t, storedAgents)));
+    fillColumn("closed", byStatus("closed").map((t) => taskCard(t, storedAgents)));
+  } catch (e) {
+    if (errBox) errBox.textContent = (e as Error).message;
+  }
 }
 
 // ── Cards (compact; click opens an action / steer panel) ───────────────────
@@ -173,13 +245,14 @@ function card(title: string, meta: (Node | string)[], onClick: () => void): HTML
   ]);
 }
 
-function planCard(p: Plan, agents: Agent[]): HTMLElement {
+function planCard(p: Plan, agents: Agent[]): CardItem {
   const meta: (Node | string)[] = [];
   if (p.bigTask?.plannerAgentId) meta.push(agentPhoto(agents, p.bigTask.plannerAgentId));
   meta.push(tag(`${p.tasks.length} tasks`));
   const openQ = p.openDecisions.filter((d) => d.status === "open").length;
   if (openQ) meta.push(tag(`${openQ} open Q`, "dep"));
-  return card(p.bigTask?.title ?? "Plan", meta, () => openPlanDetail(p));
+  const title = p.bigTask?.title ?? "Plan";
+  return { el: card(title, meta, () => openPlanDetail(p)), filterable: { title } };
 }
 
 // bigTaskCard surfaces a submitted big task while it's being planned (or after
@@ -187,14 +260,14 @@ function planCard(p: Plan, agents: Agent[]): HTMLElement {
 // silently churning in the background. The status pill carries the live state;
 // errored cards read red and open to the failure reason. When a planner agent is
 // assigned, its photo appears on the card as well.
-function bigTaskCard(b: BigTask, agents: Agent[]): HTMLElement {
+function bigTaskCard(b: BigTask, agents: Agent[]): CardItem {
   const meta: (Node | string)[] = [];
   const label = b.status === "planning" ? "planning…" : b.status;
   meta.push(pill(label, `status-${b.status}`));
   if (b.status === "planning" && b.plannerAgentId) {
     meta.push(agentPhoto(agents, b.plannerAgentId));
   }
-  return card(b.title, meta, () => openBigTaskDetail(b, agents));
+  return { el: card(b.title, meta, () => openBigTaskDetail(b, agents)), filterable: { title: b.title } };
 }
 
 export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
@@ -248,32 +321,38 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
   openModal(b.title, el("div", { class: "detail" }, children), { wide: true, sidebar: side });
 }
 
-function decideCard(d: Decision): HTMLElement {
-  return card(d.question, [tag(d.taskId ? "task" : "plan")], () => openDecideDetail(d));
+function decideCard(d: Decision): CardItem {
+  return { el: card(d.question, [tag(d.taskId ? "task" : "plan")], () => openDecideDetail(d)), filterable: { title: d.question } };
 }
 
-function reviewCard(it: ReviewItem, agents: Agent[]): HTMLElement {
+function reviewCard(it: ReviewItem, agents: Agent[]): CardItem {
   const t = it.task;
-  return card(
-    t.title,
-    [tag(t.status, `status-${t.status}`), tag(t.riskTier, `risk-${t.riskTier}`)],
-    () => openReviewDetail(it, agents),
-  );
+  return {
+    el: card(
+      t.title,
+      [tag(t.status, `status-${t.status}`), tag(t.riskTier, `risk-${t.riskTier}`)],
+      () => openReviewDetail(it, agents),
+    ),
+    filterable: { title: t.title, riskTier: t.riskTier },
+  };
 }
 
-function auditCard(it: ReviewItem): HTMLElement {
+function auditCard(it: ReviewItem): CardItem {
   const t = it.task;
-  return card(
-    t.title,
-    [tag("auto-merged"), tag(t.riskTier, `risk-${t.riskTier}`)],
-    () => openAuditDetail(it),
-  );
+  return {
+    el: card(
+      t.title,
+      [tag("auto-merged"), tag(t.riskTier, `risk-${t.riskTier}`)],
+      () => openAuditDetail(it),
+    ),
+    filterable: { title: t.title, riskTier: t.riskTier },
+  };
 }
 
 // Cards stay quiet: avatar + risk, plus priority only when it deviates from
 // the medium default. Reporter, topic tags, deps etc. live in the detail
 // sidebar — repeating them here turns every card into equal-weight noise.
-function taskCard(t: Task, agents: Agent[]): HTMLElement {
+function taskCard(t: Task, agents: Agent[]): CardItem {
   const meta: (Node | string)[] = [];
   if (t.agentId) meta.push(agentPhoto(agents, t.agentId));
   meta.push(tag(t.riskTier, `risk-${t.riskTier}`));
@@ -282,7 +361,10 @@ function taskCard(t: Task, agents: Agent[]): HTMLElement {
   if (badge) meta.push(badge);
   const pl = pushStatusLabel(t);
   if (pl) meta.push(tag(pl, `push-${pl}`));
-  return card(t.title, meta, () => openTaskDetail(t, agents));
+  return {
+    el: card(t.title, meta, () => openTaskDetail(t, agents)),
+    filterable: { title: t.title, riskTier: t.riskTier, agentId: t.agentId, pushStatus: pushStatusLabel(t) ?? undefined },
+  };
 }
 
 // ── Action / detail panels ─────────────────────────────────────────────────
