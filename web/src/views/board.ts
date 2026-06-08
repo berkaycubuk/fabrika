@@ -10,7 +10,7 @@ import { showToast } from "./toast.js";
 import { undoToastSpec } from "./undo-actions.js";
 import type { ToastSpec } from "./undo-actions.js";
 import { button, pill, tag, field, formatTokens, formatTokensShort } from "../components.js";
-import { openModal, closeModal } from "../ui.js";
+import { openModal, closeModal, promptModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
 import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release } from "../types.js";
@@ -309,8 +309,11 @@ export function openPlanDetail(p: Plan): void {
     actionRow([
       button("Approve plan", { variant: "primary", onclick: () => act(() => api.approvePlan(p.id)) }),
       button("Request changes", { variant: "danger", onclick: () => {
-        const feedback = prompt("What should the planner change?")?.trim();
-        if (feedback) act(() => api.revisePlan(p.id, feedback));
+        promptModal({
+          title: "Request changes",
+          placeholder: "What should the planner change?",
+          submitLabel: "Send",
+        }, (feedback) => act(() => api.revisePlan(p.id, feedback)));
       }}),
       button("Reject", { variant: "danger", onclick: () => act(() => api.rejectPlan(p.id)) }),
     ]),
@@ -405,9 +408,11 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
             }})
           : el("span", {}),
         button("Kick back", { variant: "danger", onclick: () => {
-          const reason = requireCommentInput("A reason is required to kick a task back.");
-          if (reason === null) return;
-          act(() => api.rejectTask(task.id, reason), () => undoToastSpec("reject", task));
+          promptModal({
+            title: "Kick back",
+            placeholder: "A reason is required to kick a task back.",
+            submitLabel: "Kick back",
+          }, (reason) => act(() => api.rejectTask(task.id, reason), () => undoToastSpec("reject", task)));
         }}),
       ]),
     ]),
