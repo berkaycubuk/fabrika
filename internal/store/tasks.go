@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/google/uuid"
@@ -372,6 +373,60 @@ func (r *TaskRepo) Delete(id string) error {
 		return err
 	}
 	return mustAffect(res)
+}
+
+// ListByStatus returns tasks whose status is one of the given values, newest-first.
+// Returns a nil slice and nil error when called with zero statuses.
+func (r *TaskRepo) ListByStatus(statuses ...string) ([]model.Task, error) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	ph := strings.TrimRight(strings.Repeat("?,", len(statuses)), ",")
+	args := make([]interface{}, len(statuses))
+	for i, s := range statuses {
+		args[i] = s
+	}
+	rows, err := r.db.Query(`SELECT `+taskCols+` FROM tasks WHERE status IN (`+ph+`) ORDER BY created_at DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}
+
+// StatusByIDs returns a map from task ID to status for the given IDs.
+// Missing IDs are simply absent from the map. Empty/nil input returns an empty map.
+func (r *TaskRepo) StatusByIDs(ids []string) (map[string]string, error) {
+	if len(ids) == 0 {
+		return map[string]string{}, nil
+	}
+	ph := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := r.db.Query(`SELECT id, status FROM tasks WHERE id IN (`+ph+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string, len(ids))
+	for rows.Next() {
+		var id, status string
+		if err := rows.Scan(&id, &status); err != nil {
+			return nil, err
+		}
+		out[id] = status
+	}
+	return out, rows.Err()
 }
 
 func scanTask(s scanner) (*model.Task, error) {
