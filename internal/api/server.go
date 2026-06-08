@@ -131,7 +131,7 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("/", s.spaHandler())
 	}
 
-	return logRequests(mux)
+	return logRequests(recoverPanics(mux))
 }
 
 // --- JSON helpers ---
