@@ -58,9 +58,10 @@ export const api = {
 
   // BigTask (define)
   listBigTasks: () => req<BigTask[]>("GET", "/api/bigtasks"),
-  createBigTask: (b: { title: string; intent: string; constraints?: string[]; attachments?: string[] }) =>
+  createBigTask: (b: { title: string; intent: string; constraints?: string[]; attachments?: string[]; status?: string }) =>
     req<BigTask>("POST", "/api/bigtasks", b),
   deleteBigTask: (id: string) => req<void>("DELETE", `/api/bigtasks/${id}`),
+  promoteBigTask: (id: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/plan`),
   replanBigTask: (id: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/replan`),
   stopPlanning: (id: string, reason?: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/stop`, { reason }),
 
