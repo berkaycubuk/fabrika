@@ -67,6 +67,7 @@ function sidebar(): HTMLElement {
     el("div", { class: "conn-row" }, [
       el("span", { id: "conn", class: "pill soon" }, ["connecting"]),
     ]),
+    el("a", { class: "nav-item", href: "https://fabrika-ai.com/docs/", target: "_blank", rel: "noopener" }, ["Docs"]),
     versionEl,
   ]);
 }
