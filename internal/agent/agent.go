@@ -13,8 +13,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -24,6 +28,18 @@ import (
 // specify its own Timeout (or specifies an unparseable/non-positive one). It
 // guards the engine against a hung or runaway agent blocking the dispatch loop.
 const DefaultTimeout = 30 * time.Minute
+
+// DefaultIdleTimeout is the stall threshold: if a running agent produces no
+// output (stdout or stderr) for this long, it is presumed hung and killed,
+// rather than waiting out the much longer hard DefaultTimeout. A healthy CLI
+// coding agent streams output continuously; prolonged silence is the most
+// reliable agent-agnostic signal that it is stuck. Set IdleTimeout to 0 to
+// disable stall detection and rely only on the hard timeout.
+const DefaultIdleTimeout = 5 * time.Minute
+
+// maxHeartbeatLine bounds the LastLine carried on a heartbeat so a chatty agent
+// can't push huge payloads to every connected UI client.
+const maxHeartbeatLine = 200
 
 // ParseTimeout interprets an agent's configured Timeout string. It trims
 // surrounding whitespace; an empty string, a value time.ParseDuration cannot
@@ -89,7 +105,20 @@ type AgentResult struct {
 	Comments  []string      `json:"comments"` // text after each CommentMarker, in order
 	Evidence  []EvidenceRef // files after each EvidenceMarker, in order
 	Usage     model.Usage   // token usage parsed from the last UsageMarker, if any
-	TimedOut  bool          // true when the run was aborted because the agent's own timeout elapsed, distinct from a human steer/cancel
+	TimedOut  bool          // true when the run was aborted because the agent's own hard timeout elapsed, distinct from a human steer/cancel
+	Stalled   bool          // true when the run was killed for producing no output for IdleTimeout (a hung agent), distinct from TimedOut
+	IdleFor   time.Duration // when Stalled, how long the agent was silent before the kill
+}
+
+// HeartbeatInfo is a liveness pulse emitted periodically while an agent runs, so
+// the cockpit can show that a walk-away run is actually making progress (and go
+// amber when it falls quiet) instead of an opaque "running" with no signal.
+type HeartbeatInfo struct {
+	TaskID      string        // the task whose agent this pulse describes
+	AgentName   string        // the agent doing the work
+	LastLine    string        // most recent non-empty output line (truncated), as a sign of life
+	IdleFor     time.Duration // time since the agent last produced any output
+	OutputBytes int64         // total stdout+stderr bytes produced so far
 }
 
 // Runner invokes a registered agent against a task in a worktree.
@@ -102,11 +131,21 @@ type Runner interface {
 type Subprocess struct {
 	// Shell runs the substituted command string. Defaults to "bash -c".
 	Shell []string
+	// IdleTimeout is the stall threshold for this runner; <= 0 disables stall
+	// detection. Defaults to DefaultIdleTimeout via NewSubprocess.
+	IdleTimeout time.Duration
+	// Heartbeat, if set, is called periodically while an agent runs with a
+	// liveness pulse. It must be cheap and non-blocking — it fires from the
+	// monitor goroutine while the agent's process is alive.
+	Heartbeat func(HeartbeatInfo)
+	// beatInterval overrides the heartbeat/stall-check cadence (tests only). When
+	// 0, the cadence is derived from IdleTimeout.
+	beatInterval time.Duration
 }
 
 // NewSubprocess returns a Subprocess runner with defaults.
 func NewSubprocess() *Subprocess {
-	return &Subprocess{Shell: []string{"bash", "-c"}}
+	return &Subprocess{Shell: []string{"bash", "-c"}, IdleTimeout: DefaultIdleTimeout}
 }
 
 // RenderCommand substitutes {prompt_file}, {worktree}, and {model} into the
@@ -278,20 +317,90 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	tctx, tcancel := context.WithTimeout(ctx, d)
 	defer tcancel()
 
+	// A separate cancel layered under the hard timeout lets the stall monitor
+	// kill a silent (hung) agent without tripping the DeadlineExceeded path, so
+	// the three failure modes — human steer (ctx), hard timeout (tctx), and
+	// stall (killStall) — stay distinguishable after the process exits.
+	killCtx, killStall := context.WithCancel(tctx)
+	defer killStall()
+
+	// Tee both streams through an activity meter: it keeps the full output in the
+	// buffers (as before) while recording the last-output time and last line, the
+	// liveness signal the monitor and heartbeats read.
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(tctx, shell[0], args...)
+	meter := newActivityMeter()
+	cmd := exec.CommandContext(killCtx, shell[0], args...)
 	cmd.Dir = worktree
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	// When ctx is cancelled (in-flight steer), the agent's process is killed; but a
-	// grandchild (e.g. a `sleep` under `sh -c`) can inherit the output pipe and
-	// keep Run blocked. WaitDelay bounds that: after the kill, exec force-closes
-	// the pipes and returns rather than hanging on the orphan.
+	cmd.Stdout = io.MultiWriter(&stdout, meter)
+	cmd.Stderr = io.MultiWriter(&stderr, meter)
+	// Run the agent in its own process group so a kill (stall, hard timeout, or
+	// human steer — all routed through killCtx) takes down the whole tree, not
+	// just the top shell. Otherwise a grandchild (e.g. `sleep` under `bash -c`)
+	// is orphaned, keeps the output pipe open, and both leaks a process and
+	// stalls Wait until WaitDelay. The group kill closes the pipe at once.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			// Negative pid signals the whole process group.
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	// Backstop if a process somehow escapes the group kill: force-close the pipes
+	// shortly after the kill rather than hanging on an orphan.
 	cmd.WaitDelay = 3 * time.Second
-	runErr := cmd.Run()
+
+	if err := cmd.Start(); err != nil {
+		return AgentResult{Stdout: stdout.String(), Stderr: stderr.String()}, fmt.Errorf("run agent %q: %w", a.Name, err)
+	}
+
+	// Monitor the agent's output cadence for the life of the process: emit a
+	// heartbeat each tick and, if the agent has been silent past IdleTimeout,
+	// kill it as stalled. The goroutine exits when the process does (done).
+	var stalled atomic.Bool
+	done := make(chan struct{})
+	var mon sync.WaitGroup
+	mon.Go(func() {
+		interval := s.heartbeatInterval()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				idle := time.Since(meter.last())
+				if s.Heartbeat != nil {
+					s.Heartbeat(HeartbeatInfo{
+						TaskID:      t.ID,
+						AgentName:   a.Name,
+						LastLine:    truncate(meter.lastLine(), maxHeartbeatLine),
+						IdleFor:     idle,
+						OutputBytes: meter.total(),
+					})
+				}
+				if s.IdleTimeout > 0 && idle >= s.IdleTimeout {
+					stalled.Store(true)
+					killStall()
+					return
+				}
+			}
+		}
+	})
+
+	runErr := cmd.Wait()
+	close(done)
+	mon.Wait()
 
 	res := AgentResult{Stdout: stdout.String(), Stderr: stderr.String()}
-	// Our timeout fired and the parent ctx was NOT cancelled (so this is the
+	// A human steer (parent ctx cancelled) takes precedence: the engine detects
+	// that separately and finalizes the task as closed, so don't mislabel it.
+	if ctx.Err() == nil && stalled.Load() {
+		res.Stalled = true
+		res.IdleFor = s.IdleTimeout
+		return res, fmt.Errorf("agent %q stalled: no output for %s", a.Name, s.IdleTimeout)
+	}
+	// Our hard timeout fired and the parent ctx was NOT cancelled (so this is the
 	// agent's own deadline, not a human steer): record it as a timed-out failure.
 	// The engine's run() routes this through finishFail and retries per MaxAttempts.
 	if tctx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
@@ -333,6 +442,88 @@ func parseUsage(out string) (model.Usage, bool) {
 		u.TotalTokens = u.InputTokens + u.OutputTokens
 	}
 	return u, true
+}
+
+// heartbeatInterval is the cadence at which the monitor emits a heartbeat and
+// checks for a stall. It's frequent enough to feel live in the UI but derived
+// from IdleTimeout so a short test timeout is checked promptly.
+func (s *Subprocess) heartbeatInterval() time.Duration {
+	if s.beatInterval > 0 {
+		return s.beatInterval
+	}
+	interval := 5 * time.Second
+	if s.IdleTimeout > 0 && s.IdleTimeout/3 < interval {
+		interval = s.IdleTimeout / 3
+	}
+	if interval < 20*time.Millisecond {
+		interval = 20 * time.Millisecond
+	}
+	return interval
+}
+
+// activityMeter tees an agent's output streams to record liveness: the wall time
+// of the last write, the running byte count, and the most recent non-empty line.
+// It is an io.Writer that records and discards (the full output is kept by the
+// MultiWriter's other leg), so it stays cheap. Safe for concurrent reads from
+// the monitor goroutine while exec's copier writes.
+type activityMeter struct {
+	lastNano atomic.Int64 // unix nanos of the last write
+	bytes    atomic.Int64 // total bytes seen
+
+	mu      sync.Mutex
+	partial []byte // bytes of the in-progress (unterminated) line
+	line    string // last completed non-empty line
+}
+
+func newActivityMeter() *activityMeter {
+	m := &activityMeter{}
+	m.lastNano.Store(time.Now().UnixNano())
+	return m
+}
+
+func (m *activityMeter) Write(p []byte) (int, error) {
+	m.lastNano.Store(time.Now().UnixNano())
+	m.bytes.Add(int64(len(p)))
+	m.mu.Lock()
+	for _, b := range p {
+		if b == '\n' || b == '\r' {
+			if s := strings.TrimSpace(string(m.partial)); s != "" {
+				m.line = s
+			}
+			m.partial = m.partial[:0]
+		} else {
+			m.partial = append(m.partial, b)
+		}
+	}
+	m.mu.Unlock()
+	return len(p), nil
+}
+
+func (m *activityMeter) last() time.Time { return time.Unix(0, m.lastNano.Load()) }
+func (m *activityMeter) total() int64    { return m.bytes.Load() }
+
+// lastLine returns the most recent completed line, or the in-progress partial
+// line if the agent hasn't emitted a newline yet — so a single long-running line
+// (e.g. a progress bar) still reads as activity rather than silence.
+func (m *activityMeter) lastLine() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Prefer the in-progress partial line — it's the newest activity (e.g. a
+	// progress bar still being written) — and fall back to the last completed
+	// line once the agent has emitted a newline and gone quiet.
+	if p := strings.TrimSpace(string(m.partial)); p != "" {
+		return p
+	}
+	return m.line
+}
+
+// truncate shortens s to at most n runes, appending an ellipsis when it cuts.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 // parseEscalation scans output for the last DecisionMarker line and returns the

@@ -44,6 +44,7 @@ const (
 	settingAuditPct            = "audit_rate"           // 0..1: share of auto-merged PRs sampled for human audit
 	settingMutation            = "mutation_testing"     // "on" enables the mutation-testing gate validator
 	settingQuarantineThreshold = "quarantine_threshold" // consecutive fails before an agent is skipped
+	settingIdleTimeout         = "agent_idle_timeout"    // duration of agent silence before it's killed as stalled (0/"off" disables)
 )
 
 // runInfo records what an in-flight task is doing, for slot accounting and
@@ -52,9 +53,18 @@ const (
 // note so the run goroutine can finalize the task as closed (not failed).
 type runInfo struct {
 	agentID      string
+	agentName    string
 	touchPaths   []string
 	cancel       context.CancelFunc
 	cancelReason string
+
+	// Liveness, updated from the agent runner's heartbeats (onHeartbeat). startedAt
+	// anchors elapsed time; the rest mirror the latest pulse so a just-connected
+	// client (or the attention API) can report whether the run is making progress.
+	startedAt  time.Time
+	lastBeatAt time.Time
+	idleFor    time.Duration
+	lastLine   string
 }
 
 // planRunInfo records an in-flight planning run for a big task. Held in
@@ -109,12 +119,13 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 	if cfg != nil {
 		deploy = cfg.Deploy
 	}
+	sp := agent.NewSubprocess()
 	e := &Engine{
 		store:    s,
 		cfg:      cfg,
 		repoRoot: repoRoot,
 		gate:     gate.New(),
-		agent:    agent.NewSubprocess(),
+		agent:    sp,
 		emit:     emit,
 		wake:     make(chan struct{}, 1),
 		running:  map[string]runInfo{},
@@ -154,7 +165,35 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		Emit:        emit,
 		PollSeconds: ciPollSeconds,
 	})
+
+	// Wire agent liveness: the runner pulses heartbeats while an agent works, and
+	// kills one that's been silent past the idle timeout (DefaultIdleTimeout,
+	// overridable by the global "agent_idle_timeout" setting; 0/"off" disables).
+	sp.Heartbeat = e.onHeartbeat
+	if d, ok := e.configuredIdleTimeout(); ok {
+		sp.IdleTimeout = d
+	}
 	return e
+}
+
+// configuredIdleTimeout reads the global "agent_idle_timeout" setting, if set.
+// An empty/absent value leaves the runner default; "0" or "off" disables stall
+// detection (returns 0); anything else is parsed as a duration. An unparseable
+// value is ignored (ok=false) so a typo can't silently disable the safety net.
+func (e *Engine) configuredIdleTimeout() (time.Duration, bool) {
+	raw, err := e.store.Settings.Get(settingIdleTimeout)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return 0, false
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "0" || strings.EqualFold(raw, "off") {
+		return 0, true
+	}
+	d, perr := time.ParseDuration(raw)
+	if perr != nil || d < 0 {
+		return 0, false
+	}
+	return d, true
 }
 
 // Start launches the dispatch loop until ctx is cancelled.
@@ -406,12 +445,45 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 		// Per-task context so in-flight steering can cancel this run's subprocess
 		// without disturbing the rest of the pool.
 		taskCtx, cancel := context.WithCancel(e.ctx)
-		e.running[t.ID] = runInfo{agentID: ag.ID, touchPaths: t.TouchPaths, cancel: cancel}
+		e.running[t.ID] = runInfo{
+			agentID: ag.ID, agentName: ag.Name, touchPaths: t.TouchPaths,
+			cancel: cancel, startedAt: time.Now(),
+		}
 		e.emitTask(t.ID)
 		log.Printf("engine: dispatch task %q -> agent %q on %s", t.Title, ag.Name, branch)
 		return t, *ag, base, taskCtx, true
 	}
 	return model.Task{}, model.Agent{}, "", nil, false
+}
+
+// onHeartbeat receives a liveness pulse from the agent runner while a task's
+// agent is working. It refreshes the in-memory liveness for the task and pushes
+// a "task.heartbeat" event so the cockpit can show a live pulse on the running
+// card — and turn it amber when the agent falls quiet — without refetching the
+// board. A pulse for a task no longer tracked as running is dropped (the run
+// finished between the runner's tick and this call).
+func (e *Engine) onHeartbeat(hb agent.HeartbeatInfo) {
+	e.mu.Lock()
+	ri, ok := e.running[hb.TaskID]
+	if ok {
+		ri.lastBeatAt = time.Now()
+		ri.idleFor = hb.IdleFor
+		ri.lastLine = hb.LastLine
+		e.running[hb.TaskID] = ri
+	}
+	started := ri.startedAt
+	e.mu.Unlock()
+	if !ok {
+		return
+	}
+	e.emit("task.heartbeat", map[string]any{
+		"taskId":         hb.TaskID,
+		"agentName":      hb.AgentName,
+		"idleSeconds":    int(hb.IdleFor.Round(time.Second) / time.Second),
+		"lastLine":       hb.LastLine,
+		"outputBytes":    hb.OutputBytes,
+		"runningSeconds": int(time.Since(started).Round(time.Second) / time.Second),
+	})
 }
 
 // wipCap reads the global work-in-progress ceiling from settings (0/unset =
@@ -584,6 +656,19 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	// Finalize as closed with their reason rather than treating it as a failure.
 	if reason, cancelled := e.cancellation(task.ID); cancelled {
 		e.finalizeCancelled(task, ag, reason)
+		return
+	}
+	// The agent went silent and was killed as stalled. Surface it as a distinct
+	// liveness failure (not a generic agent error) with its own evidence stage so
+	// the human can tell "hung agent" apart from "agent ran and failed". It
+	// retries within MaxAttempts like any other failure.
+	if agentRes.Stalled {
+		msg := fmt.Sprintf("agent produced no output for %s and was killed as stalled", agentRes.IdleFor)
+		ev := model.Evidence{Stages: map[string]model.StageResult{
+			"liveness": {Pass: false, Output: msg},
+		}}
+		e.finishFail(task, ag, ev, "STALLED: "+msg+"\n\n"+combineLog(agentRes.Stdout, agentRes.Stderr), agentRes.Usage)
+		log.Printf("engine: task %q stalled: %s", task.Title, msg)
 		return
 	}
 	if err != nil {

@@ -769,6 +769,13 @@ button.option:hover { border-color: var(--accent); }
 }
 .needs-card-title { font-weight: 600; font-size: var(--fs-lg); line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .needs-card-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+
+/* Live agent pulse on in-flight cards: green dot + "working" while output flows,
+   amber + "quiet" once the agent falls silent (an early stall signal). */
+.pulse { margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--green); display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pulse::first-letter { animation: pulse-blink 1.6s ease-in-out infinite; }
+.pulse.quiet { color: var(--amber); }
+@keyframes pulse-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 .board-col[data-col="approve"] .needs-card { border-left-color: var(--accent); }
 .board-col[data-col="decide"] .needs-card { border-left-color: var(--amber); }
 .board-col[data-col="ready"] .needs-card { border-left-color: var(--muted); }

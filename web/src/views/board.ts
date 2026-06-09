@@ -13,7 +13,7 @@ import { button, pill, tag, field, formatTokens, formatTokensShort } from "../co
 import { openModal, closeModal, promptModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release, Heartbeat } from "../types.js";
 import { registerReleaseListener } from "../ws.js";
 import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
@@ -32,6 +32,16 @@ let storedBigTasks: BigTask[] = [];
 
 type CardItem = { el: HTMLElement; filterable: Filterable };
 const colCards: Record<string, CardItem[]> = {};
+
+// Latest liveness pulse per in-flight task, keyed by task id. Heartbeat events
+// update this and repaint the card in place; a fresh board render repaints from
+// it so a just-rendered running card already shows its last known pulse.
+const liveness = new Map<string, Heartbeat>();
+
+// QUIET_AFTER is the silence (seconds) past which a running card turns amber —
+// the agent is alive but hasn't produced output, the early sign of a stall well
+// before the engine's idle-timeout kill.
+const QUIET_AFTER = 45;
 
 type ColId = "backlog" | "planning" | "approve" | "decide" | "ready" | "running" | "verifying" | "accept" | "audit" | "merged" | "closed";
 const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
@@ -338,6 +348,11 @@ function paint(): void {
     const auditIds = new Set(storedAudits.map((a) => a.task.id));
     const byStatus = (s: string) => storedTasks.filter((t) => t.status === s);
 
+    // Drop liveness for tasks no longer in flight so a stale pulse can't linger
+    // (or briefly reappear if the id is reused on retry).
+    const inFlight = new Set(storedTasks.filter((t) => IN_FLIGHT.includes(t.status)).map((t) => t.id));
+    for (const id of liveness.keys()) if (!inFlight.has(id)) liveness.delete(id);
+
     fillColumn("backlog", storedBigTasks.filter((b) => b.status === "backlog").map((b) => bigTaskCard(b, storedAgents)));
     fillColumn("planning", storedBigTasks.filter((b) => PRE_PLAN.includes(b.status)).map((b) => bigTaskCard(b, storedAgents)));
     fillColumn("approve", storedPlans.filter((p) => p.status === "proposed").map((p) => planCard(p, storedAgents)));
@@ -361,6 +376,59 @@ function card(title: string, meta: (Node | string)[], onClick: () => void): HTML
     el("div", { class: "needs-card-title" }, [title]),
     meta.length ? el("div", { class: "needs-card-meta" }, meta) : el("span", {}),
   ]);
+}
+
+// onHeartbeat records a liveness pulse and repaints the matching running card in
+// place (no board refetch). Exported for the WS event loop in main.ts.
+export function onHeartbeat(hb: Heartbeat): void {
+  liveness.set(hb.taskId, hb);
+  const node = document.querySelector<HTMLElement>(`[data-pulse="${cssEscape(hb.taskId)}"]`);
+  if (node) paintPulse(node, hb);
+}
+
+// pulseEl builds the live activity line for an in-flight task card, seeded from
+// the last known pulse so it isn't blank until the next heartbeat arrives.
+function pulseEl(t: Task): HTMLElement {
+  const node = el("div", { class: "pulse", "data-pulse": t.id });
+  paintPulse(node, liveness.get(t.id));
+  return node;
+}
+
+// paintPulse renders a pulse node from a heartbeat: green "working" while output
+// flows, amber "quiet" once the agent has been silent past QUIET_AFTER. With no
+// pulse yet (run just started, or pre-heartbeat), it reads "starting…".
+function paintPulse(node: HTMLElement, hb?: Heartbeat): void {
+  if (!hb) {
+    node.className = "pulse";
+    node.textContent = "● starting…";
+    node.title = "";
+    return;
+  }
+  const quiet = hb.idleSeconds >= QUIET_AFTER;
+  node.className = "pulse" + (quiet ? " quiet" : "");
+  const ago = hb.idleSeconds < 4 ? "just now" : `${fmtDur(hb.idleSeconds)} ago`;
+  node.textContent = quiet
+    ? `● quiet · last output ${ago}`
+    : `● working · ${fmtDur(hb.runningSeconds)} elapsed`;
+  // The most recent output line as a hover, so a curious operator can confirm
+  // what the agent is actually doing without opening the task.
+  node.title = hb.lastLine ? `${hb.lastLine}\n(last output ${ago})` : `last output ${ago}`;
+}
+
+// fmtDur renders a whole-second duration compactly: 45s, 3m, 1h2m.
+function fmtDur(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h${m % 60}m`;
+}
+
+// cssEscape quotes a task id for a CSS attribute selector. Ids are generated and
+// safe, but escape defensively rather than trust them in a selector.
+function cssEscape(s: string): string {
+  const cssAny = CSS as unknown as { escape?: (v: string) => string };
+  return cssAny.escape ? cssAny.escape(s) : s.replace(/["\\]/g, "\\$&");
 }
 
 function planCard(p: Plan, agents: Agent[]): CardItem {
@@ -479,8 +547,12 @@ function taskCard(t: Task, agents: Agent[]): CardItem {
   if (badge) meta.push(badge);
   const pl = pushStatusLabel(t);
   if (pl) meta.push(tag(pl, `push-${pl}`));
+  const node = card(t.title, meta, () => openTaskDetail(t, agents));
+  // In-flight cards carry a live pulse so a walk-away operator can see the agent
+  // is actually working (and spot one that's gone quiet) without opening it.
+  if (IN_FLIGHT.includes(t.status)) node.append(pulseEl(t));
   return {
-    el: card(t.title, meta, () => openTaskDetail(t, agents)),
+    el: node,
     filterable: { title: t.title, riskTier: t.riskTier, agentId: t.agentId, pushStatus: pushStatusLabel(t) ?? undefined },
   };
 }

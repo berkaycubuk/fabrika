@@ -6,10 +6,10 @@ import { brand } from "./brand.js";
 import { connectEvents } from "./ws.js";
 import { initObservability } from "./observability.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
-import { renderBoard, onBoardEvent } from "./views/board.js";
+import { renderBoard, onBoardEvent, onHeartbeat } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
 import { renderConfig } from "./views/config.js";
-import type { FabrikaEvent } from "./types.js";
+import type { FabrikaEvent, Heartbeat } from "./types.js";
 
 interface Nav {
   id: string;
@@ -97,6 +97,13 @@ function main(): void {
 
   connectEvents((e: FabrikaEvent) => {
     setConn("live");
+    // Heartbeats are high-frequency liveness pulses: update the running card in
+    // place and stop — fanning them out to a full board refetch would hammer the
+    // API every few seconds per in-flight task.
+    if (e.type === "task.heartbeat") {
+      onHeartbeat(e.payload as Heartbeat);
+      return;
+    }
     // Every surface guards on its own DOM presence, so fan out broadly: the
     // board owns the human gates (refreshing on every event, including
     // task/plan), the factory views own the registry/metrics.

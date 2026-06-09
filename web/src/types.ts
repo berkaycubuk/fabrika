@@ -186,6 +186,18 @@ export interface FabrikaEvent {
   payload: unknown;
 }
 
+// Heartbeat is the payload of a "task.heartbeat" event: a liveness pulse for a
+// running task's agent, used to show the card is making progress (or has fallen
+// quiet). idleSeconds is the agent's silence; lastLine is its most recent output.
+export interface Heartbeat {
+  taskId: string;
+  agentName: string;
+  idleSeconds: number;
+  lastLine: string;
+  outputBytes: number;
+  runningSeconds: number;
+}
+
 export interface ConfigManifest {
   project: { name: string };
   verbs: {
