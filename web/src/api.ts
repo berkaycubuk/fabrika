@@ -56,6 +56,11 @@ export const api = {
     return url;
   },
 
+  // BigTask comments
+  listBigTaskComments: (id: string) => req<Comment[]>("GET", `/api/bigtasks/${id}/comments`),
+  addBigTaskComment: (id: string, body: string, attachments: string[] = []) =>
+    req<Comment>("POST", `/api/bigtasks/${id}/comments`, { body, attachments }),
+
   // BigTask (define)
   listBigTasks: () => req<BigTask[]>("GET", "/api/bigtasks"),
   createBigTask: (b: { title: string; intent: string; constraints?: string[]; attachments?: string[]; status?: string }) =>
