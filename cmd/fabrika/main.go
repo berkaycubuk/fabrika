@@ -22,6 +22,7 @@ import (
 
 	"github.com/berkaycubuk/fabrika/internal/api"
 	"github.com/berkaycubuk/fabrika/internal/config"
+	"github.com/berkaycubuk/fabrika/internal/lock"
 	"github.com/berkaycubuk/fabrika/internal/store"
 	"github.com/berkaycubuk/fabrika/web"
 )
@@ -181,6 +182,12 @@ func cmdServe(port int, openBrowser bool) error {
 		return err
 	}
 	defer st.Close()
+
+	l, err := lock.Acquire(filepath.Join(projectDir, "fabrika.lock"))
+	if err != nil {
+		return fmt.Errorf("%w (project: %s)", err, projectDir)
+	}
+	defer l.Release()
 
 	assets, err := web.Assets()
 	if err != nil {
