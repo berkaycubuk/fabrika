@@ -1,4 +1,4 @@
-.PHONY: all web build run test clean dev install uninstall fmt-check vet lint check hooks dist tag
+.PHONY: all web build run test clean dev install uninstall fmt fmt-check vet lint check hooks dist tag
 
 # Installation prefix for `make install` (override with `make install PREFIX=...`).
 PREFIX ?= /usr/local
@@ -14,8 +14,12 @@ all: build
 web:
 	cd web && npm install --silent && npm run build
 
+# Auto-format Go sources in place.
+fmt:
+	gofmt -w internal/ cmd/
+
 # Build the self-contained binary (depends on the embedded web assets).
-build: web
+build: hooks web
 	go build -ldflags "$(LDFLAGS)" -o fabrika ./cmd/fabrika
 
 # Build + run from the current repo.
