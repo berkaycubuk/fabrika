@@ -41,30 +41,30 @@ define ─▶ plan ─▶ approve ─▶ [ implement → gate → review/mutatio
 **macOS / Linux — one line:**
 
 ```sh
-curl -fsSL https://static.berkaycubuk.com/tool-binaries/fabrika/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/berkaycubuk/fabrika/main/install.sh | sh
 ```
 
-Downloads the right binary for your OS/arch and installs it to `/usr/local/bin`.
-Installing via `curl` means macOS does **not** quarantine the binary, so it runs
-without a Gatekeeper prompt. Override the version or location:
+Downloads the right binary for your OS/arch from the latest GitHub release and
+installs it to `/usr/local/bin`. Installing via `curl` means macOS does **not**
+quarantine the binary, so it runs without a Gatekeeper prompt. Override the
+version or location:
 
 ```sh
-FABRIKA_VERSION=0.1.0 FABRIKA_INSTALL_DIR=~/.local/bin \
-  curl -fsSL https://static.berkaycubuk.com/tool-binaries/fabrika/install.sh | sh
+FABRIKA_VERSION=v0.1.0 FABRIKA_INSTALL_DIR=~/.local/bin \
+  curl -fsSL https://raw.githubusercontent.com/berkaycubuk/fabrika/main/install.sh | sh
 ```
 
 **Debian / Ubuntu (`.deb`):**
 
 ```sh
-curl -fLO https://static.berkaycubuk.com/tool-binaries/fabrika/latest/fabrika_amd64.deb
+curl -fLO https://github.com/berkaycubuk/fabrika/releases/latest/download/fabrika_amd64.deb
 sudo apt install ./fabrika_amd64.deb     # or fabrika_arm64.deb
 ```
 
-**Manual download:** grab a tarball from
-`https://static.berkaycubuk.com/tool-binaries/fabrika/latest/` (or a pinned
-`…/<version>/`), `tar -xzf` it, and move `fabrika` onto your `PATH`. If you
-downloaded via a browser on macOS, clear the quarantine flag once:
-`xattr -dr com.apple.quarantine fabrika`.
+**Manual download:** grab a tarball from the
+[releases page](https://github.com/berkaycubuk/fabrika/releases), `tar -xzf` it,
+and move `fabrika` onto your `PATH`. If you downloaded via a browser on macOS,
+clear the quarantine flag once: `xattr -dr com.apple.quarantine fabrika`.
 
 ## Quickstart
 

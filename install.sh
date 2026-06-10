@@ -1,17 +1,18 @@
 #!/bin/sh
-# fabrika installer — downloads the right prebuilt binary and installs it.
+# fabrika installer — downloads the right prebuilt binary from GitHub releases
+# and installs it.
 #
-#   curl -fsSL https://static.berkaycubuk.com/tool-binaries/fabrika/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/berkaycubuk/fabrika/main/install.sh | sh
 #
 # Override with environment variables:
-#   FABRIKA_VERSION=0.1.0   pin a specific version (default: latest)
+#   FABRIKA_VERSION=v0.1.0   pin a specific release tag (default: latest)
 #   FABRIKA_INSTALL_DIR=~/.local/bin   install location (default: /usr/local/bin)
 #
 # Installs via curl, which does NOT set the macOS quarantine flag — so the
 # unsigned binary runs without a Gatekeeper prompt.
 set -eu
 
-BASE_URL="https://static.berkaycubuk.com/tool-binaries/fabrika"
+REPO_URL="https://github.com/berkaycubuk/fabrika"
 VERSION="${FABRIKA_VERSION:-latest}"
 INSTALL_DIR="${FABRIKA_INSTALL_DIR:-/usr/local/bin}"
 
@@ -31,7 +32,16 @@ case "$arch" in
 esac
 
 asset="fabrika_${os}_${arch}.tar.gz"
-url="${BASE_URL}/${VERSION}/${asset}"
+if [ "$VERSION" = "latest" ]; then
+  url="${REPO_URL}/releases/latest/download/${asset}"
+else
+  # Accept both v0.1.0 and 0.1.0 — release tags carry the v prefix.
+  case "$VERSION" in
+    v*) tag="$VERSION" ;;
+    *) tag="v$VERSION" ;;
+  esac
+  url="${REPO_URL}/releases/download/${tag}/${asset}"
+fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

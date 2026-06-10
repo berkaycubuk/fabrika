@@ -1,5 +1,5 @@
-# GoReleaser config — builds the release artifacts and uploads them to a
-# Cloudflare R2 bucket (distribution is via R2/install.sh, not GitHub releases).
+# GoReleaser config — builds the release artifacts and publishes them as a
+# GitHub release on the tag.
 # Validate locally:  goreleaser check
 # Dry-run a build:   make dist   (== goreleaser release --snapshot --clean)
 # Cut a real release: make tag VERSION=v0.1.0  (pushes the tag; CI does the rest)
@@ -31,8 +31,8 @@ builds:
 archives:
   - id: fabrika
     formats: [tar.gz]
-    # Version-less filenames — the version lives in the R2 directory path, so the
-    # latest/ channel always has the same names and install.sh needs no version.
+    # Version-less filenames — `releases/latest/download/<asset>` resolves the
+    # newest release, so install.sh needs no version in the asset name.
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
 # Debian/Ubuntu package: installs fabrika to /usr/bin via apt.
@@ -46,35 +46,26 @@ nfpms:
     formats:
       - deb
     bindir: /usr/bin
-    # Version-less name to match the archives (version is in the R2 path).
+    # Version-less name to match the archives.
     file_name_template: "{{ .ProjectName }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
 
 changelog:
-  # Local git log, not the GitHub API — we don't publish GitHub releases;
-  # artifacts are distributed from R2.
   use: git
   sort: asc
 
-# No GitHub release; artifacts go to R2 and installs flow through install.sh.
 release:
-  disable: "true"
+  github:
+    owner: berkaycubuk
+    name: fabrika
+  # Re-running the workflow against an existing tag replaces the artifacts
+  # instead of failing on the existing release.
+  mode: replace
+  footer: |
+    ## Install
 
-# Upload archives, .deb packages and checksums to a Cloudflare R2 bucket (R2 is
-# S3-compatible). Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
-# (R2 S3 API token) in the CI env. Each release is written twice: once under its
-# version (permanent history) and once under latest/ (overwritten every release,
-# so install.sh can fetch the newest without knowing the version).
-blobs:
-  - provider: s3
-    region: auto
-    endpoint: "https://6225e73450cd1a0a1e9121273f8a6111.r2.cloudflarestorage.com"
-    bucket: "public-stuff"
-    directory: "tool-binaries/fabrika/{{ .Version }}"
-  - provider: s3
-    region: auto
-    endpoint: "https://6225e73450cd1a0a1e9121273f8a6111.r2.cloudflarestorage.com"
-    bucket: "public-stuff"
-    directory: "tool-binaries/fabrika/latest"
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/berkaycubuk/fabrika/main/install.sh | sh
+    ```
