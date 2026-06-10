@@ -52,6 +52,29 @@ nfpms:
 checksum:
   name_template: "checksums.txt"
 
+# Homebrew tap: generates Casks/fabrika.rb in github.com/berkaycubuk/homebrew-tap
+# on each release, so `brew install berkaycubuk/tap/fabrika` works.
+# A cask (not a formula) ships the pre-compiled binary; the post-install hook
+# strips the quarantine xattr so the unsigned binary runs without Gatekeeper
+# blocking it. Needs a HOMEBREW_TAP_TOKEN secret with contents:write on the tap.
+homebrew_casks:
+  - name: fabrika
+    repository:
+      owner: berkaycubuk
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      branch: main
+    homepage: https://github.com/berkaycubuk/fabrika
+    description: Single Go binary orchestrating local coding agents.
+    binaries:
+      - fabrika
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/fabrika"]
+          end
+
 changelog:
   use: git
   sort: asc
