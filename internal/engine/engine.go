@@ -85,9 +85,10 @@ type Engine struct {
 	agent    agent.Runner
 	emit     EventFunc
 
-	ctx     context.Context
-	wake    chan struct{}
-	mu      sync.Mutex         // guards running + serializes git worktree/state writes
+	ctx    context.Context
+	cancel context.CancelFunc
+	wake   chan struct{}
+	mu     sync.Mutex         // guards running + serializes git worktree/state writes
 	running map[string]runInfo // taskID -> in-flight info
 	wg      sync.WaitGroup     // tracks dispatched goroutines
 
@@ -198,11 +199,32 @@ func (e *Engine) configuredIdleTimeout() (time.Duration, bool) {
 
 // Start launches the dispatch loop until ctx is cancelled.
 func (e *Engine) Start(ctx context.Context) {
-	e.ctx = ctx
+	e.ctx, e.cancel = context.WithCancel(ctx)
 	e.recoverOrphans()
 	e.release.ResumeBakeTimers()
 	e.ci.Start(ctx)
 	go e.loop()
+}
+
+// Stop cancels the dispatch loop and any in-flight subprocess, then waits for
+// all goroutines to finish. It returns true if the WaitGroup drained within
+// timeout, false on timeout. Safe to call when Start was never called (e.cancel
+// is nil); in that case it still waits the timeout for any pre-existing wg work.
+func (e *Engine) Stop(timeout time.Duration) bool {
+	if e.cancel != nil {
+		e.cancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		e.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // recoverOrphans re-queues work stranded by a previous process. In-flight state
