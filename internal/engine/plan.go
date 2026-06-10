@@ -431,6 +431,9 @@ func (e *Engine) DeleteBigTask(id string) error {
 	if err := e.store.Plans.DeleteByBigTask(id); err != nil {
 		return err
 	}
+	if err := e.store.Comments.DeleteByBigTask(id); err != nil {
+		return err
+	}
 	if err := e.store.BigTasks.Delete(id); err != nil {
 		return err
 	}
