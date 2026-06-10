@@ -11,6 +11,8 @@ things that are yours: plans to **approve**, questions to **decide**, finished w
 to **accept**, and merged work to **ship**. If something doesn't need you, you
 never see it.
 
+![Fabrika's board: creating a task, panning across the factory, and reviewing a finished diff](docs/demo.gif)
+
 See [SPECS.md](SPECS.md) for the full design and [SPECS-PHASE4.md](SPECS-PHASE4.md)
 for the downstream (release/incident) extension.
 
