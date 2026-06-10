@@ -175,3 +175,203 @@ A comment is a note on a task or big task. Fields: `id`, `taskId`, `bigTaskId`, 
   - `agent.created`, `agent.updated`, `agent.deleted` — agent registry changes (payload: the agent).
 
   Use the events stream to react to board changes without polling; fall back to the GET list endpoints above for the current snapshot.
+
+## Workflows
+
+Copy-pasteable curl recipes for the most common end-to-end flows. Replace placeholder values like `TASK_ID`, `PLAN_ID`, `BIGTASK_ID`, and `DECISION_ID` with real IDs returned by earlier calls.
+
+---
+
+### 1. Create a task
+
+Submit a unit of work for an agent to pick up. `title` is required; `spec` describes what to do; `acceptance.verifyCmds` lists shell commands the gate runs to verify the result.
+
+```sh
+curl -X POST http://localhost:7777/api/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Add dark-mode toggle to the settings page",
+    "spec": "Implement a dark/light mode toggle in web/src/settings.ts. Persist the preference in localStorage. The toggle must appear in the page header.",
+    "acceptance": {
+      "verifyCmds": ["make test"]
+    },
+    "riskTier": "low",
+    "priority": "medium"
+  }'
+```
+
+Expected response: `201 Created` with the full task object. The task starts with `status: "ready"` and is picked up by the next available agent.
+
+---
+
+### 2. Check what needs attention
+
+Fetch the unified inbox — everything awaiting a human decision in one call.
+
+```sh
+curl -s http://localhost:7777/api/attention | jq .
+```
+
+Response shape:
+
+```json
+{
+  "reviews":   [ { "task": {...}, "attempt": {...} } ],
+  "decisions": [ { "id": "...", "question": "...", "options": [...] } ],
+  "audits":    [ { "task": {...}, "attempt": {...} } ],
+  "plans":     [ { "id": "...", "status": "proposed", "tasks": [...], "openDecisions": [...] } ]
+}
+```
+
+- **`reviews`** — tasks in `review` status whose diffs are ready for merge or rejection.
+- **`decisions`** — open questions the planner could not resolve on its own (answer these to unblock planning).
+- **`audits`** — auto-merged tasks sampled for spot-check (each has `attempt.evidence` with the diff and artifacts).
+- **`plans`** — proposed plans awaiting approval before their child tasks are released to agents.
+
+---
+
+### 3. Accept a single task
+
+Merge a task that is in `review` status.
+
+```sh
+curl -s -X POST http://localhost:7777/api/tasks/TASK_ID/accept \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+The task transitions from `review` → `merged`. Omit the body or pass `{}` for a normal accept.
+
+#### Accept a batch
+
+Accept multiple tasks in one call (useful after reviewing a sprint's worth of work).
+
+```sh
+curl -s -X POST http://localhost:7777/api/tasks/accept-batch \
+  -H 'Content-Type: application/json' \
+  -d '{"ids": ["TASK_ID_1", "TASK_ID_2", "TASK_ID_3"]}'
+```
+
+Response: an array of per-id results. Each entry is either `{"id":"...","ok":true}` or `{"id":"...","ok":false,"error":"..."}`.
+
+---
+
+### 4. Retry failed work as a batch
+
+Re-queue multiple `failed` or `blocked` tasks for another agent attempt.
+
+```sh
+curl -s -X POST http://localhost:7777/api/tasks/retry-batch \
+  -H 'Content-Type: application/json' \
+  -d '{"ids": ["TASK_ID_1", "TASK_ID_2"]}'
+```
+
+Each listed task transitions back to `ready`. Response shape is the same as accept-batch.
+
+To find which tasks need retrying, filter by status first:
+
+```sh
+curl -s 'http://localhost:7777/api/tasks?status=failed,blocked' | jq '[.[].id]'
+```
+
+---
+
+### 5. Force-merge a failed or blocked task
+
+Override soft gate warnings and merge a task even if the verifier flagged issues. Use with care — this bypasses the normal quality gate.
+
+```sh
+curl -s -X POST http://localhost:7777/api/tasks/TASK_ID/accept \
+  -H 'Content-Type: application/json' \
+  -d '{"force": true}'
+```
+
+`force: true` tells the engine to ignore non-fatal gate failures and proceed with the merge. The task must still be in a state that allows acceptance (e.g. `review` or `failed`/`blocked` with surviving worktree). Status transitions to `merged`.
+
+---
+
+### 6. Create and plan a big task, then approve the plan
+
+A big task is a high-level intent that a planner agent decomposes into concrete tasks.
+
+**Step 1 — create the big task** (planning starts asynchronously if a planner agent is configured):
+
+```sh
+curl -s -X POST http://localhost:7777/api/bigtasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Migrate authentication to JWT",
+    "intent": "Replace the current session-cookie auth with stateless JWT tokens. Keep backward compat for 30 days via a dual-read middleware.",
+    "constraints": ["Must not break existing /api/auth tests", "No new external dependencies"]
+  }'
+```
+
+Response: `201 Created` with the big-task object. `status` will be `planning` if a planner is configured, or `backlog` if none is set.
+
+**Step 2 — trigger planning for a backlog task** (skip if already `planning`/`planned`):
+
+```sh
+curl -s -X POST http://localhost:7777/api/bigtasks/BIGTASK_ID/plan \
+  -H 'Content-Type: application/json'
+```
+
+**Step 3 — list proposed plans** and inspect the decomposition:
+
+```sh
+curl -s http://localhost:7777/api/plans | jq '.[] | {id, status, taskCount: (.tasks | length), openDecisions: (.openDecisions | length)}'
+```
+
+**Step 4 — approve a proposed plan** (releases child tasks to `ready`):
+
+```sh
+curl -s -X POST http://localhost:7777/api/plans/PLAN_ID/approve \
+  -H 'Content-Type: application/json'
+```
+
+After approval the plan's `status` moves to `approved` and each child task becomes `ready` for agents to pick up.
+
+---
+
+### 7. Answer an open decision
+
+Decisions are questions the planner raised that it could not resolve autonomously. Answering them unblocks planning or task execution.
+
+```sh
+curl -s http://localhost:7777/api/decisions | jq '.[] | {id, question, options}'
+```
+
+Pick the relevant decision ID, then answer it:
+
+```sh
+curl -s -X POST http://localhost:7777/api/decisions/DECISION_ID/answer \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "answer": "Use PostgreSQL — the team already operates it in production.",
+    "promote": true
+  }'
+```
+
+`promote: true` turns the answer into a standing convention so future planners and agents follow it automatically. Use `promote: false` (or omit) for one-off answers that should not become policy. The decision's `status` transitions from `open` → `answered`.
+
+---
+
+### 8. Ship / push merged work
+
+Check whether there are unpushed commits on the integration branch, then push:
+
+```sh
+# See what's waiting to be pushed
+curl -s http://localhost:7777/api/push/status | jq .
+
+# Push the integration branch to its remote
+curl -s -X POST http://localhost:7777/api/push \
+  -H 'Content-Type: application/json'
+```
+
+A successful push returns:
+
+```json
+{"status": "pushed", "detail": "origin/main: abc1234..def5678"}
+```
+
+Failures (no remote configured, non-fast-forward, network error) return `409 Conflict` with git's error message in `detail`.
