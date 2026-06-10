@@ -102,6 +102,30 @@
   --fs-4xl: 32px;
 }
 
+:root.light {
+  --bg: #f6f5f1;
+  --panel: #ffffff;
+  --panel-2: #eeebe4;
+  --border: #d5d0c5;
+  --text: #1a1815;
+  --muted: #6b6560;
+  --accent: #4a6adf;
+  --accent-ink: #ffffff;
+
+  --on-accent: #ffffff;
+  --border-hover: #b0ab9e;
+  --bg-code: #f2f0ea;
+
+  --edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.07), var(--edge-light);
+  --shadow-card-hover: 0 6px 16px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.12), var(--edge-light);
+
+  --accent-grad: linear-gradient(180deg, #5b7fff, #4a6adf);
+  --accent-grad-hover: linear-gradient(180deg, #688cff, #5775e8);
+  --accent-edge: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -274,6 +298,27 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-grad-hover); border-color: #5887f5; }
 button.danger:hover { border-color: var(--red); color: var(--red); }
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.theme-toggle:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
 
 /* Pills + tags */
 .pill {
