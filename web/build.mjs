@@ -10,6 +10,7 @@ mkdirSync("dist/fonts", { recursive: true });
 const copyStatic = () => {
   copyFileSync("src/index.html", "dist/index.html");
   copyFileSync("src/style.css", "dist/style.css");
+  copyFileSync("src/favicon.png", "dist/favicon.png");
   for (const f of readdirSync("src/fonts")) {
     copyFileSync(`src/fonts/${f}`, `dist/fonts/${f}`);
   }
