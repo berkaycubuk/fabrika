@@ -187,9 +187,9 @@ func cmdServe(port int, openBrowser bool) error {
 		return fmt.Errorf("load embedded UI: %w", err)
 	}
 
-	// Lifecycle context: cancelled on interrupt, also stops the engine loop and
-	// any in-flight agent subprocess.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Lifecycle context: cancelled on interrupt/SIGHUP, also stops the engine loop
+	// and any in-flight agent subprocess.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
 	srv := api.NewServer(st, cfg, cwd, assets, versionString())
@@ -232,6 +232,9 @@ func cmdServe(port int, openBrowser bool) error {
 		return err
 	case <-ctx.Done():
 		log.Println("\nfabrika: shutting down…")
+		if ok := srv.Stop(10 * time.Second); !ok {
+			log.Println("fabrika: timed out waiting for in-flight runs (will recover on next launch)")
+		}
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return httpServer.Shutdown(shutCtx)

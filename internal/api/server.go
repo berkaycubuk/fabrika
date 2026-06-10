@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/berkaycubuk/fabrika/internal/config"
 	"github.com/berkaycubuk/fabrika/internal/engine"
@@ -41,6 +42,12 @@ func NewServer(s *store.Store, cfg *config.Config, repoRoot string, web fs.FS, v
 // Start launches the engine dispatch loop until ctx is cancelled.
 func (s *Server) Start(ctx context.Context) {
 	s.engine.Start(ctx)
+}
+
+// Stop drains in-flight engine goroutines with the given timeout.
+// Returns true if all goroutines finished within the timeout.
+func (s *Server) Stop(timeout time.Duration) bool {
+	return s.engine.Stop(timeout)
 }
 
 // Handler builds the full HTTP routing tree.
