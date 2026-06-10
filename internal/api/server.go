@@ -75,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/uploads/{name}", s.getUpload)
 	mux.HandleFunc("GET /api/bigtasks", s.listBigTasks)
 	mux.HandleFunc("POST /api/bigtasks", s.createBigTask)
+	mux.HandleFunc("POST /api/bigtasks/reorder", s.reorderBigTasks)
 	mux.HandleFunc("DELETE /api/bigtasks/{id}", s.deleteBigTask)
 	mux.HandleFunc("POST /api/bigtasks/{id}/plan", s.promoteBigTask)
 	mux.HandleFunc("POST /api/bigtasks/{id}/replan", s.replanBigTask)
