@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/berkaycubuk/fabrika/internal/config"
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -60,6 +61,7 @@ func newTestServerWithStore(t *testing.T) (*store.Store, http.Handler) {
 	t.Cleanup(func() { s.Close() })
 	srv := NewServer(s, &config.Config{}, dir, nil, "")
 	srv.Start(context.Background())
+	t.Cleanup(func() { srv.Stop(5 * time.Second) })
 	return s, srv.Handler()
 }
 
@@ -289,6 +291,7 @@ func TestBigTaskPreflightRejectsRepoWithoutCommits(t *testing.T) {
 	t.Cleanup(func() { s.Close() })
 	srv := NewServer(s, &config.Config{}, dir, nil, "")
 	srv.Start(context.Background())
+	t.Cleanup(func() { srv.Stop(5 * time.Second) })
 	h := srv.Handler()
 
 	rec := do(t, h, "POST", "/api/bigtasks", model.BigTask{Title: "X", Intent: "y"})
