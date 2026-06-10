@@ -171,6 +171,7 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 	// kills one that's been silent past the idle timeout (DefaultIdleTimeout,
 	// overridable by the global "agent_idle_timeout" setting; 0/"off" disables).
 	sp.Heartbeat = e.onHeartbeat
+	sp.OnStart = e.onAgentStart
 	if d, ok := e.configuredIdleTimeout(); ok {
 		sp.IdleTimeout = d
 	}
@@ -509,6 +510,22 @@ func (e *Engine) onHeartbeat(hb agent.HeartbeatInfo) {
 	})
 }
 
+// onAgentStart is called once the agent subprocess has started. It records the
+// pgid in active_runs so a boot reaper can clean up orphaned process groups
+// left by a crash. The row is removed by the defer in run().
+func (e *Engine) onAgentStart(taskID string, pgid int) {
+	e.mu.Lock()
+	ri, ok := e.running[taskID]
+	agentID := ri.agentID
+	e.mu.Unlock()
+	if !ok {
+		return
+	}
+	if err := e.store.ActiveRuns.Record(taskID, pgid, agentID); err != nil {
+		log.Printf("engine: record active run %s pgid=%d: %v", taskID, pgid, err)
+	}
+}
+
 // wipCap reads the global work-in-progress ceiling from settings (0/unset =
 // unlimited). A malformed value is treated as unlimited.
 func (e *Engine) wipCap() int {
@@ -674,6 +691,11 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	}
 	defer cleanup()
 
+	defer func() {
+		if err := e.store.ActiveRuns.Delete(task.ID); err != nil {
+			log.Printf("engine: delete active run %s: %v", task.ID, err)
+		}
+	}()
 	agentRes, err := e.agent.Run(ctx, ag, task, wt, promptFile)
 	// A cancelled context means the human stopped this task in flight (steer).
 	// Finalize as closed with their reason rather than treating it as a failure.

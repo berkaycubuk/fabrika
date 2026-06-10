@@ -138,6 +138,10 @@ type Subprocess struct {
 	// liveness pulse. It must be cheap and non-blocking — it fires from the
 	// monitor goroutine while the agent's process is alive.
 	Heartbeat func(HeartbeatInfo)
+	// OnStart, if set, is called once immediately after the agent subprocess
+	// starts, with the task ID and the process-group id (pgid). With Setpgid the
+	// leader's pgid equals cmd.Process.Pid. It must be cheap and non-blocking.
+	OnStart func(taskID string, pgid int)
 	// beatInterval overrides the heartbeat/stall-check cadence (tests only). When
 	// 0, the cadence is derived from IdleTimeout.
 	beatInterval time.Duration
@@ -339,6 +343,7 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	// is orphaned, keeps the output pipe open, and both leaks a process and
 	// stalls Wait until WaitDelay. The group kill closes the pipe at once.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setPdeathsig(cmd.SysProcAttr)
 	cmd.Cancel = func() error {
 		if cmd.Process != nil {
 			// Negative pid signals the whole process group.
@@ -352,6 +357,9 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 
 	if err := cmd.Start(); err != nil {
 		return AgentResult{Stdout: stdout.String(), Stderr: stderr.String()}, fmt.Errorf("run agent %q: %w", a.Name, err)
+	}
+	if s.OnStart != nil {
+		s.OnStart(t.ID, cmd.Process.Pid)
 	}
 
 	// Monitor the agent's output cadence for the life of the process: emit a
