@@ -108,6 +108,7 @@ export function renderBoard(root: HTMLElement): void {
     el("div", { class: "board needs-board", id: "needs-board" }, COLUMNS.map(colSkeleton)),
   );
   setupBoardKeys();
+  setupBacklogDrag();
   refresh();
   registerReleaseListener(updateReleaseUI);
 }
@@ -173,6 +174,52 @@ function setupBoardKeys(): void {
     }
   };
   document.addEventListener("keydown", boardKeyHandler);
+}
+
+function setupBacklogDrag(): void {
+  const body = document.querySelector('[data-body="backlog"]');
+  if (!body) return;
+
+  let dragging: HTMLElement | null = null;
+
+  body.addEventListener("dragstart", (e: Event) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>("[data-bigtask-id]");
+    if (!target) return;
+    dragging = target;
+    (e as DragEvent).dataTransfer?.setData("text/plain", target.dataset.bigtaskId ?? "");
+    target.classList.add("drag-active");
+  });
+
+  body.addEventListener("dragover", (e: Event) => {
+    e.preventDefault();
+    const de = e as DragEvent;
+    const over = (de.target as HTMLElement).closest<HTMLElement>("[data-bigtask-id]");
+    if (!over || over === dragging || !dragging) return;
+    const rect = over.getBoundingClientRect();
+    if (de.clientY < rect.top + rect.height / 2) {
+      body.insertBefore(dragging, over);
+    } else {
+      over.after(dragging);
+    }
+  });
+
+  body.addEventListener("drop", (e: Event) => {
+    e.preventDefault();
+    if (!dragging) return;
+    dragging.classList.remove("drag-active");
+    const ids = Array.from(body.querySelectorAll<HTMLElement>("[data-bigtask-id]"))
+      .map((c) => c.dataset.bigtaskId!)
+      .filter(Boolean);
+    dragging = null;
+    void api.reorderBigTasks(ids);
+  });
+
+  body.addEventListener("dragend", () => {
+    if (dragging) {
+      dragging.classList.remove("drag-active");
+      dragging = null;
+    }
+  });
 }
 
 // Monotonic generation token: bumped at the start of every refresh() and
@@ -353,7 +400,12 @@ function paint(): void {
     const inFlight = new Set(storedTasks.filter((t) => IN_FLIGHT.includes(t.status)).map((t) => t.id));
     for (const id of liveness.keys()) if (!inFlight.has(id)) liveness.delete(id);
 
-    fillColumn("backlog", storedBigTasks.filter((b) => b.status === "backlog").map((b) => bigTaskCard(b, storedAgents)));
+    const backlogItems = storedBigTasks.filter((b) => b.status === "backlog").map((b) => {
+      const item = bigTaskCard(b, storedAgents);
+      item.el.draggable = true;
+      return item;
+    });
+    fillColumn("backlog", backlogItems);
     fillColumn("planning", storedBigTasks.filter((b) => PRE_PLAN.includes(b.status)).map((b) => bigTaskCard(b, storedAgents)));
     fillColumn("approve", storedPlans.filter((p) => p.status === "proposed").map((p) => planCard(p, storedAgents)));
     fillColumn("decide", storedDecisions.map(decideCard));
@@ -453,7 +505,9 @@ function bigTaskCard(b: BigTask, agents: Agent[]): CardItem {
   if (b.status === "planning" && b.plannerAgentId) {
     meta.push(agentPhoto(agents, b.plannerAgentId));
   }
-  return { el: card(b.title, meta, () => openBigTaskDetail(b, agents)), filterable: { title: b.title } };
+  const cardEl = card(b.title, meta, () => openBigTaskDetail(b, agents));
+  cardEl.dataset.bigtaskId = b.id;
+  return { el: cardEl, filterable: { title: b.title } };
 }
 
 export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
