@@ -69,6 +69,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/tasks/{id}", s.deleteTask)
 	mux.HandleFunc("GET /api/tasks/{id}/comments", s.listComments)
 	mux.HandleFunc("POST /api/tasks/{id}/comments", s.createComment)
+	mux.HandleFunc("GET /api/bigtasks/{id}/comments", s.listBigTaskComments)
+	mux.HandleFunc("POST /api/bigtasks/{id}/comments", s.createBigTaskComment)
 	mux.HandleFunc("POST /api/uploads", s.createUpload)
 	mux.HandleFunc("GET /api/uploads/{name}", s.getUpload)
 	mux.HandleFunc("GET /api/bigtasks", s.listBigTasks)
