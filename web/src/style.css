@@ -183,6 +183,9 @@ code { font-family: var(--mono); font-size: var(--fs-md); }
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 .conn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: auto;
   padding: var(--space-2) var(--space-4);
 }
