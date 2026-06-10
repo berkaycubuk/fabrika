@@ -288,6 +288,22 @@ func (s *Server) stopBigTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) reorderBigTasks(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.store.BigTasks.Reorder(body.IDs); err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	s.hub.Broadcast(Event{Type: "bigtask.reordered", Payload: body.IDs})
+	writeJSON(w, http.StatusOK, map[string]any{"ids": body.IDs})
+}
+
 func (s *Server) deleteBigTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.engine.DeleteBigTask(id); err != nil {
