@@ -174,6 +174,7 @@ export interface Metrics {
 export interface Comment {
   id: string;
   taskId: string;
+  bigTaskId?: string;
   authorType: string;
   authorId: string;
   body: string;

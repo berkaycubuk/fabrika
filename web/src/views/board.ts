@@ -497,6 +497,7 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
       }}),
     ]));
   }
+  children.push(bigTaskCommentsSection(b.id));
   const side = buildSidebar([
     asideField("Status", [pill(b.status, `status-${b.status}`)]),
     b.plannerAgentId ? asideField("Planner", [tag(agentName(agents, b.plannerAgentId), "agent")]) : null,
@@ -505,6 +506,7 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
       : null,
   ]);
   openModal(b.title, el("div", { class: "detail" }, children), { wide: true, sidebar: side });
+  loadBigTaskComments(b.id);
 }
 
 function decideCard(d: Decision): CardItem {
@@ -973,6 +975,60 @@ export function commentItem(c: Comment): HTMLElement {
   if (c.body) children.push(el("div", { class: "comment-body" }, [c.body]));
   if (c.attachments?.length) children.push(attachmentGallery(c.attachments));
   return el("div", { class: cls }, children);
+}
+
+function bigTaskCommentsSection(id: string): HTMLElement {
+  const input = el("textarea", { class: "comment-input", placeholder: "Add a comment… (paste or attach images)", rows: "2" }) as HTMLTextAreaElement;
+  const err = el("div", { class: "form-error" }, []);
+  const attach = imageAttach(input, err);
+
+  const submit = async () => {
+    const text = input.value.trim();
+    const attachments = attach.urls();
+    if (!text && attachments.length === 0) return;
+    err.textContent = "";
+    try {
+      await api.addBigTaskComment(id, text, attachments);
+      input.value = "";
+      attach.reset();
+      loadBigTaskComments(id);
+    } catch (e) {
+      err.textContent = (e as Error).message;
+    }
+  };
+
+  return el("div", { class: "comments" }, [
+    el("div", { class: "section-h sm" }, ["Comments"]),
+    el("div", { id: `bigtask-comments-${id}`, class: "comment-list" }, []),
+    el("div", { class: "comment-compose" }, [
+      input,
+      attach.previews,
+      err,
+      el("div", { class: "form-actions" }, [...attach.controls, button("Comment", { variant: "primary", onclick: submit })]),
+    ]),
+  ]);
+}
+
+async function loadBigTaskComments(id: string): Promise<void> {
+  try {
+    const comments = await api.listBigTaskComments(id);
+    const slot = document.getElementById(`bigtask-comments-${id}`);
+    if (!slot) return;
+    clear(slot);
+    if (comments.length === 0) {
+      slot.append(el("div", { class: "comment-empty muted sm" }, ["No comments yet."]));
+      return;
+    }
+    const systemComments = comments.filter((c) => c.authorType === "system");
+    const regularComments = comments.filter((c) => c.authorType !== "system");
+    if (systemComments.length > 0) {
+      const timeline = systemComments.map((c) => c.body).join(" → ");
+      slot.append(el("div", { class: "transition-timeline" }, [timeline]));
+    }
+    for (const c of regularComments) slot.append(commentItem(c));
+  } catch {
+    /* comments are best-effort */
+  }
 }
 
 async function loadEvidence(id: string): Promise<void> {
