@@ -251,7 +251,12 @@ func (r *Repo) AddAllAndCommit(ctx context.Context, worktreeDir, msg string) (bo
 	if _, err := runIn(ctx, worktreeDir, "diff", "--cached", "--quiet"); err == nil {
 		return false, nil // nothing staged -> clean tree
 	}
-	if _, err := runIn(ctx, worktreeDir, "commit", "-m", WithCoAuthor(msg)); err != nil {
+	// Supply a deterministic fabrika identity so the commit succeeds even when
+	// no global/system git user is configured (e.g. CI runners, fresh machines).
+	if _, err := runIn(ctx, worktreeDir,
+		"-c", "user.name=fabrika",
+		"-c", "user.email=noreply@fabrika-ai.com",
+		"commit", "-m", WithCoAuthor(msg)); err != nil {
 		return false, err
 	}
 	return true, nil
