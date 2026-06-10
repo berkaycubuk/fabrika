@@ -5,11 +5,9 @@ import (
 	"log"
 	"net/http"
 	"time"
-
-	"github.com/berkaycubuk/fabrika/internal/observability"
 )
 
-var reportPanic = func(err error) { observability.CaptureError(err) }
+var reportPanic = func(err error) { log.Printf("fabrika: recovered %v", err) }
 
 func recoverPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -149,5 +149,19 @@ embedded via `go:embed`, so there's nothing to deploy alongside it.
 | `internal/release`    | ship / bake timer / rollback manager                          |
 | `internal/ci`         | external-CI poller → task CI status + auto fix-task           |
 | `internal/api`        | REST + WebSocket surface (SPECS §11), uploads, attention feed |
-| `internal/observability` | optional Sentry error reporting                            |
 | `web`                 | vanilla-TS cockpit, built with esbuild, embedded via `go:embed` |
+
+## Telemetry
+
+None. Fabrika sends nothing off your machine — no analytics, no crash
+reporting, no phone-home. The binary makes no network connections except
+to the agents and git remotes you configure.
+
+## License
+
+Fabrika is [Fair Source](https://fair.io), licensed under the
+[Functional Source License, Version 1.1, MIT Future License](LICENSE.md)
+(FSL-1.1-MIT). You can read, run, modify, and redistribute the code for any
+purpose except building a competing product. Each release automatically
+becomes available under the plain [MIT license](LICENSE.md#grant-of-future-license)
+two years after publication.

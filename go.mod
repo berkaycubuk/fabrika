@@ -5,7 +5,6 @@ go 1.26.2
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/coder/websocket v1.8.14
-	github.com/getsentry/sentry-go v0.46.2
 	github.com/google/uuid v1.6.0
 	modernc.org/sqlite v1.51.0
 )
