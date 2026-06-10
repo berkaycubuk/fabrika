@@ -85,10 +85,10 @@ type Engine struct {
 	agent    agent.Runner
 	emit     EventFunc
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wake   chan struct{}
-	mu     sync.Mutex         // guards running + serializes git worktree/state writes
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wake    chan struct{}
+	mu      sync.Mutex         // guards running + serializes git worktree/state writes
 	running map[string]runInfo // taskID -> in-flight info
 	wg      sync.WaitGroup     // tracks dispatched goroutines
 
@@ -200,6 +200,7 @@ func (e *Engine) configuredIdleTimeout() (time.Duration, bool) {
 // Start launches the dispatch loop until ctx is cancelled.
 func (e *Engine) Start(ctx context.Context) {
 	e.ctx, e.cancel = context.WithCancel(ctx)
+	e.reapOrphanProcesses()
 	e.recoverOrphans()
 	e.release.ResumeBakeTimers()
 	e.ci.Start(ctx)
