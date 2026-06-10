@@ -1,0 +1,10 @@
+#!/bin/sh
+# pre-commit hook: block commits that contain unformatted Go.
+# Mirrors the CI `make fmt-check` step so the gofmt failure can't reach CI.
+
+unformatted="$(gofmt -l internal/ cmd/)"
+if [ -n "$unformatted" ]; then
+	echo "Go files not formatted:"
+	echo "$unformatted"
+	exit 1
+fi
