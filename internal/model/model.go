@@ -231,10 +231,12 @@ type Decision struct {
 	Status   string   `json:"status"`  // open|answered
 }
 
-// Comment is a note on a Task, authored by a human or an agent.
+// Comment is a note on a Task or BigTask, authored by a human or an agent.
+// Exactly one of TaskID or BigTaskID is set.
 type Comment struct {
 	ID          string   `json:"id"`
 	TaskID      string   `json:"taskId"`
+	BigTaskID   string   `json:"bigTaskId"`
 	AuthorType  string   `json:"authorType"` // user|agent
 	AuthorID    string   `json:"authorId"`   // agent id; empty for user
 	Body        string   `json:"body"`
