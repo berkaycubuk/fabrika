@@ -223,6 +223,7 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 	e.mu.Lock()
 	_ = repo.RemoveWorktree(e.ctx, wt)
 	_ = os.RemoveAll(wt)
+	_ = repo.DeleteBranch(e.ctx, branch)
 	if mkErr := os.MkdirAll(filepath.Dir(wt), 0o755); mkErr != nil {
 		e.mu.Unlock()
 		e.failBigTask(bt.ID, "create worktree dir: %v", mkErr)
