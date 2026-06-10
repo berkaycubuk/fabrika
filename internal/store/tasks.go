@@ -40,11 +40,10 @@ func (r *BigTaskRepo) Get(id string) (*model.BigTask, error) {
 	return b, err
 }
 
-// List returns all BigTasks newest-first. The rowid tiebreaker keeps the order
-// stable when rows share a (second-resolution) created_at, so callers that
-// iterate in reverse get a deterministic oldest-first (FIFO) sequence.
+// List returns all BigTasks ordered by position first, then newest-first. The
+// rowid tiebreaker keeps the order stable when rows share a created_at.
 func (r *BigTaskRepo) List() ([]model.BigTask, error) {
-	rows, err := r.db.Query(`SELECT ` + bigTaskCols + ` FROM bigtasks ORDER BY created_at DESC, rowid DESC`)
+	rows, err := r.db.Query(`SELECT ` + bigTaskCols + ` FROM bigtasks ORDER BY position ASC, created_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +154,25 @@ func (r *BigTaskRepo) Delete(id string) error {
 		return err
 	}
 	return mustAffect(res)
+}
+
+// Reorder sets the position of each big task to its index within orderedIDs in
+// a single transaction. An empty slice is a no-op.
+func (r *BigTaskRepo) Reorder(orderedIDs []string) error {
+	if len(orderedIDs) == 0 {
+		return nil
+	}
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	for i, id := range orderedIDs {
+		if _, err := tx.Exec(`UPDATE bigtasks SET position=? WHERE id=?`, i, id); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // TaskRepo persists Tasks in the per-project store.
