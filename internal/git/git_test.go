@@ -409,3 +409,118 @@ func TestMergeConflictAborts(t *testing.T) {
 		t.Fatalf("repo should be clean after aborted merge, status:\n%s", out)
 	}
 }
+
+// pushedSetFixture builds a repo with a bare origin where two commits are
+// pushed and a third exists only locally. Returns the repo handle and the
+// three SHAs: [0],[1] pushed, [2] unpushed.
+func pushedSetFixture(t *testing.T) (*Repo, [3]string) {
+	t.Helper()
+	ctx := context.Background()
+	dir := initRepo(t)
+	repo, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	if out, err := exec.Command("git", "init", "-q", "--bare", bare).CombinedOutput(); err != nil {
+		t.Fatalf("init bare: %v\n%s", err, out)
+	}
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("remote", "add", "origin", bare)
+
+	var shas [3]string
+	commit := func(name string) string {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		run("add", ".")
+		run("commit", "-q", "-m", name)
+		sha, err := repo.RevParse(ctx, "HEAD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sha
+	}
+	shas[0] = commit("a.txt")
+	shas[1] = commit("b.txt")
+	if _, err := repo.Push(ctx, "origin", "main"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	shas[2] = commit("c.txt") // local only
+	return repo, shas
+}
+
+func TestPushedSet(t *testing.T) {
+	ctx := context.Background()
+	repo, shas := pushedSetFixture(t)
+
+	bogus := strings.Repeat("0", 40)
+	got, err := repo.PushedSet(ctx, "origin", "main", []string{shas[0], shas[1], shas[2], bogus})
+	if err != nil {
+		t.Fatalf("PushedSet: %v", err)
+	}
+	want := map[string]bool{shas[0]: true, shas[1]: true, shas[2]: false, bogus: false}
+	for sha, w := range want {
+		if got[sha] != w {
+			t.Errorf("PushedSet[%s] = %v, want %v", sha, got[sha], w)
+		}
+	}
+
+	// A branch that was never pushed has no remote-tracking ref: every sha
+	// reports unpushed, without error.
+	got, err = repo.PushedSet(ctx, "origin", "nope", []string{shas[0]})
+	if err != nil {
+		t.Fatalf("PushedSet (missing ref): %v", err)
+	}
+	if got[shas[0]] {
+		t.Error("sha reported pushed against a nonexistent remote ref")
+	}
+}
+
+// TestPushedSetConstantGitCalls locks down the fix for the kanban board's
+// multi-second refresh: annotating N merged tasks must not cost N git
+// subprocesses. A counting `git` shim on PATH records every invocation while
+// PushedSet checks 50 SHAs; the count must stay constant (rev-parse + rev-list).
+func TestPushedSetConstantGitCalls(t *testing.T) {
+	ctx := context.Background()
+	repo, shas := pushedSetFixture(t)
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not installed")
+	}
+	binDir := t.TempDir()
+	countFile := filepath.Join(binDir, "count")
+	shim := "#!/bin/sh\necho x >> " + countFile + "\nexec " + realGit + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(binDir, "git"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	many := make([]string, 0, 50)
+	for i := 0; i < 50; i++ {
+		many = append(many, shas[i%3])
+	}
+	if _, err := repo.PushedSet(ctx, "origin", "main", many); err != nil {
+		t.Fatalf("PushedSet: %v", err)
+	}
+
+	data, err := os.ReadFile(countFile)
+	if err != nil {
+		t.Fatalf("shim never ran: %v", err)
+	}
+	if n := strings.Count(string(data), "x"); n > 2 {
+		t.Fatalf("PushedSet(50 shas) spawned %d git processes, want <= 2", n)
+	}
+}

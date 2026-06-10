@@ -192,25 +192,32 @@ func (r *Repo) Ahead(ctx context.Context, remote, branch string) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(out))
 }
 
-// Pushed reports whether sha has already been pushed to remote/branch. It
-// reads the local remote-tracking ref only — no network round-trip. If that
-// ref does not exist (branch never pushed), it returns (false, nil) without
-// error. A commit is considered pushed when it is an ancestor of the tip of
-// the remote ref, which includes the tip itself.
-func (r *Repo) Pushed(ctx context.Context, remote, branch, sha string) (bool, error) {
+// PushedSet reports, for each sha, whether it has already been pushed to
+// remote/branch. It reads the local remote-tracking ref only — no network
+// round-trip. If that ref does not exist (branch never pushed), every sha
+// reports false without error. A commit is considered pushed when it is
+// reachable from the tip of the remote ref, which includes the tip itself.
+// A single rev-list enumerates the reachable commits, so the cost is
+// independent of len(shas) — this keeps task-list reads flat as merged
+// history grows instead of spawning a git process per task.
+func (r *Repo) PushedSet(ctx context.Context, remote, branch string, shas []string) (map[string]bool, error) {
+	pushed := make(map[string]bool, len(shas))
 	remoteRef := remote + "/" + branch
 	if _, err := r.run(ctx, "rev-parse", "--verify", "--quiet", remoteRef); err != nil {
-		return false, nil
+		return pushed, nil
 	}
-	cmd := exec.CommandContext(ctx, "git", "merge-base", "--is-ancestor", sha, remoteRef)
-	cmd.Dir = r.Root
-	if _, _, err := runCmd(cmd); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return false, nil
-		}
-		return false, fmt.Errorf("git merge-base --is-ancestor %s %s: %w", sha, remoteRef, err)
+	out, err := r.run(ctx, "rev-list", remoteRef)
+	if err != nil {
+		return nil, fmt.Errorf("git rev-list %s: %w", remoteRef, err)
 	}
-	return true, nil
+	reachable := make(map[string]bool)
+	for _, sha := range strings.Fields(out) {
+		reachable[sha] = true
+	}
+	for _, sha := range shas {
+		pushed[sha] = reachable[sha]
+	}
+	return pushed, nil
 }
 
 // Push pushes branch to remote, setting upstream tracking (-u). It pushes the

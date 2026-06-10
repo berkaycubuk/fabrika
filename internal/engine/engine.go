@@ -1167,17 +1167,27 @@ func pickRemote(remotes []string) (string, error) {
 // annotatePushed sets t.Pushed for each merged task whose merge commit is
 // reachable from the remote-tracking ref for the given remote/branch. Non-merged
 // tasks and tasks with an empty MergeCommitSHA are left as Pushed=false without
-// touching git. On a Pushed error the field stays false (best-effort).
+// touching git. All merge commits are resolved in one PushedSet call so the
+// cost stays flat as merged history grows; on error every field stays false
+// (best-effort).
 func annotatePushed(ctx context.Context, repo *git.Repo, remote, branch string, tasks []model.Task) []model.Task {
+	shas := make([]string, 0, len(tasks))
 	for i := range tasks {
-		if tasks[i].Status != model.TaskMerged || tasks[i].MergeCommitSHA == "" {
-			continue
+		if tasks[i].Status == model.TaskMerged && tasks[i].MergeCommitSHA != "" {
+			shas = append(shas, tasks[i].MergeCommitSHA)
 		}
-		pushed, err := repo.Pushed(ctx, remote, branch, tasks[i].MergeCommitSHA)
-		if err != nil {
-			continue
+	}
+	if len(shas) == 0 {
+		return tasks
+	}
+	pushed, err := repo.PushedSet(ctx, remote, branch, shas)
+	if err != nil {
+		return tasks
+	}
+	for i := range tasks {
+		if tasks[i].Status == model.TaskMerged && tasks[i].MergeCommitSHA != "" {
+			tasks[i].Pushed = pushed[tasks[i].MergeCommitSHA]
 		}
-		tasks[i].Pushed = pushed
 	}
 	return tasks
 }
