@@ -1,5 +1,5 @@
 # GoReleaser config — builds the release artifacts and uploads them to a
-# Cloudflare R2 bucket (no public GitHub release; source repo is private).
+# Cloudflare R2 bucket (distribution is via R2/install.sh, not GitHub releases).
 # Validate locally:  goreleaser check
 # Dry-run a build:   make dist   (== goreleaser release --snapshot --clean)
 # Cut a real release: make tag VERSION=v0.1.0  (pushes the tag; CI does the rest)
@@ -53,12 +53,12 @@ checksum:
   name_template: "checksums.txt"
 
 changelog:
-  # Local git log, not the GitHub API — the source repo is private and we don't
-  # publish a GitHub release anyway.
+  # Local git log, not the GitHub API — we don't publish GitHub releases;
+  # artifacts are distributed from R2.
   use: git
   sort: asc
 
-# Source repo is private, so no public GitHub release. Artifacts go to R2.
+# No GitHub release; artifacts go to R2 and installs flow through install.sh.
 release:
   disable: "true"
 
