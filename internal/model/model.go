@@ -11,8 +11,8 @@ const (
 	BigTaskPlanned  = "planned"
 	BigTaskRunning  = "running"
 	BigTaskDone     = "done"
-	BigTaskBacklog = "backlog" // parked idea; not yet planned/implemented
-	BigTaskError   = "error"  // planning failed; Error holds a human-readable reason
+	BigTaskBacklog  = "backlog" // parked idea; not yet planned/implemented
+	BigTaskError    = "error"   // planning failed; Error holds a human-readable reason
 
 	// Plan.Status
 	PlanProposed = "proposed"
@@ -59,7 +59,7 @@ const (
 	PriorityHigh   = "high"
 
 	// Task reporter: who created the task
-	ReporterUser     = "user"
+	ReporterUser    = "user"
 	ReporterPlanner = "planner"
 	ReporterCI      = "ci"
 

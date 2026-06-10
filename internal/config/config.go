@@ -22,8 +22,8 @@ type Config struct {
 	Verbs    Verbs    `toml:"verbs" json:"verbs"`
 	Risk     Risk     `toml:"risk" json:"risk"`
 	Autonomy Autonomy `toml:"autonomy" json:"autonomy"`
-	Deploy Deploy `toml:"deploy" json:"deploy"`
-	CI    CI     `toml:"ci" json:"ci"`
+	Deploy   Deploy   `toml:"deploy" json:"deploy"`
+	CI       CI       `toml:"ci" json:"ci"`
 }
 
 // CI configures the CI run poller. An absent [ci] section or an empty Command

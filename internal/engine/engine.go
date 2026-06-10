@@ -44,7 +44,7 @@ const (
 	settingAuditPct            = "audit_rate"           // 0..1: share of auto-merged PRs sampled for human audit
 	settingMutation            = "mutation_testing"     // "on" enables the mutation-testing gate validator
 	settingQuarantineThreshold = "quarantine_threshold" // consecutive fails before an agent is skipped
-	settingIdleTimeout         = "agent_idle_timeout"    // duration of agent silence before it's killed as stalled (0/"off" disables)
+	settingIdleTimeout         = "agent_idle_timeout"   // duration of agent silence before it's killed as stalled (0/"off" disables)
 )
 
 // runInfo records what an in-flight task is doing, for slot accounting and
@@ -106,8 +106,8 @@ type Engine struct {
 	// Overridable in tests for determinism; defaults to a rate-based RNG.
 	sample func(rate float64) bool
 
-	release  *releasemgr.Manager
-	ci *cimgr.Poller
+	release *releasemgr.Manager
+	ci      *cimgr.Poller
 }
 
 // New constructs an Engine rooted at repoRoot (the target repo). emit may be nil.
