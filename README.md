@@ -167,3 +167,11 @@ Fabrika is [Fair Source](https://fair.io), licensed under the
 purpose except building a competing product. Each release automatically
 becomes available under the plain [MIT license](LICENSE.md#grant-of-future-license)
 two years after publication.
+
+## Agent skill
+
+A ready-made skill for driving Fabrika's REST API lives at
+[`skills/fabrika-api/SKILL.md`](skills/fabrika-api/SKILL.md). Load it into
+any coding agent (Claude Code, Aider, etc.) to let the agent list tasks,
+create tasks, poll attempts, and accept work via `curl` — no extra tooling
+required.
