@@ -3,6 +3,7 @@
 // Create task; Agents exposes the registry + observability views.
 import { el } from "./dom.js";
 import { brand } from "./brand.js";
+import { initTheme, themeToggle } from "./theme.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent, onHeartbeat } from "./views/board.js";
@@ -65,6 +66,7 @@ function sidebar(): HTMLElement {
     el("div", { class: "nav-group" }, NAV.map(navItem)),
     el("div", { class: "conn-row" }, [
       el("span", { id: "conn", class: "pill soon" }, ["connecting"]),
+      themeToggle(),
     ]),
     el("a", { class: "nav-item", href: "https://fabrika-ai.com/docs/", target: "_blank", rel: "noopener" }, ["Docs"]),
     versionEl,
@@ -85,6 +87,7 @@ function setConn(state: "live" | "reconnecting"): void {
 }
 
 function main(): void {
+  initTheme();
   const app = document.getElementById("app")!;
   const content = el("main", { class: "content" });
   app.append(el("div", { class: "layout" }, [sidebar(), content]));
