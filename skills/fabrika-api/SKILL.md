@@ -375,3 +375,115 @@ A successful push returns:
 ```
 
 Failures (no remote configured, non-fast-forward, network error) return `409 Conflict` with git's error message in `detail`.
+
+## Pitfalls
+
+Non-obvious behaviors that burn agents (and humans) the first time.
+
+---
+
+### 1. Port is not always 7777
+
+`7777` is the default, but anyone who started Fabrika with `--port 8080` (or any other value) will see connection-refused errors if you hardcode `7777`. **Always confirm the live base URL before issuing other calls:**
+
+```sh
+curl -s http://localhost:7777/api/version
+# if that fails, try the port Fabrika was actually started on
+```
+
+The `/api/version` response also returns `"project"`, which tells you which repo you are talking to — useful when multiple Fabrika instances are running for different projects.
+
+---
+
+### 2. Force-merge semantics: `failed`/`blocked` tasks need `{"force":true}`
+
+`POST /api/tasks/{id}/accept` without a body (or with `{}`) **only succeeds when the task is in `review` status.** Calling it on a `failed` or `blocked` task returns `409 Conflict`. To merge those states you must explicitly opt in:
+
+```sh
+curl -s -X POST http://localhost:7777/api/tasks/TASK_ID/accept \
+  -H 'Content-Type: application/json' \
+  -d '{"force": true}'
+```
+
+`force: true` signals deliberate intent — it overrides soft gate warnings and bypasses the normal quality check. The worktree from the failed attempt must still exist; if it has been cleaned up, the accept will fail regardless of `force`.
+
+---
+
+### 3. `closed` is not the same as `failed` or `blocked`
+
+Full task status set (in lifecycle order):
+
+| Status | Meaning |
+|---|---|
+| `planned` | Created by a planner, not yet released |
+| `ready` | Queued, waiting for an agent |
+| `claimed` | An agent has picked it up |
+| `running` | Agent is actively working |
+| `verifying` | Gate is running acceptance checks |
+| `review` | Gate passed; awaiting human merge or rejection |
+| `merged` | Accepted and merged into the integration branch |
+| `blocked` | Agent escalated — needs human input before proceeding |
+| `failed` | Attempt(s) exhausted or gate hard-failed |
+| `closed` | Dismissed by a human (kicked back, won't-fix, duplicate) |
+
+**`failed` and `blocked` are still in the attention/review queue** — they are awaiting a human decision (retry, force-merge, or close). **`closed` is a terminal dismissal** — the task is removed from the queue. Only `closed` tasks can be `DELETE`d; trying to delete a task in any other status returns an error.
+
+---
+
+### 4. Empty diff = automatic verification failure
+
+If an agent's attempt produces **no file changes** (empty diff), the gate treats it as a failure regardless of whether `verifyCmds` pass. An agent that writes only to temp files, only modifies files outside the worktree, or exits without committing will always fail. Ensure the agent commits at least one meaningful change before the gate runs.
+
+---
+
+### 5. Global store vs per-project store
+
+Fabrika has two separate SQLite databases:
+
+| What | Store | Scope |
+|---|---|---|
+| Agents, conventions, settings | **Global** (`~/.fabrika/fabrika.db`) | Shared across all repos |
+| Tasks, big tasks, plans, decisions, releases | **Per-project** (`<repo>/.fabrika/fabrika.db`) | Isolated to one repo |
+
+An agent registered in the global store can be dispatched to tasks in any project. If you delete an agent or update a convention, the change is reflected everywhere. Conversely, tasks and plans from repo A are completely invisible when Fabrika is started in repo B.
+
+---
+
+### 6. Batch endpoints return per-item results — they never fail wholesale
+
+`POST /api/tasks/accept-batch` and `POST /api/tasks/retry-batch` always return `200` with an array of per-item results, even when individual items fail:
+
+```json
+[
+  {"id": "abc", "ok": true},
+  {"id": "def", "ok": false, "error": "task not in review status"}
+]
+```
+
+Do **not** assume a `200` response means all items succeeded. Always iterate the array and check `ok` on each entry.
+
+---
+
+### 7. `promote: true` on a decision answer creates a standing Convention
+
+When you answer a decision with `"promote": true`, Fabrika does more than record the answer — it creates a new entry in the global **Conventions** store:
+
+```sh
+curl -s -X POST http://localhost:7777/api/decisions/DECISION_ID/answer \
+  -H 'Content-Type: application/json' \
+  -d '{"answer": "Use PostgreSQL.", "promote": true}'
+```
+
+That convention is then injected into every future agent prompt across all projects. Use `promote: true` only for policy-level decisions you want to apply permanently; use `promote: false` (or omit) for one-off answers. To remove an elevated convention later, delete it via `DELETE /api/conventions/{id}`.
+
+---
+
+### 8. Push and Ship can return 409
+
+`POST /api/push` and `POST /api/releases/ship` both push to a git remote, and both return **`409 Conflict`** when git refuses the push:
+
+- **No remote configured** — the repo has no `origin` (or the configured remote is missing).
+- **Non-fast-forward** — the remote branch has commits that are not in the local integration branch (someone pushed directly, or a force-push happened upstream).
+- **Network / auth error** — git's error message is forwarded verbatim in the `detail` field.
+
+On a `409`, read `detail` to diagnose. A non-fast-forward requires a manual `git pull --rebase` (or equivalent) on the integration branch before retrying.
