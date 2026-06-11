@@ -92,12 +92,6 @@ export function renderBoard(root: HTMLElement): void {
           style: "display:none",
           onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
         }, ["Push"]),
-        // Ship button: hidden when deploy is not enabled; shows unshipped count.
-        el("button", {
-          id: "ship-btn",
-          style: "display:none",
-          onclick: () => openShipConfirm(),
-        }, ["Ship · 0"]),
         button("Create task", { onclick: openCreateTask }),
         button("Define big task", { variant: "primary", onclick: openDefine }),
       ]),
@@ -1367,47 +1361,28 @@ function diffBlock(diff: string): HTMLElement {
   return renderDiff(diff);
 }
 
-// updateReleaseUI refreshes the Ship button count and the release strip with
-// the latest release state. Both controls are hidden when deploy is not wired up
-// (no releases in the store and unshipped returns an empty list on a fresh repo).
+// updateReleaseUI refreshes the release strip with the latest release state.
+// The strip is hidden when deploy is not wired up (no releases in the store).
 async function updateReleaseUI(): Promise<void> {
   const strip = document.getElementById("release-strip");
-  const shipBtn = document.getElementById("ship-btn") as HTMLButtonElement | null;
-  if (!strip && !shipBtn) return;
+  if (!strip) return;
   try {
-    const [releases, unshippedTasks] = await Promise.all([
-      api.listReleases(),
-      api.unshipped(),
-    ]);
-    const n = unshippedTasks.length;
+    const releases = await api.listReleases();
     const latest = releases.length ? releases[releases.length - 1] : null;
-    const inFlight = latest && (latest.status === "deploying" || latest.status === "baking");
 
-    // Ship button — show only when there is at least one release or unshipped task
-    // (proxy for deploy being configured). Disabled when in-flight or count is 0.
-    if (shipBtn) {
-      const deployActive = releases.length > 0 || n > 0;
-      shipBtn.style.display = deployActive ? "" : "none";
-      shipBtn.textContent = `Ship · ${n}`;
-      shipBtn.disabled = n === 0 || !!inFlight;
+    if (!latest) {
+      strip.style.display = "none";
+      return;
     }
-
-    // Release strip
-    if (strip) {
-      if (!latest) {
-        strip.style.display = "none";
-        return;
-      }
-      strip.style.display = "";
-      clear(strip);
-      const statusClass = releaseStatusClass(latest.status);
-      const label = releaseStripLabel(latest);
-      strip.append(
-        el("span", { class: `release-strip-id ${statusClass}` }, [`#${latest.id.slice(0, 6)}`]),
-        el("span", { class: `release-strip-status ${statusClass}` }, [label]),
-        el("button", { class: "release-strip-detail", onclick: () => openReleaseDetail(latest) }, ["details"]),
-      );
-    }
+    strip.style.display = "";
+    clear(strip);
+    const statusClass = releaseStatusClass(latest.status);
+    const label = releaseStripLabel(latest);
+    strip.append(
+      el("span", { class: `release-strip-id ${statusClass}` }, [`#${latest.id.slice(0, 6)}`]),
+      el("span", { class: `release-strip-status ${statusClass}` }, [label]),
+      el("button", { class: "release-strip-detail", onclick: () => openReleaseDetail(latest) }, ["details"]),
+    );
   } catch {
     /* release UI is best-effort — never break the board */
   }
@@ -1433,32 +1408,6 @@ function releaseStripLabel(rel: Release): string {
     case "rolled_back": return "rolled back";
     default: return rel.status;
   }
-}
-
-function openShipConfirm(): void {
-  api.unshipped().then((tasks) => {
-    const n = tasks.length;
-    if (n === 0) return;
-    const taskList = el("ul", { class: "ship-task-list" },
-      tasks.map((t) => el("li", {}, [t.title]))
-    );
-    const body = el("div", { class: "detail" }, [
-      el("p", {}, [`Ship ${n} merged task${n !== 1 ? "s" : ""} as a new release?`]),
-      taskList,
-      actionRow([
-        button("Confirm ship", { variant: "primary", onclick: () => {
-          closeModal();
-          api.ship().then(() => updateReleaseUI()).catch((e: unknown) => {
-            alert((e as Error).message);
-          });
-        }}),
-        button("Cancel", { onclick: () => closeModal() }),
-      ]),
-    ]);
-    openModal("Ship release", body, {});
-  }).catch((e: unknown) => {
-    alert((e as Error).message);
-  });
 }
 
 function openReleaseDetail(rel: Release): void {
