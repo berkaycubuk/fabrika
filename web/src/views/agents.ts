@@ -7,6 +7,7 @@ import { ROLES, type Agent } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
 import { openModal, closeModal } from "../ui.js";
 import { AGENT_KINDS, type AgentKind } from "../agentKinds.js";
+import { createModelPicker } from "./modelPicker.js";
 
 const kindFor = (command: string) => AGENT_KINDS.find((k) => k.command === command);
 
@@ -18,10 +19,6 @@ const PRIORITY_OPTIONS = [
   { value: 1, label: "High" },
 ];
 const priorityLabel = (p: number) => PRIORITY_OPTIONS.find((o) => o.value === p)?.label ?? "Normal";
-
-// First model in a kind's catalog is the recommended default. Falls back to ""
-// for a back-compat kind that lists no models (command without a {model} token).
-const defaultModel = (kind: AgentKind) => kind.models[0]?.id ?? "";
 
 const labelForModel = (kind: AgentKind | undefined, id: string) =>
   kind?.models.find((m) => m.id === id)?.label ?? id;
@@ -52,14 +49,11 @@ function openAgentModal(agent?: Agent): void {
     {},
     AGENT_KINDS.map((k) => el("option", { value: k.id }, [k.label])),
   ) as HTMLSelectElement;
-  const modelDatalist = el("datalist", { id: "agent-model-list" }) as HTMLDataListElement;
-  const model = el("input", { list: "agent-model-list", placeholder: "Type or select a model…" }) as HTMLInputElement;
+  const picker = createModelPicker();
 
   const populateModels = (kindId: string, selected?: string) => {
     const k = AGENT_KINDS.find((x) => x.id === kindId) ?? AGENT_KINDS[0];
-    clear(modelDatalist);
-    modelDatalist.append(...k.models.map((m) => el("option", { value: m.id }, [m.label])));
-    model.value = selected || defaultModel(k);
+    picker.setModels(k.models, selected);
   };
   kind.addEventListener("change", () => populateModels(kind.value));
   populateModels(kind.value);
@@ -124,7 +118,7 @@ function openAgentModal(agent?: Agent): void {
       const payload: Partial<Agent> = {
         name: name.value.trim() || selectedKind.label,
         command: selectedKind.command,
-        model: model.value,
+        model: picker.getValue(),
         roles: roleBoxes.filter((b) => b.cb.checked).map((b) => b.role),
         tags: tags.value.split(",").map((s) => s.trim()).filter(Boolean),
         concurrency: parseInt(concurrency.value, 10) || 1,
@@ -149,7 +143,7 @@ function openAgentModal(agent?: Agent): void {
   }, [
     field("Name", name),
     field("Agent", kind),
-    field("Model", el("div", { class: "model-combobox" }, [model, modelDatalist])),
+    field("Model", picker.el),
     el("div", { class: "field-row" }, [
       field("Tags", tags),
       field("Concurrency", concurrency),
