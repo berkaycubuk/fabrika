@@ -67,6 +67,6 @@ dist:
 # Cut a release: tag the current commit and push it (triggers the release
 # workflow). Usage: make tag VERSION=v0.1.0
 tag:
-	@echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+' || (echo "set a semver tag: make tag VERSION=v0.1.0"; exit 1)
+	@echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$' || (echo "set a semver tag: make tag VERSION=v0.1.0"; exit 1)
 	git tag -a $(VERSION) -m "$(VERSION)"
 	git push origin $(VERSION)
