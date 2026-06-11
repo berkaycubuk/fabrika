@@ -27,6 +27,33 @@ const PROVIDER_MODELS: ModelOption[] = [
   { id: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
 ];
 
+// Full provider catalog for OpenCode (models.dev-style provider/model slugs).
+export const OPENCODE_MODELS: ModelOption[] = [
+  // Anthropic
+  { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8" },
+  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  // OpenAI
+  { id: "openai/gpt-4o", label: "GPT-4o" },
+  { id: "openai/gpt-4o-mini", label: "GPT-4o Mini" },
+  { id: "openai/o3", label: "OpenAI o3" },
+  { id: "openai/o4-mini", label: "OpenAI o4 Mini" },
+  // Google Gemini
+  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+  { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { id: "google/gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+  // DeepSeek
+  { id: "deepseek/deepseek-chat", label: "DeepSeek Chat" },
+  { id: "deepseek/deepseek-reasoner", label: "DeepSeek Reasoner" },
+  // xAI Grok
+  { id: "xai/grok-3", label: "Grok 3" },
+  { id: "xai/grok-3-mini", label: "Grok 3 Mini" },
+  // Mistral
+  { id: "mistral/mistral-large-latest", label: "Mistral Large" },
+  // Groq
+  { id: "groq/llama-3.3-70b-versatile", label: "Llama 3.3 70B (Groq)" },
+];
+
 export const AGENT_KINDS: AgentKind[] = [
   {
     id: "claude-code",
@@ -38,7 +65,7 @@ export const AGENT_KINDS: AgentKind[] = [
     id: "opencode",
     label: "OpenCode",
     command: `opencode run "$(cat {prompt_file})" --model {model}`,
-    models: PROVIDER_MODELS,
+    models: OPENCODE_MODELS,
   },
   {
     id: "pi",

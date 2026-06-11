@@ -52,13 +52,14 @@ function openAgentModal(agent?: Agent): void {
     {},
     AGENT_KINDS.map((k) => el("option", { value: k.id }, [k.label])),
   ) as HTMLSelectElement;
-  const model = el("select", {}) as HTMLSelectElement;
+  const modelDatalist = el("datalist", { id: "agent-model-list" }) as HTMLDataListElement;
+  const model = el("input", { list: "agent-model-list", placeholder: "Type or select a model…" }) as HTMLInputElement;
 
   const populateModels = (kindId: string, selected?: string) => {
     const k = AGENT_KINDS.find((x) => x.id === kindId) ?? AGENT_KINDS[0];
-    clear(model);
-    model.append(...k.models.map((m) => el("option", { value: m.id }, [m.label])));
-    model.value = selected && k.models.some((m) => m.id === selected) ? selected : defaultModel(k);
+    clear(modelDatalist);
+    modelDatalist.append(...k.models.map((m) => el("option", { value: m.id }, [m.label])));
+    model.value = selected || defaultModel(k);
   };
   kind.addEventListener("change", () => populateModels(kind.value));
   populateModels(kind.value);
@@ -148,7 +149,7 @@ function openAgentModal(agent?: Agent): void {
   }, [
     field("Name", name),
     field("Agent", kind),
-    field("Model", model),
+    field("Model", el("div", { class: "model-combobox" }, [model, modelDatalist])),
     el("div", { class: "field-row" }, [
       field("Tags", tags),
       field("Concurrency", concurrency),
