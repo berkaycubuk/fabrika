@@ -336,7 +336,7 @@ A branch only becomes a `review`/auto-merge candidate if every required stage pa
 
 ## 10. Web UI (the surfaces + observability)
 
-A single-page app with four top-level views (Board, Factory, Agents, Settings) plus modal detail surfaces. Updates live over WebSocket (`/api/events`).
+A single-page app with five top-level views (Board, Sessions, Factory, Agents, Settings) plus modal detail surfaces. Updates live over WebSocket (`/api/events`).
 
 **Board** — a Jira-style kanban (unified scroll, sticky column heads) over the whole lifecycle. Columns: **Backlog · Planning · Approve · Decide · Ready · Running · Verifying · Accept · Audit · Merged · Closed**. `Approve`, `Decide`, `Accept`, and `Audit` are the human gates. Opening a card opens the matching modal:
 - **Define** — a box for a big task (intent + constraints + attachments + risk). One submit. Big tasks can sit in **Backlog** and be promoted to Planning.
@@ -353,6 +353,8 @@ A single-page app with four top-level views (Board, Factory, Agents, Settings) p
 **Factory** (the old "Engine room", promoted to a first-class view) — observability + autonomy dials: throughput (in-flight / ready / review / merged / tokens), trust (touches-per-unit, change-failure rate, auto-merged count, audit queue), per-agent work share, and controls for WIP cap, audit rate, and the mutation-testing toggle. Hosts the **Conventions** panel (approve/reject standing rules).
 
 **Agents** — create/edit/enable/disable agents (name, photo, command, model, roles, tags, concurrency, timeout, priority). Assign which agent holds the planner/reviewer roles and set per-tier routing. Shows live per-agent activity so you can compare agents head to head.
+
+**Sessions** — interactive chat with an agent in its own worktree, for the ad-hoc work that used to mean dropping to a terminal (see §16).
 
 **Settings** — edit and persist the `fabrika.toml` manifest.
 
@@ -381,6 +383,13 @@ POST   /api/tasks/accept-batch             POST /api/tasks/retry-batch   # body 
 GET    /api/audits                         POST /api/tasks/{id}/audit-ok|revert
 POST   /api/tasks/{id}/assign              # body {agentId}
 POST   /api/steer                          # reprioritize / pause / redirect / reassign
+
+# Interactive sessions (§16)
+GET    /api/sessions                       POST /api/sessions         # body {agentId, model, baseBranch}
+GET    /api/sessions/{id}                   # session + transcript
+POST   /api/sessions/{id}/messages         # one chat turn; reply arrives via WS
+POST   /api/sessions/{id}/finish           # commit -> gate -> merge
+POST   /api/sessions/{id}/discard
 
 # Uploads
 POST   /api/uploads                        GET  /api/uploads/{name}
@@ -461,3 +470,21 @@ Risk tiering + auto-merge of low-risk; reviewer role; mutation testing; audit sa
 - **Context provisioning**: reliably getting the right repo context into each agent run. Conventions + explicit `TouchPaths` help; expect to iterate.
 - **Architectural coherence across parallel merges**: git merge is textual, not semantic — two branches can merge cleanly yet be architecturally incompatible. This is why you stay the architect; the tool gives you the audit/steer hooks to catch it, not a fix.
 - **"Right thing" judgment**: no gate catches "passes tests but wasn't worth building." That's irreducibly yours, by design.
+
+## 16. Interactive sessions
+
+The need: ad-hoc bug fixes and custom features kept pulling the human back to a terminal with a coding agent, bypassing Fabrika entirely — no isolation, no gate, no record. Sessions bring that workflow into the UI without giving up the pipeline.
+
+A **Session** is a chat with one registered agent inside its own worktree on a `fabrika/session-*` branch, cut from the current (or a chosen) branch at creation. There is no task spec or contract — the conversation is the spec.
+
+**Turns.** Each human message runs the agent's existing one-shot `Command` once: the full transcript (plus conventions) is rendered into the prompt file, the agent works in the session worktree, and its stdout becomes the reply. No long-lived process and no new agent config — any registered agent works, an idle session costs nothing, and turns get the same liveness machinery as task runs (heartbeats, stall kill, hard timeout, orphan reaping). One turn per session at a time. Messages can carry image attachments (mockups, screenshots — attach or paste); they upload via `/api/uploads` and are staged into the worktree at turn time so the sandboxed agent can read them, same as task attachments.
+
+**Exit through the front door.** *Finish* commits whatever the worktree holds (normalizing co-author trailers), runs the verification gate (project verbs; there are no per-task verify commands), and merges into the base branch. A red gate or merge conflict reopens the session with a system note carrying the failure, so the next message can steer the fix — the terminal fix-forward loop, kept inside the pipeline. *Discard* kills any in-flight turn and drops the worktree + branch, keeping the transcript.
+
+**Persistence.** Sessions and transcripts live in the per-project store (`sessions`, `session_messages`); worktrees survive restarts, so an open session can be resumed any time. A restart mid-Finish reopens the session; a restart mid-turn leaves it idle (resend to retry).
+
+**Streaming.** The reply renders as it forms: the runner tees the turn's stdout to the engine, which coalesces chunks (250ms window) into `session.stream` events carrying the cleaned reply-so-far — complete lines only, sentinel lines stripped, full text per event so a dropped pulse self-heals. The chat shows it as a live agent bubble that the stored reply replaces when the turn ends.
+
+Statuses: `active → gating → merged`, with `closed` for discards. Events: `session.updated`, `session.message.added`, `session.heartbeat`, `session.stream`.
+
+Deferred (v1 scope): mid-turn interrupt, per-session token usage, attaching a chat to a running task.

@@ -68,6 +68,17 @@ const (
 	RolePlanner     = "planner"
 	RoleReviewer    = "reviewer"
 
+	// Session.Status
+	SessionActive = "active" // open for chat turns
+	SessionGating = "gating" // human hit Finish; commit + gate + merge in flight
+	SessionMerged = "merged" // finished and merged into the base branch
+	SessionClosed = "closed" // discarded without merging
+
+	// SessionMessage.Role
+	SessionRoleUser   = "user"
+	SessionRoleAgent  = "agent"
+	SessionRoleSystem = "system"
+
 	// Attempt.Result
 	ResultPass      = "pass"
 	ResultFail      = "fail"
@@ -249,4 +260,36 @@ type Convention struct {
 	ID     string `json:"id"`
 	Rule   string `json:"rule"`
 	Status string `json:"status"` // proposed|approved|rejected
+}
+
+// Session is an interactive chat with a coding agent in its own worktree —
+// the in-UI replacement for dropping to a terminal for ad-hoc fixes. Turns are
+// one-shot agent runs over the conversation transcript; Finish routes the
+// accumulated work through the normal gate + merge pipeline.
+type Session struct {
+	ID         string `json:"id"`
+	Title      string `json:"title"`   // derived from the first user message
+	AgentID    string `json:"agentId"` // registered agent answering the chat
+	Model      string `json:"model"`   // per-session model override; empty = agent default
+	BaseBranch string `json:"baseBranch"`
+	Branch     string `json:"branch"`
+	Status     string `json:"status"`   // active|gating|merged|closed
+	Evidence   string `json:"evidence"` // gate evidence JSON from the last Finish, if any
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
+
+	// Busy is computed at read time by the engine: true while a chat turn or
+	// finish is in flight. Never persisted.
+	Busy bool `json:"busy"`
+}
+
+// SessionMessage is one entry in a session's conversation: the human's message,
+// the agent's reply, or a system note (gate results, lifecycle events).
+type SessionMessage struct {
+	ID          string   `json:"id"`
+	SessionID   string   `json:"sessionId"`
+	Role        string   `json:"role"` // user|agent|system
+	Body        string   `json:"body"`
+	Attachments []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
+	CreatedAt   string   `json:"createdAt"`
 }

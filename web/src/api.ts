@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release } from "./types.js";
+import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, Session, SessionMessage } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -121,6 +121,17 @@ export const api = {
 
   getConfig: () => req<ConfigManifest>("GET", "/api/config"),
   putConfig: (m: ConfigManifest) => req<ConfigManifest>("PUT", "/api/config", m),
+
+  // Interactive chat sessions
+  listSessions: () => req<Session[]>("GET", "/api/sessions"),
+  createSession: (s: { agentId: string; model?: string; baseBranch?: string }) =>
+    req<Session>("POST", "/api/sessions", s),
+  getSession: (id: string) =>
+    req<{ session: Session; messages: SessionMessage[] }>("GET", `/api/sessions/${id}`),
+  sendSessionMessage: (id: string, body: string, attachments: string[] = []) =>
+    req<SessionMessage>("POST", `/api/sessions/${id}/messages`, { body, attachments }),
+  finishSession: (id: string) => req<{ status: string }>("POST", `/api/sessions/${id}/finish`),
+  discardSession: (id: string) => req<{ status: string }>("POST", `/api/sessions/${id}/discard`),
 
   // Releases (Phase 4)
   listReleases: () => req<Release[]>("GET", "/api/releases"),

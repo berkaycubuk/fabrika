@@ -231,4 +231,50 @@ export interface Convention {
   status: string;
 }
 
+// Session is an interactive chat with a coding agent in its own worktree; the
+// in-UI replacement for ad-hoc terminal work. busy is engine state: a turn or
+// finish is in flight.
+export interface Session {
+  id: string;
+  title: string;
+  agentId: string;
+  model: string;
+  baseBranch: string;
+  branch: string;
+  status: string; // active|gating|merged|closed
+  evidence: string;
+  createdAt: string;
+  updatedAt: string;
+  busy: boolean;
+}
+
+export interface SessionMessage {
+  id: string;
+  sessionId: string;
+  role: string; // user|agent|system
+  body: string;
+  attachments: string[];
+  createdAt: string;
+}
+
+// SessionStream is the payload of a "session.stream" event: the in-flight
+// turn's reply-so-far (cleaned agent stdout, complete lines only). Each event
+// carries the full text, so applying it is an idempotent replace.
+export interface SessionStream {
+  sessionId: string;
+  agentName: string;
+  text: string;
+}
+
+// SessionHeartbeat is the payload of a "session.heartbeat" event, mirroring
+// Heartbeat for an in-flight chat turn.
+export interface SessionHeartbeat {
+  sessionId: string;
+  agentName: string;
+  idleSeconds: number;
+  lastLine: string;
+  outputBytes: number;
+  runningSeconds: number;
+}
+
 export const ROLES = ["implementer", "planner", "reviewer"];

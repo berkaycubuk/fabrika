@@ -37,6 +37,7 @@ type Store struct {
 	Comments    *CommentRepo
 	Releases    *ReleaseRepo
 	ActiveRuns  *ActiveRunRepo
+	Sessions    *SessionRepo
 }
 
 // Open opens (creating if needed) both databases and applies migrations.
@@ -82,6 +83,7 @@ func Open(globalDir, projectDir string) (*Store, error) {
 	s.Comments = &CommentRepo{db: project}
 	s.Releases = &ReleaseRepo{db: project}
 	s.ActiveRuns = &ActiveRunRepo{db: project}
+	s.Sessions = &SessionRepo{db: project}
 	return s, nil
 }
 

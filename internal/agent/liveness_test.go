@@ -128,6 +128,36 @@ func TestHeartbeatPulses(t *testing.T) {
 	}
 }
 
+// TestOnOutputStreamsStdout proves the OnOutput hook receives the agent's
+// stdout as it is produced — and only stdout, since that stream is what becomes
+// a chat reply — without disturbing the buffered result.
+func TestOnOutputStreamsStdout(t *testing.T) {
+	var mu sync.Mutex
+	var got strings.Builder
+	s := NewSubprocess()
+	s.OnOutput = func(taskID string, chunk []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		if taskID != "task-1" {
+			t.Errorf("OnOutput taskID = %q, want task-1", taskID)
+		}
+		got.Write(chunk)
+	}
+
+	res, err := runIn(t, s, t.TempDir(), "echo visible; echo hidden >&2")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if g := got.String(); g != "visible\n" {
+		t.Fatalf("streamed output = %q, want stdout only (%q)", g, "visible\n")
+	}
+	if !strings.Contains(res.Stdout, "visible") || !strings.Contains(res.Stderr, "hidden") {
+		t.Fatalf("buffered result disturbed: stdout=%q stderr=%q", res.Stdout, res.Stderr)
+	}
+}
+
 // TestActivityMeterLastLine unit-tests the line tracking the heartbeat reports:
 // the last completed line wins, and an unterminated partial line still counts as
 // activity (a progress bar without a newline isn't silence).

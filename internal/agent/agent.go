@@ -142,6 +142,11 @@ type Subprocess struct {
 	// starts, with the task ID and the process-group id (pgid). With Setpgid the
 	// leader's pgid equals cmd.Process.Pid. It must be cheap and non-blocking.
 	OnStart func(taskID string, pgid int)
+	// OnOutput, if set, is called with each chunk of stdout as the agent
+	// produces it (stderr is excluded — stdout is what becomes a chat reply).
+	// It fires from exec's copier goroutine while the agent writes, so it must
+	// be cheap and non-blocking, and must not retain chunk past the call.
+	OnOutput func(taskID string, chunk []byte)
 	// beatInterval overrides the heartbeat/stall-check cadence (tests only). When
 	// 0, the cadence is derived from IdleTimeout.
 	beatInterval time.Duration
@@ -336,6 +341,12 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	cmd := exec.CommandContext(killCtx, shell[0], args...)
 	cmd.Dir = worktree
 	cmd.Stdout = io.MultiWriter(&stdout, meter)
+	if s.OnOutput != nil {
+		cmd.Stdout = io.MultiWriter(&stdout, meter, writerFunc(func(p []byte) (int, error) {
+			s.OnOutput(t.ID, p)
+			return len(p), nil
+		}))
+	}
 	cmd.Stderr = io.MultiWriter(&stderr, meter)
 	// Run the agent in its own process group so a kill (stall, hard timeout, or
 	// human steer — all routed through killCtx) takes down the whole tree, not
@@ -468,6 +479,11 @@ func (s *Subprocess) heartbeatInterval() time.Duration {
 	}
 	return interval
 }
+
+// writerFunc adapts a function to io.Writer, for the OnOutput MultiWriter leg.
+type writerFunc func(p []byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 // activityMeter tees an agent's output streams to record liveness: the wall time
 // of the last write, the running byte count, and the most recent non-empty line.

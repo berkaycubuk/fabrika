@@ -103,6 +103,16 @@ type Engine struct {
 	// the engine; reason carries the human's stop note.
 	planRuns map[string]planRunInfo
 
+	// Interactive chat sessions (sessions.go). sessRuns tracks the in-flight
+	// turn per session (at most one), guarded by sessMu; sessStreams holds each
+	// turn's stdout-so-far for the coalesced "session.stream" emits; sessAgent
+	// is a dedicated runner whose heartbeats/active-run records are keyed by
+	// session ID rather than task ID.
+	sessMu      sync.Mutex
+	sessRuns    map[string]sessionRunInfo
+	sessStreams map[string]*sessionStream
+	sessAgent   agent.Runner
+
 	// sample decides, per auto-merge, whether to flag a PR for post-merge audit.
 	// Overridable in tests for determinism; defaults to a rate-based RNG.
 	sample func(rate float64) bool
@@ -121,17 +131,21 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		deploy = cfg.Deploy
 	}
 	sp := agent.NewSubprocess()
+	ssp := agent.NewSubprocess()
 	e := &Engine{
-		store:    s,
-		cfg:      cfg,
-		repoRoot: repoRoot,
-		gate:     gate.New(),
-		agent:    sp,
-		emit:     emit,
-		wake:     make(chan struct{}, 1),
-		running:  map[string]runInfo{},
-		planning: map[string]int{},
-		planRuns: map[string]planRunInfo{},
+		store:       s,
+		cfg:         cfg,
+		repoRoot:    repoRoot,
+		gate:        gate.New(),
+		agent:       sp,
+		sessAgent:   ssp,
+		emit:        emit,
+		wake:        make(chan struct{}, 1),
+		running:     map[string]runInfo{},
+		planning:    map[string]int{},
+		planRuns:    map[string]planRunInfo{},
+		sessRuns:    map[string]sessionRunInfo{},
+		sessStreams: map[string]*sessionStream{},
 		sample: func(rate float64) bool {
 			if rate <= 0 {
 				return false
@@ -172,8 +186,12 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 	// overridable by the global "agent_idle_timeout" setting; 0/"off" disables).
 	sp.Heartbeat = e.onHeartbeat
 	sp.OnStart = e.onAgentStart
+	ssp.Heartbeat = e.onSessionHeartbeat
+	ssp.OnStart = e.onSessionAgentStart
+	ssp.OnOutput = e.onSessionOutput
 	if d, ok := e.configuredIdleTimeout(); ok {
 		sp.IdleTimeout = d
+		ssp.IdleTimeout = d
 	}
 	return e
 }
@@ -273,6 +291,19 @@ func (e *Engine) recoverOrphans() {
 		}
 		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
 		log.Printf("engine: big task %q planning was orphaned by a restart — re-queued", bt.Title)
+	}
+
+	// A session caught mid-Finish (gating) by a restart lost its gate/merge
+	// goroutine; its worktree survives, so reopen it for the human to retry.
+	gating, err := e.store.Sessions.ListByStatus(model.SessionGating)
+	if err != nil {
+		log.Printf("engine: recover orphans: list sessions: %v", err)
+		return
+	}
+	for _, s := range gating {
+		e.setSessionStatus(s.ID, model.SessionActive)
+		e.addSessionSystemMessage(s.ID, "Finish was interrupted by a restart — the session is open again; hit Finish to retry.")
+		log.Printf("engine: session %q finish was orphaned by a restart — reopened", s.Title)
 	}
 }
 

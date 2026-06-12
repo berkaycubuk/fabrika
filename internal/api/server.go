@@ -121,6 +121,14 @@ func (s *Server) Handler() http.Handler {
 	// --- Attention: unified judgment feed ---
 	mux.HandleFunc("GET /api/attention", s.getAttention)
 
+	// --- Interactive chat sessions ---
+	mux.HandleFunc("GET /api/sessions", s.listSessions)
+	mux.HandleFunc("POST /api/sessions", s.createSession)
+	mux.HandleFunc("GET /api/sessions/{id}", s.getSession)
+	mux.HandleFunc("POST /api/sessions/{id}/messages", s.sendSessionMessage)
+	mux.HandleFunc("POST /api/sessions/{id}/finish", s.finishSession)
+	mux.HandleFunc("POST /api/sessions/{id}/discard", s.discardSession)
+
 	// --- Planner: plans + decisions (Phase 2) ---
 	mux.HandleFunc("GET /api/plans", s.listPlans)
 	mux.HandleFunc("GET /api/plans/{id}", s.getPlan)
