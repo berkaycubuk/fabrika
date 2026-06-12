@@ -8,7 +8,12 @@
         an agent silent past `agent_idle_timeout` (default 5m, 0/"off" to disable) as a
         `liveness`-stage failure instead of burning the hard timeout. Process-group kill
         so the whole agent tree dies, not just the shell.
-- [ ] Mobile app for mobile usage
+- [x] Mobile app for mobile usage
+      → Relay mode: the daemon dials out to a self-hosted fabrika-portal relay
+        (zero-knowledge: E2E encrypted daemon↔phone, QR pairing). The portal
+        serves a decision-focused PWA at /app/ (attention feed: decisions,
+        plan approvals, reviews, audits) with Web Push sent directly from the
+        daemon. Settings → Phone relay to configure + pair.
 - [ ] Desktop app for increased experience ? (question and tinkering)
 - [ ] Priority for big tasks
 - [ ] Do we need custom skills for fabrika specific?
