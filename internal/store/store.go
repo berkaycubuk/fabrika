@@ -39,6 +39,7 @@ type Store struct {
 	Releases    *ReleaseRepo
 	ActiveRuns  *ActiveRunRepo
 	Sessions    *SessionRepo
+	Crons       *CronRepo
 }
 
 // Open opens (creating if needed) both databases and applies migrations.
@@ -86,6 +87,12 @@ func Open(globalDir, projectDir string) (*Store, error) {
 	s.Releases = &ReleaseRepo{db: project}
 	s.ActiveRuns = &ActiveRunRepo{db: project}
 	s.Sessions = &SessionRepo{db: project}
+	s.Crons = &CronRepo{db: project}
+	if err := s.Crons.bootstrap(); err != nil {
+		global.Close()
+		project.Close()
+		return nil, fmt.Errorf("bootstrap cron_schedules: %w", err)
+	}
 	return s, nil
 }
 
