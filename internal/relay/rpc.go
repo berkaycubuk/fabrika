@@ -26,6 +26,7 @@ var relayAllowlist = []struct{ method, pattern string }{
 	{"POST", "/api/plans/{id}/revise"},
 	{"POST", "/api/tasks/{id}/accept"},
 	{"POST", "/api/tasks/{id}/reject"},
+	{"POST", "/api/tasks/{id}/retry"},
 	{"POST", "/api/tasks/{id}/request-changes"},
 	{"POST", "/api/tasks/{id}/audit-ok"},
 	{"POST", "/api/tasks/{id}/revert"},

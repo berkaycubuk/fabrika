@@ -12,6 +12,7 @@ func TestAllowlist(t *testing.T) {
 		{"POST", "/api/decisions/d1/answer"},
 		{"POST", "/api/plans/p1/revise"},
 		{"POST", "/api/tasks/t1/accept"},
+		{"POST", "/api/tasks/t1/retry"},
 		{"POST", "/api/tasks/t1/audit-ok"},
 		{"GET", "/api/attention?x=1"}, // query strings don't bypass
 	}
