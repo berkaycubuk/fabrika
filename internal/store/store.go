@@ -29,6 +29,7 @@ type Store struct {
 	Agents      *AgentRepo
 	Conventions *ConventionRepo
 	Settings    *SettingsRepo
+	Relay       *RelayRepo
 	BigTasks    *BigTaskRepo
 	Tasks       *TaskRepo
 	Attempts    *AttemptRepo
@@ -75,6 +76,7 @@ func Open(globalDir, projectDir string) (*Store, error) {
 	s.Agents = &AgentRepo{db: global}
 	s.Conventions = &ConventionRepo{db: global}
 	s.Settings = &SettingsRepo{db: global}
+	s.Relay = &RelayRepo{db: global}
 	s.BigTasks = &BigTaskRepo{db: project}
 	s.Tasks = &TaskRepo{db: project}
 	s.Attempts = &AttemptRepo{db: project}

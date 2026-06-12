@@ -293,3 +293,27 @@ type SessionMessage struct {
 	Attachments []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
 	CreatedAt   string   `json:"createdAt"`
 }
+
+// RelayDevice is a phone paired with this project's relay identity via QR
+// code. Its static X25519 public key authenticates future E2E handshakes
+// without a new pairing secret.
+type RelayDevice struct {
+	ID        string `json:"id"`
+	DaemonID  string `json:"-"`    // pubkey fingerprint of the owning project identity
+	PubKey    []byte `json:"-"`    // never exposed over the API
+	Name      string `json:"name"` // device label chosen at pairing time
+	CreatedAt string `json:"createdAt"`
+	LastSeen  string `json:"lastSeen"`
+}
+
+// RelayPushSub is a Web Push subscription registered by a paired phone over
+// the E2E channel. The daemon pushes generic "needs attention" notifications
+// directly to the endpoint (the relay is never involved).
+type RelayPushSub struct {
+	Endpoint  string `json:"endpoint"`
+	DaemonID  string `json:"-"`
+	DeviceID  string `json:"deviceId"`
+	P256DH    string `json:"p256dh"`
+	Auth      string `json:"auth"`
+	CreatedAt string `json:"createdAt"`
+}

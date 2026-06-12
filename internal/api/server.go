@@ -14,6 +14,7 @@ import (
 
 	"github.com/berkaycubuk/fabrika/internal/config"
 	"github.com/berkaycubuk/fabrika/internal/engine"
+	"github.com/berkaycubuk/fabrika/internal/relay"
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
@@ -25,6 +26,8 @@ type Server struct {
 	web      fs.FS  // embedded static UI assets (may be nil in tests)
 	repoRoot string // project root; uploads live under <repoRoot>/.fabrika/uploads
 	engine   *engine.Engine
+	relay    *relay.Manager
+	notifier *relay.Notifier
 	version  string
 }
 
@@ -36,12 +39,33 @@ func NewServer(s *store.Store, cfg *config.Config, repoRoot string, web fs.FS, v
 	srv.engine = engine.New(s, cfg, repoRoot, func(t string, p any) {
 		srv.hub.Broadcast(Event{Type: t, Payload: p})
 	})
+	subscribe := func(buf int) (<-chan relay.Event, func()) {
+		ch, cancel := srv.hub.Subscribe(buf)
+		out := make(chan relay.Event, buf)
+		go func() {
+			defer close(out)
+			for e := range ch {
+				out <- relay.Event{Type: e.Type, Payload: e.Payload}
+			}
+		}()
+		return out, cancel
+	}
+	srv.relay = relay.NewManager(relay.Options{
+		Store:       s,
+		Subscribe:   subscribe,
+		ProjectRoot: repoRoot,
+		ProjectName: cfg.Project.Name,
+	})
+	srv.notifier = relay.NewNotifier(s, srv.relay, subscribe)
 	return srv
 }
 
-// Start launches the engine dispatch loop until ctx is cancelled.
+// Start launches the engine dispatch loop, the relay tunnel (if enabled), and
+// the push notifier until ctx is cancelled.
 func (s *Server) Start(ctx context.Context) {
 	s.engine.Start(ctx)
+	s.relay.Start(ctx)
+	s.notifier.Start(ctx)
 }
 
 // Stop drains in-flight engine goroutines with the given timeout.
@@ -146,6 +170,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.getConfig)
 	mux.HandleFunc("PUT /api/config", s.putConfig)
 
+	// --- Relay (phone access through a fabrika-portal server) ---
+	mux.HandleFunc("GET /api/relay", s.getRelay)
+	mux.HandleFunc("PUT /api/relay", s.putRelay)
+	mux.HandleFunc("POST /api/relay/pair", s.pairRelay)
+	mux.HandleFunc("DELETE /api/relay/devices/{id}", s.deleteRelayDevice)
+
 	// --- Version ---
 	mux.HandleFunc("GET /api/version", s.getVersion)
 
@@ -157,7 +187,10 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("/", s.spaHandler())
 	}
 
-	return logRequests(recoverPanics(mux))
+	h := logRequests(recoverPanics(mux))
+	// The relay RPC bridge replays phone requests through this same tree.
+	s.relay.SetHandler(h)
+	return h
 }
 
 // --- JSON helpers ---

@@ -18,11 +18,13 @@ type Event struct {
 	Payload any    `json:"payload"`
 }
 
-// Hub fans out events to every connected WebSocket client. It is safe for
-// concurrent use.
+// Hub fans out events to every connected WebSocket client and to in-process
+// subscribers (e.g. the relay manager forwarding events to paired phones). It
+// is safe for concurrent use.
 type Hub struct {
 	mu      sync.Mutex
 	clients map[*client]struct{}
+	subs    map[chan Event]struct{}
 }
 
 type client struct {
@@ -31,7 +33,7 @@ type client struct {
 }
 
 func newHub() *Hub {
-	return &Hub{clients: map[*client]struct{}{}}
+	return &Hub{clients: map[*client]struct{}{}, subs: map[chan Event]struct{}{}}
 }
 
 // Broadcast marshals the event and queues it to all connected clients. Slow
@@ -52,6 +54,32 @@ func (h *Hub) Broadcast(e Event) {
 			close(c.send)
 			delete(h.clients, c)
 		}
+	}
+	for ch := range h.subs {
+		select {
+		case ch <- e:
+		default:
+			// Full buffer drops the event, never blocks the hub; subscribers
+			// refetch state, same philosophy as WS clients.
+		}
+	}
+}
+
+// Subscribe registers an in-process event listener with the given buffer.
+// Events overflowing the buffer are dropped. cancel unregisters and closes
+// the channel.
+func (h *Hub) Subscribe(buf int) (events <-chan Event, cancel func()) {
+	ch := make(chan Event, buf)
+	h.mu.Lock()
+	h.subs[ch] = struct{}{}
+	h.mu.Unlock()
+	return ch, func() {
+		h.mu.Lock()
+		if _, ok := h.subs[ch]; ok {
+			delete(h.subs, ch)
+			close(ch)
+		}
+		h.mu.Unlock()
 	}
 }
 
