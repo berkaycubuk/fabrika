@@ -39,9 +39,9 @@ func (r *SessionRepo) Get(id string) (*model.Session, error) {
 	return s, err
 }
 
-// List returns all sessions, newest-first.
+// List returns all non-closed sessions, newest-first.
 func (r *SessionRepo) List() ([]model.Session, error) {
-	rows, err := r.db.Query(`SELECT ` + sessionCols + ` FROM sessions ORDER BY created_at DESC, rowid DESC`)
+	rows, err := r.db.Query(`SELECT ` + sessionCols + ` FROM sessions WHERE status != 'closed' ORDER BY created_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
