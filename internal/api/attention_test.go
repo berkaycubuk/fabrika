@@ -62,6 +62,15 @@ func TestAttentionEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// An already-approved plan needs no judgment and must stay out of the feed.
+	bt2 := &model.BigTask{Title: "already decided"}
+	if err := s.BigTasks.Create(bt2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Plans.Create(&model.Plan{BigTaskID: bt2.ID, Status: model.PlanApproved}); err != nil {
+		t.Fatal(err)
+	}
+
 	// Hit the attention endpoint.
 	rec := do(t, h, "GET", "/api/attention", nil)
 	if rec.Code != http.StatusOK {
