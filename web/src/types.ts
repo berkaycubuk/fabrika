@@ -278,3 +278,22 @@ export interface SessionHeartbeat {
 }
 
 export const ROLES = ["implementer", "planner", "reviewer"];
+
+// RelayInfo is the /api/relay status: portal connection + paired phones.
+export interface RelayInfo {
+  enabled: boolean;
+  url: string;
+  tokenSet: boolean;
+  connected: boolean;
+  daemonId: string;
+  sessions: number;
+  lastError: string;
+  devices: RelayDevice[];
+}
+
+export interface RelayDevice {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastSeen: string;
+}

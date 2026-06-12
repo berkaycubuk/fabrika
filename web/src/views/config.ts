@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { button, field } from "../components.js";
+import { renderRelaySection } from "./relay.js";
 import type { ConfigManifest } from "../types.js";
 
 const VERB_KEYS = ["setup", "build", "test", "lint", "typecheck", "verify", "e2e", "run"] as const;
@@ -89,6 +90,7 @@ export function renderConfig(root: HTMLElement): void {
     el("div", { id: "config-editor" }, [el("p", { class: "muted" }, ["Loading…"])]),
   );
   load();
+  renderRelaySection(root);
 }
 
 async function load(): Promise<void> {

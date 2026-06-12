@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, Session, SessionMessage } from "./types.js";
+import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, RelayInfo, Session, SessionMessage } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -121,6 +121,13 @@ export const api = {
 
   getConfig: () => req<ConfigManifest>("GET", "/api/config"),
   putConfig: (m: ConfigManifest) => req<ConfigManifest>("PUT", "/api/config", m),
+
+  // Relay (phone access through a self-hosted fabrika-portal)
+  getRelay: () => req<RelayInfo>("GET", "/api/relay"),
+  putRelay: (r: { enabled: boolean; url: string; token: string }) =>
+    req<RelayInfo>("PUT", "/api/relay", r),
+  pairRelay: () => req<{ url: string; png: string; expiresAt: string }>("POST", "/api/relay/pair"),
+  deleteRelayDevice: (id: string) => req<{ status: string }>("DELETE", `/api/relay/devices/${id}`),
 
   // Interactive chat sessions
   listSessions: () => req<Session[]>("GET", "/api/sessions"),

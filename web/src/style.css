@@ -1400,3 +1400,13 @@ button.option:hover { border-color: var(--accent); }
 .chat-input { flex: 1; resize: vertical; }
 .chat-msg .attachments { margin-top: var(--space-2); }
 .chat-msg.user .attachments { justify-content: flex-end; }
+
+/* --- Relay settings section --- */
+.relay-header { margin-top: 40px; }
+.relay-subhead { font-size: 15px; margin: 26px 0 6px; }
+.relay-qr { width: 240px; height: 240px; border-radius: 8px; background: #fff; padding: 8px; display: block; margin: 12px 0 6px; }
+.relay-qr-expired { opacity: 0.25; }
+.relay-pair-url code { overflow-wrap: anywhere; font-size: 12px; }
+.relay-device-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.relay-error { font-size: 13px; }
+.relay-enable-row input[type="checkbox"] { width: auto; }
