@@ -62,6 +62,7 @@ const (
 	ReporterUser    = "user"
 	ReporterPlanner = "planner"
 	ReporterCI      = "ci"
+	ReporterCron    = "cron"
 
 	// Agent roles
 	RoleImplementer = "implementer"
@@ -292,6 +293,19 @@ type SessionMessage struct {
 	Body        string   `json:"body"`
 	Attachments []string `json:"attachments"` // image upload URLs (/api/uploads/<name>)
 	CreatedAt   string   `json:"createdAt"`
+}
+
+// CronSchedule is a recurring prompt that fires on a 5-field cron expression.
+type CronSchedule struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Prompt    string `json:"prompt"`
+	AgentID   string `json:"agentId"`
+	Expr      string `json:"expr"`
+	Enabled   bool   `json:"enabled"`
+	LastRunAt string `json:"lastRunAt"`
+	NextRunAt string `json:"nextRunAt"`
+	CreatedAt string `json:"createdAt"`
 }
 
 // RelayDevice is a phone paired with this project's relay identity via QR
