@@ -9,9 +9,10 @@ import (
 )
 
 // relayAllowlist is the set of API calls a paired phone may make: the
-// attention feed and the judgment actions on it, nothing else. Sessions,
-// steering, settings, config writes, uploads and the events WebSocket are
-// deliberately excluded — the phone client is for decisions, not operations.
+// attention feed, the judgment actions on it, and defining a big task.
+// Sessions, steering, settings, config writes, uploads and the events
+// WebSocket are deliberately excluded — the phone is for judgment and
+// kicking off work, not full operations.
 var relayAllowlist = []struct{ method, pattern string }{
 	{"GET", "/api/attention"},
 	{"GET", "/api/version"},
@@ -20,6 +21,7 @@ var relayAllowlist = []struct{ method, pattern string }{
 	{"GET", "/api/decisions"},
 	{"GET", "/api/plans/{id}"},
 	{"GET", "/api/tasks/{id}"},
+	{"POST", "/api/bigtasks"}, // define a big task (Create & plan / Backlog)
 	{"POST", "/api/decisions/{id}/answer"},
 	{"POST", "/api/plans/{id}/approve"},
 	{"POST", "/api/plans/{id}/reject"},
