@@ -9,7 +9,9 @@ func TestAllowlist(t *testing.T) {
 	allow := []struct{ method, path string }{
 		{"GET", "/api/attention"},
 		{"GET", "/api/tasks/abc-123"},
+		{"GET", "/api/bigtasks"},
 		{"POST", "/api/bigtasks"},
+		{"POST", "/api/bigtasks/b1/plan"},
 		{"POST", "/api/decisions/d1/answer"},
 		{"POST", "/api/plans/p1/revise"},
 		{"POST", "/api/tasks/t1/accept"},
@@ -34,8 +36,9 @@ func TestAllowlist(t *testing.T) {
 		{"GET", "/api/events"}, // events flow via forwarding
 		{"DELETE", "/api/tasks/t1"},
 		{"DELETE", "/api/bigtasks/b1"},         // no deleting from the phone
-		{"POST", "/api/bigtasks/b1/comments"},  // only the bare define endpoint
-		{"POST", "/api/bigtasks/b1/promote"},   // backlog promotion is local-only
+		{"POST", "/api/bigtasks/b1/comments"},  // comments are local-only
+		{"POST", "/api/bigtasks/b1/stop"},      // stopping work is local-only
+		{"POST", "/api/bigtasks/reorder"},      // board ordering is local-only
 		{"POST", "/api/tasks/t1/accept/extra"}, // extra segment
 		{"GET", "/api/tasks/"},                 // empty id
 		{"POST", "/api/relay/pair"},            // no relay-ception

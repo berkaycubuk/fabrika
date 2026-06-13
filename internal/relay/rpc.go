@@ -21,7 +21,9 @@ var relayAllowlist = []struct{ method, pattern string }{
 	{"GET", "/api/decisions"},
 	{"GET", "/api/plans/{id}"},
 	{"GET", "/api/tasks/{id}"},
-	{"POST", "/api/bigtasks"}, // define a big task (Create & plan / Backlog)
+	{"GET", "/api/bigtasks"},            // list (phone filters to the backlog)
+	{"POST", "/api/bigtasks"},           // define a big task (Create & plan / Backlog)
+	{"POST", "/api/bigtasks/{id}/plan"}, // promote a backlog item into planning
 	{"POST", "/api/decisions/{id}/answer"},
 	{"POST", "/api/plans/{id}/approve"},
 	{"POST", "/api/plans/{id}/reject"},
