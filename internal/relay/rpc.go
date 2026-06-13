@@ -9,10 +9,11 @@ import (
 )
 
 // relayAllowlist is the set of API calls a paired phone may make: the
-// attention feed, the judgment actions on it, and defining a big task.
-// Sessions, steering, settings, config writes, uploads and the events
-// WebSocket are deliberately excluded — the phone is for judgment and
-// kicking off work, not full operations.
+// attention feed, the judgment actions on it, defining/grooming the backlog,
+// the per-task comment thread, and shipping the branch. Sessions, steering,
+// settings, config writes, uploads and the events WebSocket are deliberately
+// excluded — the phone is for judgment and kicking off work, not full
+// operations.
 var relayAllowlist = []struct{ method, pattern string }{
 	{"GET", "/api/attention"},
 	{"GET", "/api/version"},
@@ -21,9 +22,12 @@ var relayAllowlist = []struct{ method, pattern string }{
 	{"GET", "/api/decisions"},
 	{"GET", "/api/plans/{id}"},
 	{"GET", "/api/tasks/{id}"},
-	{"GET", "/api/bigtasks"},            // list (phone filters to the backlog)
-	{"POST", "/api/bigtasks"},           // define a big task (Create & plan / Backlog)
-	{"POST", "/api/bigtasks/{id}/plan"}, // promote a backlog item into planning
+	{"GET", "/api/tasks/{id}/comments"},  // read a task's conversation thread
+	{"POST", "/api/tasks/{id}/comments"}, // add a note to a task
+	{"GET", "/api/bigtasks"},             // list (phone filters to the backlog)
+	{"POST", "/api/bigtasks"},            // define a big task (Create & plan / Backlog)
+	{"POST", "/api/bigtasks/{id}/plan"},  // promote a backlog item into planning
+	{"DELETE", "/api/bigtasks/{id}"},     // drop a backlog item from the phone
 	{"POST", "/api/decisions/{id}/answer"},
 	{"POST", "/api/plans/{id}/approve"},
 	{"POST", "/api/plans/{id}/reject"},
@@ -34,6 +38,7 @@ var relayAllowlist = []struct{ method, pattern string }{
 	{"POST", "/api/tasks/{id}/request-changes"},
 	{"POST", "/api/tasks/{id}/audit-ok"},
 	{"POST", "/api/tasks/{id}/revert"},
+	{"POST", "/api/git/push"}, // ship the integration branch to its remote
 }
 
 // allowed reports whether a relayed request may reach the API mux.

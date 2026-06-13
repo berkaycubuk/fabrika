@@ -17,7 +17,11 @@ func TestAllowlist(t *testing.T) {
 		{"POST", "/api/tasks/t1/accept"},
 		{"POST", "/api/tasks/t1/retry"},
 		{"POST", "/api/tasks/t1/audit-ok"},
-		{"GET", "/api/attention?x=1"}, // query strings don't bypass
+		{"GET", "/api/tasks/t1/comments"},
+		{"POST", "/api/tasks/t1/comments"},
+		{"DELETE", "/api/bigtasks/b1"}, // backlog grooming from the phone
+		{"POST", "/api/git/push"},      // ship the branch from the phone
+		{"GET", "/api/attention?x=1"},  // query strings don't bypass
 	}
 	for _, c := range allow {
 		if !allowed(c.method, c.path) {
@@ -32,11 +36,10 @@ func TestAllowlist(t *testing.T) {
 		{"GET", "/api/sessions"}, // chat sessions are local-only
 		{"POST", "/api/sessions/s1/messages"},
 		{"POST", "/api/steer"},
-		{"POST", "/api/push"},
+		{"POST", "/api/push"},  // phone ships via /api/git/push instead
 		{"GET", "/api/events"}, // events flow via forwarding
 		{"DELETE", "/api/tasks/t1"},
-		{"DELETE", "/api/bigtasks/b1"},         // no deleting from the phone
-		{"POST", "/api/bigtasks/b1/comments"},  // comments are local-only
+		{"POST", "/api/bigtasks/b1/comments"},  // bigtask comments are local-only
 		{"POST", "/api/bigtasks/b1/stop"},      // stopping work is local-only
 		{"POST", "/api/bigtasks/reorder"},      // board ordering is local-only
 		{"POST", "/api/tasks/t1/accept/extra"}, // extra segment

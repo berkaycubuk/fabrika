@@ -134,6 +134,9 @@ func (s *Server) Handler() http.Handler {
 	// --- Ship: push the integration branch to its remote ---
 	mux.HandleFunc("GET /api/push/status", s.pushStatus)
 	mux.HandleFunc("POST /api/push", s.pushMain)
+	// Relay-facing alias: the phone PWA ships the branch via this path and
+	// expects structured {pushed, branch, remote} rather than a free-text summary.
+	mux.HandleFunc("POST /api/git/push", s.gitPush)
 
 	// --- Releases (Phase 4) ---
 	mux.HandleFunc("GET /api/releases", s.listReleases)
