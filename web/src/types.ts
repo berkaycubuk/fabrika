@@ -309,3 +309,13 @@ export interface RelayDevice {
   createdAt: string;
   lastSeen: string;
 }
+
+export interface Transition {
+  id: string;
+  taskId: string;
+  fromStatus: string;
+  toStatus: string;
+  actor: string;
+  reason: string;
+  createdAt: string;
+}

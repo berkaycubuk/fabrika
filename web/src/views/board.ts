@@ -13,7 +13,8 @@ import { button, pill, tag, field, formatTokens, formatTokensShort } from "../co
 import { openModal, closeModal, promptModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release, Heartbeat } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release, Heartbeat, Transition } from "../types.js";
+import { renderTransitionTimeline } from "./history.js";
 import { registerReleaseListener } from "../ws.js";
 import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
@@ -738,11 +739,13 @@ export function openReviewDetail(it: ReviewItem, agents: Agent[] = []): void {
         }}),
       ]),
     ]),
+    historySection(task.id),
     commentsSection(task.id),
   ]);
   const side = taskDetailSidebar(task, agents);
   openTaskId = task.id;
   openModal(task.title, body, { wide: true, sidebar: side });
+  loadHistory(task.id);
   loadComments(task.id);
 }
 
@@ -761,6 +764,7 @@ export function openAuditDetail(it: ReviewItem): void {
         act(() => api.revertTask(task.id));
       }}),
     ]),
+    historySection(task.id),
     commentsSection(task.id),
   ]);
   const side = buildSidebar([
@@ -770,6 +774,7 @@ export function openAuditDetail(it: ReviewItem): void {
   ]);
   openTaskId = task.id;
   openModal(task.title, body, { wide: true, sidebar: side });
+  loadHistory(task.id);
   loadComments(task.id);
 }
 
@@ -838,11 +843,13 @@ export function openTaskDetail(t: Task, agents: Agent[]): void {
     ]));
   }
   children.push(el("div", { id: `task-evidence-${t.id}`, class: "task-evidence" }, []));
+  children.push(historySection(t.id));
   children.push(commentsSection(t.id));
 
   openTaskId = t.id;
   openModal(t.title, el("div", { class: "detail" }, children), { wide: true, sidebar: side });
   loadEvidence(t.id);
+  loadHistory(t.id);
   loadComments(t.id);
 }
 
@@ -921,19 +928,32 @@ async function loadComments(id: string): Promise<void> {
     const slot = document.getElementById(`task-comments-${id}`);
     if (!slot) return;
     clear(slot);
-    if (comments.length === 0) {
+    const regularComments = comments.filter((c) => c.authorType !== "system");
+    if (regularComments.length === 0) {
       slot.append(el("div", { class: "comment-empty muted sm" }, ["No comments yet."]));
       return;
-    }
-    const systemComments = comments.filter((c) => c.authorType === "system");
-    const regularComments = comments.filter((c) => c.authorType !== "system");
-    if (systemComments.length > 0) {
-      const timeline = systemComments.map((c) => c.body).join(" → ");
-      slot.append(el("div", { class: "transition-timeline" }, [timeline]));
     }
     for (const c of regularComments) slot.append(commentItem(c));
   } catch {
     /* comments are best-effort */
+  }
+}
+
+function historySection(id: string): HTMLElement {
+  return el("div", { class: "history" }, [
+    el("div", { class: "section-h sm" }, ["History"]),
+    el("div", { id: `task-history-${id}`, class: "history-slot" }, []),
+  ]);
+}
+
+async function loadHistory(id: string): Promise<void> {
+  try {
+    const transitions = await api.listTaskHistory(id);
+    const slot = document.getElementById(`task-history-${id}`);
+    if (!slot) return;
+    slot.replaceChildren(renderTransitionTimeline(transitions));
+  } catch {
+    /* history is best-effort */
   }
 }
 
@@ -1433,6 +1453,10 @@ export function onBoardEvent(e?: FabrikaEvent): void {
   if (e?.type === "task.comment.added" && openTaskId) {
     const c = e.payload as Comment | null;
     if (c && c.taskId === openTaskId) loadComments(openTaskId);
+  }
+  if (e?.type === "task.transition.added" && openTaskId) {
+    const t = e.payload as Transition | null;
+    if (t && t.taskId === openTaskId) loadHistory(openTaskId);
   }
   if (refreshTimer !== null) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {

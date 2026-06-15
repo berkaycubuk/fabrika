@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, RelayInfo, Session, SessionMessage, CronSchedule } from "./types.js";
+import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, RelayInfo, Session, SessionMessage, CronSchedule, Transition } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -36,6 +36,7 @@ export const api = {
   getTask: (id: string) => req<{ task: Task; attempts: Attempt[] }>("GET", `/api/tasks/${id}`),
   createTask: (t: Partial<Task>) => req<Task>("POST", "/api/tasks", t),
   listComments: (id: string) => req<Comment[]>("GET", `/api/tasks/${id}/comments`),
+  listTaskHistory: (id: string) => req<Transition[]>("GET", `/api/tasks/${id}/history`),
   addComment: (id: string, body: string, attachments: string[] = []) =>
     req<Comment>("POST", `/api/tasks/${id}/comments`, { body, attachments }),
   uploadImage: async (file: File): Promise<string> => {
