@@ -9,8 +9,9 @@ import (
 )
 
 // relayAllowlist is the set of API calls a paired phone may make: the
-// attention feed, the judgment actions on it, defining/grooming the backlog,
-// the per-task comment thread, and shipping the branch. Sessions, steering,
+// attention feed, the judgment actions on it, the full task list (the board's
+// lifecycle columns), defining/grooming the backlog, the per-task comment
+// thread, and shipping the branch. Sessions, steering,
 // settings, config writes, uploads and the events WebSocket are deliberately
 // excluded — the phone is for judgment and kicking off work, not full
 // operations.
@@ -21,6 +22,7 @@ var relayAllowlist = []struct{ method, pattern string }{
 	{"GET", "/api/audits"},
 	{"GET", "/api/decisions"},
 	{"GET", "/api/plans/{id}"},
+	{"GET", "/api/tasks"}, // list (board's lifecycle columns: ready→closed)
 	{"GET", "/api/tasks/{id}"},
 	{"GET", "/api/tasks/{id}/comments"},  // read a task's conversation thread
 	{"POST", "/api/tasks/{id}/comments"}, // add a note to a task

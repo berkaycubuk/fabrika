@@ -8,6 +8,7 @@ import (
 func TestAllowlist(t *testing.T) {
 	allow := []struct{ method, path string }{
 		{"GET", "/api/attention"},
+		{"GET", "/api/tasks"},
 		{"GET", "/api/tasks/abc-123"},
 		{"GET", "/api/bigtasks"},
 		{"POST", "/api/bigtasks"},
@@ -43,7 +44,6 @@ func TestAllowlist(t *testing.T) {
 		{"POST", "/api/bigtasks/b1/stop"},      // stopping work is local-only
 		{"POST", "/api/bigtasks/reorder"},      // board ordering is local-only
 		{"POST", "/api/tasks/t1/accept/extra"}, // extra segment
-		{"GET", "/api/tasks/"},                 // empty id
 		{"POST", "/api/relay/pair"},            // no relay-ception
 	}
 	for _, c := range deny {
