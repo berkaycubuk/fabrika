@@ -496,7 +496,7 @@ func (e *Engine) claim() (model.Task, model.Agent, string, context.Context, bool
 			log.Printf("engine: set run: %v", err)
 			return model.Task{}, model.Agent{}, "", nil, false
 		}
-		e.logTransition(t.ID, t.Status, model.TaskRunning)
+		e.logTransition(t.ID, t.Status, model.TaskRunning, "engine", "claimed")
 		t.AgentID, t.Branch, t.Status = ag.ID, branch, model.TaskRunning
 		// Per-task context so in-flight steering can cancel this run's subprocess
 		// without disturbing the rest of the pool.
@@ -951,7 +951,7 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 	if err := e.store.Tasks.MarkMerged(task.ID, true, audit); err != nil {
 		log.Printf("engine: mark auto-merged: %v", err)
 	}
-	e.logTransition(task.ID, model.TaskVerifying, model.TaskMerged)
+	e.logTransition(task.ID, model.TaskVerifying, model.TaskMerged, "engine", "auto-merged")
 	e.emitTask(task.ID)
 	log.Printf("engine: task %q -> auto-merged (tier=%s, audit=%v)", task.Title, tier, audit)
 }
@@ -1057,7 +1057,7 @@ func (e *Engine) finalizeCancelled(task model.Task, ag model.Agent, reason strin
 		note += ": " + reason
 	}
 	e.recordAttempt(task, ag, model.Evidence{}, model.ResultFail, note, model.Usage{})
-	e.setStatus(task.ID, model.TaskClosed)
+	e.setStatusBy(task.ID, model.TaskClosed, "human", "stopped in flight")
 	e.emitTask(task.ID)
 	log.Printf("engine: task %q stopped in flight", task.Title)
 }
@@ -1104,7 +1104,7 @@ func (e *Engine) Accept(taskID string, force bool) error {
 		log.Printf("engine: RevParse after accept merge: %v", err)
 	}
 	_ = repo.RemoveWorktree(e.ctx, e.worktreePath(taskID))
-	e.setStatus(taskID, model.TaskMerged)
+	e.setStatusBy(taskID, model.TaskMerged, "human", "accepted")
 	e.emitTask(taskID)
 	log.Printf("engine: merged task %q (%s -> %s, force=%v)", t.Title, t.Branch, base, force)
 	return nil
@@ -1285,7 +1285,7 @@ func (e *Engine) Reject(taskID, reason string) error {
 			Log: "REJECTED: " + reason,
 		})
 	}
-	e.setStatus(taskID, model.TaskClosed)
+	e.setStatusBy(taskID, model.TaskClosed, "human", reason)
 	e.emitTask(taskID)
 	return nil
 }
@@ -1327,7 +1327,7 @@ func (e *Engine) Retry(taskID string) error {
 	if err := e.store.Tasks.UpdateStatus(taskID, model.TaskReady); err != nil {
 		return err
 	}
-	e.logTransition(taskID, t.Status, model.TaskReady)
+	e.logTransition(taskID, t.Status, model.TaskReady, "human", "retry")
 	e.emitTask(taskID)
 	e.Wake()
 	log.Printf("engine: task %q re-queued (retry)", t.Title)
@@ -1374,7 +1374,7 @@ func (e *Engine) RequestChanges(taskID, guidance string) error {
 	if err := e.store.Tasks.UpdateStatus(taskID, model.TaskReady); err != nil {
 		return err
 	}
-	e.logTransition(taskID, t.Status, model.TaskReady)
+	e.logTransition(taskID, t.Status, model.TaskReady, "human", "changes requested")
 	e.emitTask(taskID)
 	e.Wake()
 	log.Printf("engine: task %q sent back for changes", t.Title)
@@ -1411,6 +1411,9 @@ func (e *Engine) DeleteTask(taskID string) error {
 		return err
 	}
 	if err := e.store.Comments.DeleteByTask(taskID); err != nil {
+		return err
+	}
+	if err := e.store.Transitions.DeleteByTask(taskID); err != nil {
 		return err
 	}
 	if err := e.store.Tasks.Delete(taskID); err != nil {
@@ -1526,6 +1529,12 @@ func (e *Engine) worktreePath(taskID string) string {
 }
 
 func (e *Engine) setStatus(id, status string) {
+	e.setStatusBy(id, status, "engine", "")
+}
+
+// setStatusBy mutates a task's status like setStatus but attributes the
+// transition to the given actor/reason — used for human-initiated terminal moves.
+func (e *Engine) setStatusBy(id, status, actor, reason string) {
 	t, err := e.store.Tasks.Get(id)
 	if err != nil {
 		log.Printf("engine: set status get task %s: %v", id, err)
@@ -1534,22 +1543,23 @@ func (e *Engine) setStatus(id, status string) {
 		log.Printf("engine: set status %s=%s: %v", id, status, err)
 	}
 	if t != nil {
-		e.logTransition(id, t.Status, status)
+		e.logTransition(id, t.Status, status, actor, reason)
 	}
 }
 
-// logTransition records a task's lifecycle move as a "system" comment so the
-// status history shows up in the task's comments thread. Errors are logged,
-// never fatal — a missing comment must not fail the run.
-func (e *Engine) logTransition(taskID, from, to string) {
+// logTransition persists a task's lifecycle move as a structured
+// TaskTransition record carrying the actor (agent|human|engine) and a short
+// reason. Errors are logged, never fatal — a missing transition must not fail
+// the run.
+func (e *Engine) logTransition(taskID, from, to, actor, reason string) {
 	if from == to || (from == "" && to == "") {
 		return
 	}
-	c := &model.Comment{TaskID: taskID, AuthorType: "system", AuthorID: "", Body: fmt.Sprintf("%s → %s", from, to)}
-	if err := e.store.Comments.Create(c); err != nil {
+	tr := &model.TaskTransition{TaskID: taskID, FromStatus: from, ToStatus: to, Actor: actor, Reason: reason}
+	if err := e.store.Transitions.Create(tr); err != nil {
 		log.Printf("engine: log transition: %v", err)
 	} else {
-		e.emit("task.comment.added", c)
+		e.emit("task.transition.added", tr)
 	}
 }
 
