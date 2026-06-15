@@ -279,6 +279,18 @@ export interface SessionHeartbeat {
 
 export const ROLES = ["implementer", "planner", "reviewer"];
 
+export interface CronSchedule {
+  id: string;
+  title: string;
+  prompt: string;
+  agentId: string;
+  expr: string;
+  enabled: boolean;
+  lastRunAt: string;
+  nextRunAt: string;
+  createdAt: string;
+}
+
 // RelayInfo is the /api/relay status: portal connection + paired phones.
 export interface RelayInfo {
   enabled: boolean;
