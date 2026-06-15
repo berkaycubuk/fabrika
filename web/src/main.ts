@@ -8,9 +8,8 @@ import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent, onHeartbeat } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
-import { renderSessions, onSessionsEvent, onSessionHeartbeat, onSessionStream } from "./views/sessions.js";
 import { renderConfig } from "./views/config.js";
-import type { FabrikaEvent, Heartbeat, SessionHeartbeat, SessionStream } from "./types.js";
+import type { FabrikaEvent, Heartbeat } from "./types.js";
 
 interface Nav {
   id: string;
@@ -20,7 +19,6 @@ interface Nav {
 
 const NAV: Nav[] = [
   { id: "board", label: "Board", render: renderBoard },
-  { id: "sessions", label: "Sessions", render: renderSessions },
   { id: "factory", label: "Factory", render: renderFactory },
   { id: "agents", label: "Agents", render: renderAgents },
   { id: "settings", label: "Settings", render: renderConfig },
@@ -107,21 +105,6 @@ function main(): void {
       onHeartbeat(e.payload as Heartbeat);
       return;
     }
-    if (e.type === "session.heartbeat") {
-      onSessionHeartbeat(e.payload as SessionHeartbeat);
-      return;
-    }
-    // Stream pulses update the in-flight reply bubble in place — like
-    // heartbeats, they must not trigger a transcript refetch.
-    if (e.type === "session.stream") {
-      onSessionStream(e.payload as SessionStream);
-      return;
-    }
-    // Session events only concern the Sessions view — skip the board fan-out.
-    if (e.type.startsWith("session.")) {
-      onSessionsEvent(e);
-      return;
-    }
     // Every surface guards on its own DOM presence, so fan out broadly: the
     // board owns the human gates (refreshing on every event, including
     // task/plan), the factory views own the registry/metrics.
@@ -138,7 +121,6 @@ function main(): void {
       onBoardEvent();
       onFactoryEvent();
       onAgentEvent();
-      onSessionsEvent();
     },
     onDisconnect: () => setConn("reconnecting"),
   });
