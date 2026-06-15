@@ -223,6 +223,7 @@ func (e *Engine) Start(ctx context.Context) {
 	e.recoverOrphans()
 	e.release.ResumeBakeTimers()
 	e.ci.Start(ctx)
+	go e.cronLoop(e.ctx)
 	go e.loop()
 }
 
