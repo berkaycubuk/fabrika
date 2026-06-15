@@ -156,6 +156,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{id}/finish", s.finishSession)
 	mux.HandleFunc("POST /api/sessions/{id}/discard", s.discardSession)
 
+	// --- Crons ---
+	mux.HandleFunc("GET /api/crons", s.listCrons)
+	mux.HandleFunc("POST /api/crons", s.createCron)
+	mux.HandleFunc("PUT /api/crons/{id}", s.updateCron)
+	mux.HandleFunc("DELETE /api/crons/{id}", s.deleteCron)
+	mux.HandleFunc("POST /api/crons/{id}/enable", s.enableCron)
+	mux.HandleFunc("POST /api/crons/{id}/disable", s.disableCron)
+	mux.HandleFunc("POST /api/crons/{id}/run", s.runCron)
+
 	// --- Planner: plans + decisions (Phase 2) ---
 	mux.HandleFunc("GET /api/plans", s.listPlans)
 	mux.HandleFunc("GET /api/plans/{id}", s.getPlan)
