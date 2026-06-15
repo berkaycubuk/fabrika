@@ -256,6 +256,17 @@ type Comment struct {
 	CreatedAt   string   `json:"createdAt"`
 }
 
+// TaskTransition records a task lifecycle status change in the per-project store.
+type TaskTransition struct {
+	ID         string `json:"id"`
+	TaskID     string `json:"taskId"`
+	FromStatus string `json:"fromStatus"`
+	ToStatus   string `json:"toStatus"`
+	Actor      string `json:"actor"` // agent|human|engine
+	Reason     string `json:"reason"`
+	CreatedAt  string `json:"createdAt"`
+}
+
 // Convention is standing context injected into future specs + agent runs.
 type Convention struct {
 	ID     string `json:"id"`
