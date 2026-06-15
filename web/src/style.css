@@ -884,6 +884,12 @@ button.option:hover { border-color: var(--accent); }
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--space-2);
 }
+.transition-row {
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
 /* Image attachments (comments, task/big-task creation + detail) */
 .attachments { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); }
 .attachments:empty { display: none; }
