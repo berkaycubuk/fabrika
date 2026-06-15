@@ -9,6 +9,7 @@ import { renderAgents, onAgentEvent } from "./views/agents.js";
 import { renderBoard, onBoardEvent, onHeartbeat } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
 import { renderConfig } from "./views/config.js";
+import { renderCrons } from "./views/crons.js";
 import type { FabrikaEvent, Heartbeat } from "./types.js";
 
 interface Nav {
@@ -21,6 +22,7 @@ const NAV: Nav[] = [
   { id: "board", label: "Board", render: renderBoard },
   { id: "factory", label: "Factory", render: renderFactory },
   { id: "agents", label: "Agents", render: renderAgents },
+  { id: "crons", label: "Schedules", render: renderCrons },
   { id: "settings", label: "Settings", render: renderConfig },
 ];
 

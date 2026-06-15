@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, RelayInfo, Session, SessionMessage } from "./types.js";
+import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, RelayInfo, Session, SessionMessage, CronSchedule } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -139,6 +139,15 @@ export const api = {
     req<SessionMessage>("POST", `/api/sessions/${id}/messages`, { body, attachments }),
   finishSession: (id: string) => req<{ status: string }>("POST", `/api/sessions/${id}/finish`),
   discardSession: (id: string) => req<{ status: string }>("POST", `/api/sessions/${id}/discard`),
+
+  // Cron schedules
+  listCrons: () => req<CronSchedule[]>("GET", "/api/crons"),
+  createCron: (c: Partial<CronSchedule>) => req<CronSchedule>("POST", "/api/crons", c),
+  updateCron: (id: string, c: Partial<CronSchedule>) => req<CronSchedule>("PUT", `/api/crons/${id}`, c),
+  deleteCron: (id: string) => req<void>("DELETE", `/api/crons/${id}`),
+  enableCron: (id: string) => req<CronSchedule>("POST", `/api/crons/${id}/enable`),
+  disableCron: (id: string) => req<CronSchedule>("POST", `/api/crons/${id}/disable`),
+  runCron: (id: string) => req<{ status: string }>("POST", `/api/crons/${id}/run`),
 
   // Releases (Phase 4)
   listReleases: () => req<Release[]>("GET", "/api/releases"),
