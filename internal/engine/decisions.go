@@ -181,8 +181,9 @@ func (e *Engine) RejectPlan(planID string) error {
 // RevisePlan re-queues a plan with feedback so the planner re-thinks it. It
 // deletes the old plan artifacts but keeps the big task, composes a
 // revision-context string from the old plan's tasks and the feedback, stores
-// it on the big task, and re-queues planning.
-func (e *Engine) RevisePlan(planID, feedback string) error {
+// it on the big task, and re-queues planning. Any attachments are merged into
+// the big task's existing attachment list so the planner sees them.
+func (e *Engine) RevisePlan(planID, feedback string, attachments []string) error {
 	feedback = strings.TrimSpace(feedback)
 	if feedback == "" {
 		return fmt.Errorf("feedback is required to revise a plan")
@@ -224,6 +225,14 @@ func (e *Engine) RevisePlan(planID, feedback string) error {
 
 	if err := e.store.BigTasks.SetPlanFeedback(p.BigTaskID, revisionCtx); err != nil {
 		return err
+	}
+
+	if len(attachments) > 0 {
+		merged := append(bt.Attachments, attachments...)
+		if err := e.store.BigTasks.SetAttachments(p.BigTaskID, merged); err != nil {
+			return err
+		}
+		bt.Attachments = merged
 	}
 
 	if err := e.store.Decisions.DeleteByBigTask(p.BigTaskID); err != nil {
