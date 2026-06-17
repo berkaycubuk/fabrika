@@ -1416,6 +1416,7 @@ button.option:hover { border-color: var(--accent); }
 .relay-device-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .relay-error { font-size: 13px; }
 .relay-enable-row .switch { align-self: flex-start; }
+.relay-token-hint { font-size: 13px; margin: 4px 0 0; }
 
 /* Toggle switch — a checkbox styled as a sliding switch. */
 .switch { display: inline-flex; cursor: pointer; }

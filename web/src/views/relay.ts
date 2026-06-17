@@ -83,7 +83,13 @@ function renderRelay(slot: HTMLElement, info: RelayInfo): void {
       toggle(enabledBox),
     ]),
     field("Portal URL", urlInput),
-    field("Relay token", tokenInput),
+    el("div", { class: "field" }, [
+      el("label", {}, ["Relay token"]),
+      tokenInput,
+      el("p", { class: "muted relay-token-hint" }, [
+        "Contact berkay@berkaycubuk.com to get a relay token.",
+      ]),
+    ]),
     err,
     el("div", { class: "form-actions" }, [
       button("Save & reconnect", { variant: "primary", type: "submit" }),
