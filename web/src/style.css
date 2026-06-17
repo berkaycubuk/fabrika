@@ -1415,4 +1415,30 @@ button.option:hover { border-color: var(--accent); }
 .relay-pair-url code { overflow-wrap: anywhere; font-size: 12px; }
 .relay-device-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .relay-error { font-size: 13px; }
-.relay-enable-row input[type="checkbox"] { width: auto; }
+.relay-enable-row .switch { align-self: flex-start; }
+
+/* Toggle switch — a checkbox styled as a sliding switch. */
+.switch { display: inline-flex; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+.switch input:checked + .switch-track { background: var(--accent); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(18px); }
+.switch input:focus-visible + .switch-track { box-shadow: var(--focus-ring); }

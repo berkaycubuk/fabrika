@@ -30,6 +30,16 @@ export function field(label: string, control: HTMLElement): HTMLElement {
   return el("div", { class: "field" }, [el("label", {}, [label]), control]);
 }
 
+// Wrap a checkbox input in a styled toggle switch. Returns the label wrapper;
+// keep the passed input around to read/set `.checked`.
+export function toggle(input: HTMLInputElement): HTMLElement {
+  input.type = "checkbox";
+  return el("label", { class: "switch" }, [
+    input,
+    el("span", { class: "switch-track" }, [el("span", { class: "switch-thumb" })]),
+  ]);
+}
+
 export function formatTokens(n: number): string {
   return n.toLocaleString("en-US");
 }

@@ -3,7 +3,7 @@
 // is by QR code; the phone talks E2E-encrypted through the portal.
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
-import { button, field } from "../components.js";
+import { button, field, toggle } from "../components.js";
 import type { RelayInfo } from "../types.js";
 
 export function renderRelaySection(root: HTMLElement): void {
@@ -80,7 +80,7 @@ function renderRelay(slot: HTMLElement, info: RelayInfo): void {
     ]),
     el("div", { class: "field relay-enable-row" }, [
       el("label", {}, ["Enabled"]),
-      enabledBox,
+      toggle(enabledBox),
     ]),
     field("Portal URL", urlInput),
     field("Relay token", tokenInput),

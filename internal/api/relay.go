@@ -15,6 +15,9 @@ import (
 func (s *Server) getRelay(w http.ResponseWriter, _ *http.Request) {
 	st := s.relay.Status()
 	url, _ := s.store.Settings.Get(relay.SettingURL)
+	if url == "" {
+		url = relay.DefaultURL
+	}
 	token, _ := s.store.Settings.Get(relay.SettingToken)
 
 	devices := []model.RelayDevice{}

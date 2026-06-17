@@ -25,6 +25,10 @@ const (
 	SettingVAPIDPrivate = "relay_vapid_private" // (see notify.go)
 )
 
+// DefaultURL is the hosted portal a fresh instance points at until the user
+// overrides it.
+const DefaultURL = "https://relay.fabrika-ai.com"
+
 // Event mirrors api.Event without importing internal/api (api constructs the
 // Manager, so relay must not import api back).
 type Event struct {
