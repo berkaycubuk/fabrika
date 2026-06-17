@@ -200,10 +200,15 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("/", s.spaHandler())
 	}
 
-	h := logRequests(recoverPanics(mux))
-	// The relay RPC bridge replays phone requests through this same tree.
-	s.relay.SetHandler(h)
-	return h
+	inner := logRequests(recoverPanics(mux))
+	// The relay RPC bridge replays phone requests through this tree directly: it
+	// authenticates devices via the Noise handshake + method allowlist and synth-
+	// esizes in-process requests (non-loopback Host), so it must bypass the
+	// browser-facing origin guard below.
+	s.relay.SetHandler(inner)
+	// The public listener enforces a same-origin / loopback-Host policy to block
+	// CSRF and DNS-rebinding from any page the user's browser visits.
+	return guardOrigin(inner)
 }
 
 // --- JSON helpers ---

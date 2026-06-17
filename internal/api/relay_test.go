@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,13 @@ import (
 
 	"github.com/berkaycubuk/fabrika/internal/relay"
 )
+
+// relayReq builds a request with a loopback Host so it passes guardOrigin.
+func relayReq(method, path string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, path, body)
+	r.Host = "localhost"
+	return r
+}
 
 type relayStatus struct {
 	Enabled   bool   `json:"enabled"`
@@ -29,7 +37,7 @@ func TestRelaySettingsRoundTrip(t *testing.T) {
 
 	// Defaults: disabled, nothing stored.
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/relay", nil))
+	h.ServeHTTP(rec, relayReq("GET", "/api/relay", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /api/relay: %d %s", rec.Code, rec.Body)
 	}
@@ -44,7 +52,7 @@ func TestRelaySettingsRoundTrip(t *testing.T) {
 	// Configure (enabled=false so no dial is attempted in tests).
 	body := `{"enabled":false,"url":"https://relay.example.com","token":"frk_secret"}`
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("PUT", "/api/relay", strings.NewReader(body)))
+	h.ServeHTTP(rec, relayReq("PUT", "/api/relay", strings.NewReader(body)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT /api/relay: %d %s", rec.Code, rec.Body)
 	}
@@ -63,7 +71,7 @@ func TestRelaySettingsRoundTrip(t *testing.T) {
 
 	// Empty token on update keeps the stored one.
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("PUT", "/api/relay", strings.NewReader(`{"enabled":false,"url":"https://relay.example.com","token":""}`)))
+	h.ServeHTTP(rec, relayReq("PUT", "/api/relay", strings.NewReader(`{"enabled":false,"url":"https://relay.example.com","token":""}`)))
 	if v, _ := st.Settings.Get(relay.SettingToken); v != "frk_secret" {
 		t.Fatalf("empty token should keep stored token, got %q", v)
 	}
@@ -72,7 +80,7 @@ func TestRelaySettingsRoundTrip(t *testing.T) {
 func TestRelayPairRequiresConnection(t *testing.T) {
 	_, h := newTestServerWithStore(t)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/relay/pair", nil))
+	h.ServeHTTP(rec, relayReq("POST", "/api/relay/pair", nil))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("pairing while disabled should 409, got %d %s", rec.Code, rec.Body)
 	}
@@ -81,7 +89,7 @@ func TestRelayPairRequiresConnection(t *testing.T) {
 func TestRelayDeviceDelete(t *testing.T) {
 	_, h := newTestServerWithStore(t)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("DELETE", "/api/relay/devices/nope", nil))
+	h.ServeHTTP(rec, relayReq("DELETE", "/api/relay/devices/nope", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("deleting unknown device should 404, got %d", rec.Code)
 	}

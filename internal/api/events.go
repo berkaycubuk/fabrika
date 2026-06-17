@@ -100,9 +100,11 @@ func (h *Hub) remove(c *client) {
 // serveWS upgrades the connection and pumps queued events to the client.
 func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Local-first, single-user tool; the UI is served from the same origin
-		// but browsers may report varying Host/Origin on localhost.
-		InsecureSkipVerify: true,
+		// Only accept upgrades whose Origin is the local machine. WebSockets
+		// bypass CORS, so without this any page the user visits could open the
+		// event stream and read live task/plan/decision data. Patterns cover the
+		// loopback hosts the UI may be served from (localhost vs 127.0.0.1).
+		OriginPatterns: []string{"localhost:*", "127.0.0.1:*", "[::1]:*", "localhost", "127.0.0.1"},
 	})
 	if err != nil {
 		return

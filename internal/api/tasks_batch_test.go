@@ -19,6 +19,7 @@ func doBody(t *testing.T, h http.Handler, method, path string, body any) *httpte
 		}
 	}
 	req := httptest.NewRequest(method, path, &buf)
+	req.Host = "localhost" // pass the same-origin/loopback guard
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec

@@ -33,6 +33,7 @@ func doUpload(t *testing.T, h http.Handler, content []byte) *httptest.ResponseRe
 	fw.Write(content)
 	mw.Close()
 	req := httptest.NewRequest("POST", "/api/uploads", &buf)
+	req.Host = "localhost" // pass the same-origin/loopback guard
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

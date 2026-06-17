@@ -48,9 +48,16 @@ type Store struct {
 //	globalDir   typically ~/.fabrika
 //	projectDir  typically <repo>/.fabrika
 func Open(globalDir, projectDir string) (*Store, error) {
+	// These directories hold machine-level secrets in plaintext: the relay
+	// X25519 private identity key, the VAPID private key, and agent command
+	// lines. Keep them owner-only (0700) so other local users / backup agents
+	// can't read the DBs. MkdirAll won't tighten an existing dir, so chmod too.
 	for _, d := range []string{globalDir, projectDir} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o700); err != nil {
 			return nil, fmt.Errorf("mkdir %s: %w", d, err)
+		}
+		if err := os.Chmod(d, 0o700); err != nil {
+			return nil, fmt.Errorf("chmod %s: %w", d, err)
 		}
 	}
 
@@ -131,6 +138,17 @@ func openDB(path string) (*sql.DB, error) {
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, err
+	}
+	// Defense-in-depth on top of the 0700 dir (which is the primary control):
+	// keep the DB file and any existing WAL/SHM sidecars owner-only so a copy
+	// that escapes the directory (backups, file-by-file sync) doesn't leak
+	// plaintext keys. Ping has created the main file; the sidecars may not exist
+	// until the first write, so chmod best-effort and ignore missing siblings.
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !os.IsNotExist(err) {
+			db.Close()
+			return nil, fmt.Errorf("chmod %s: %w", p, err)
+		}
 	}
 	return db, nil
 }
