@@ -21,6 +21,7 @@ import { renderDiff } from "./diff-view.js";
 import { attachmentGallery, imageAttach } from "./attachment.js";
 import { ciBadge } from "./ci-badge.js";
 import { emptyFilter, matchesFilter, countLabel, distinctValues, type CardFilter, type Filterable } from "./board-filter.js";
+import { mentionQuery, matchAgents, applyMention } from "../mentions.js";
 
 let filterState: CardFilter = emptyFilter();
 let storedPlans: Plan[] = [];
@@ -889,11 +890,88 @@ function requireCommentInput(msg: string): string | null {
 // commentsSection builds the comments block of the task detail: a heading, the
 // (lazily-loaded) list, and a composer that posts a note then reloads the list.
 // Images attach via the file picker or by pasting into the textarea; they upload
-// immediately and submit as attachment URLs alongside the text.
+// immediately and submit as attachment URLs alongside the text. Typing @name
+// opens an agent mention dropdown; selecting an agent directs the comment to it.
 function commentsSection(id: string): HTMLElement {
   const input = el("textarea", { class: "comment-input", placeholder: "Add a comment… (paste or attach images)", rows: "2" }) as HTMLTextAreaElement;
   const err = el("div", { class: "form-error" }, []);
   const attach = imageAttach(input, err);
+
+  let directedAgentId: string | null = null;
+  let dropdownAgents: Agent[] = [];
+  let selectedIdx = -1;
+
+  const dropdown = el("div", { class: "mention-dropdown" }, []);
+  dropdown.style.display = "none";
+
+  const hideDropdown = () => {
+    dropdown.style.display = "none";
+    dropdownAgents = [];
+    selectedIdx = -1;
+  };
+
+  const setActive = (idx: number) => {
+    selectedIdx = idx;
+    const items = dropdown.querySelectorAll<HTMLElement>(".mention-item");
+    items.forEach((item, i) => item.classList.toggle("active", i === idx));
+  };
+
+  const selectAgent = (a: Agent) => {
+    const caret = input.selectionStart ?? input.value.length;
+    const result = applyMention(input.value, caret, a.name);
+    input.value = result.text;
+    input.setSelectionRange(result.caret, result.caret);
+    directedAgentId = a.id;
+    hideDropdown();
+    input.focus();
+  };
+
+  const showDropdown = (query: string) => {
+    const matches = matchAgents(storedAgents, query);
+    dropdownAgents = matches;
+    if (matches.length === 0) {
+      hideDropdown();
+      return;
+    }
+    clear(dropdown);
+    matches.forEach((a, i) => {
+      dropdown.append(el("div", {
+        class: "mention-item" + (i === 0 ? " active" : ""),
+        onclick: () => selectAgent(a),
+        onmouseenter: () => setActive(i),
+      }, [a.name]));
+    });
+    dropdown.style.display = "";
+    selectedIdx = 0;
+  };
+
+  input.addEventListener("input", () => {
+    const caret = input.selectionStart ?? input.value.length;
+    const q = mentionQuery(input.value, caret);
+    if (q === null) {
+      hideDropdown();
+      return;
+    }
+    showDropdown(q);
+  });
+
+  input.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (dropdown.style.display === "none") return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive(Math.min(selectedIdx + 1, dropdownAgents.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive(Math.max(selectedIdx - 1, 0));
+    } else if (e.key === "Enter") {
+      if (selectedIdx >= 0 && dropdownAgents[selectedIdx]) {
+        e.preventDefault();
+        selectAgent(dropdownAgents[selectedIdx]);
+      }
+    } else if (e.key === "Escape") {
+      hideDropdown();
+    }
+  });
 
   const submit = async () => {
     const text = input.value.trim();
@@ -901,9 +979,11 @@ function commentsSection(id: string): HTMLElement {
     if (!text && attachments.length === 0) return;
     err.textContent = "";
     try {
-      await api.addComment(id, text, attachments);
+      await api.addComment(id, text, attachments, directedAgentId ?? undefined);
       input.value = "";
       attach.reset();
+      directedAgentId = null;
+      hideDropdown();
       loadComments(id);
     } catch (e) {
       err.textContent = (e as Error).message;
@@ -914,7 +994,7 @@ function commentsSection(id: string): HTMLElement {
     el("div", { class: "section-h sm" }, ["Comments"]),
     el("div", { id: `task-comments-${id}`, class: "comment-list" }, []),
     el("div", { class: "comment-compose" }, [
-      input,
+      el("div", { class: "mention-wrapper" }, [input, dropdown]),
       attach.previews,
       err,
       el("div", { class: "form-actions" }, [...attach.controls, button("Comment", { variant: "primary", onclick: submit })]),

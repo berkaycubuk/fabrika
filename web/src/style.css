@@ -876,6 +876,25 @@ button.option:hover { border-color: var(--accent); }
 .comment-body { font-size: var(--fs-md); color: var(--text); white-space: pre-wrap; }
 .comment-empty { padding: var(--space-2) 0; }
 .comment-compose { display: flex; flex-direction: column; gap: var(--space-4); }
+.mention-wrapper { position: relative; }
+.mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  z-index: 100;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.mention-item {
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.mention-item:hover, .mention-item.active { background: var(--accent); color: #fff; }
 .transition-timeline {
   font-size: var(--fs-sm);
   color: var(--muted);

@@ -37,8 +37,8 @@ export const api = {
   createTask: (t: Partial<Task>) => req<Task>("POST", "/api/tasks", t),
   listComments: (id: string) => req<Comment[]>("GET", `/api/tasks/${id}/comments`),
   listTaskHistory: (id: string) => req<Transition[]>("GET", `/api/tasks/${id}/history`),
-  addComment: (id: string, body: string, attachments: string[] = []) =>
-    req<Comment>("POST", `/api/tasks/${id}/comments`, { body, attachments }),
+  addComment: (id: string, body: string, attachments: string[] = [], agentId?: string) =>
+    req<Comment>("POST", `/api/tasks/${id}/comments`, agentId !== undefined ? { body, attachments, agentId } : { body, attachments }),
   uploadImage: async (file: File): Promise<string> => {
     const form = new FormData();
     form.append("file", file);
