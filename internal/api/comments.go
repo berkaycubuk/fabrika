@@ -84,6 +84,9 @@ func (s *Server) createBigTaskComment(w http.ResponseWriter, r *http.Request) {
 }
 
 // createComment appends a human-authored note to a task and pushes it live.
+// If AgentId is supplied the question is routed to that agent instead; the
+// engine stores the comment and emits "task.comment.added" itself, so this
+// handler returns 202 Accepted without broadcasting again.
 func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, err := s.store.Tasks.Get(id); err != nil {
@@ -93,6 +96,7 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Body        string   `json:"body"`
 		Attachments []string `json:"attachments"`
+		AgentId     string   `json:"agentId"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -108,6 +112,24 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid attachment URL: "+a)
 			return
 		}
+	}
+	if body.AgentId != "" {
+		ag, err := s.store.Agents.Get(body.AgentId)
+		if err != nil {
+			mapStoreErr(w, err)
+			return
+		}
+		if !ag.Enabled {
+			writeErr(w, http.StatusBadRequest, "agent is disabled")
+			return
+		}
+		comment, err := s.engine.AskTaskQuestion(id, body.AgentId, trimmed, body.Attachments)
+		if err != nil {
+			mapEngineErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, comment)
+		return
 	}
 	comment := model.Comment{
 		TaskID:      id,
