@@ -113,6 +113,11 @@ type Engine struct {
 	sessStreams map[string]*sessionStream
 	sessAgent   agent.Runner
 
+	// askMu guards askRuns: at most one in-flight agent reply per task (mirrors
+	// the sessRuns/sessMu pattern for interactive sessions).
+	askMu   sync.Mutex
+	askRuns map[string]struct{}
+
 	// sample decides, per auto-merge, whether to flag a PR for post-merge audit.
 	// Overridable in tests for determinism; defaults to a rate-based RNG.
 	sample func(rate float64) bool
@@ -146,6 +151,7 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 		planRuns:    map[string]planRunInfo{},
 		sessRuns:    map[string]sessionRunInfo{},
 		sessStreams: map[string]*sessionStream{},
+		askRuns:     map[string]struct{}{},
 		sample: func(rate float64) bool {
 			if rate <= 0 {
 				return false
