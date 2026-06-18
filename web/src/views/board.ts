@@ -1050,6 +1050,12 @@ export function commentItem(c: Comment): HTMLElement {
     who = c.authorId || c.authorType;
   }
   const children: (Node | string)[] = [el("div", { class: "comment-author" }, [who])];
+  if (c.createdAt) {
+    const d = new Date(c.createdAt);
+    if (!isNaN(d.getTime())) {
+      children.push(el("div", { class: "comment-time" }, [d.toLocaleString()]));
+    }
+  }
   if (c.body) children.push(el("div", { class: "comment-body" }, [c.body]));
   if (c.attachments?.length) children.push(attachmentGallery(c.attachments));
   return el("div", { class: cls }, children);
