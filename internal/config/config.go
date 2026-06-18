@@ -87,17 +87,20 @@ func Load(repoRoot string) (*Config, error) {
 	if err := toml.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if c.Project.Name == "" {
-		return nil, fmt.Errorf("%s: [project].name is required", path)
-	}
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &c, nil
 }
 
-// Validate checks [autonomy] and [deploy] semantics.
+// Validate checks [project], [autonomy], and [deploy] semantics. It is the
+// single source of truth for manifest validity, enforced by both Load (on read)
+// and Save (on write) so a saved config always round-trips through Load.
 func (c *Config) Validate() error {
+	if c.Project.Name == "" {
+		return fmt.Errorf("[project].name is required")
+	}
+
 	validTiers := map[string]bool{
 		tierLow:    true,
 		tierMedium: true,

@@ -49,3 +49,17 @@ func TestSaveRejectsInvalid(t *testing.T) {
 		t.Fatal("Save must not write when validation fails")
 	}
 }
+
+// TestSaveRejectsEmptyName guards the round-trip invariant: Load requires
+// [project].name, so Save must refuse to write a nameless manifest that Load
+// would then reject.
+func TestSaveRejectsEmptyName(t *testing.T) {
+	dir := t.TempDir()
+	bad := &Config{Verbs: Verbs{Build: "go build ./..."}}
+	if err := Save(dir, bad); err == nil {
+		t.Fatal("Save should reject a config with an empty [project].name")
+	}
+	if Exists(dir) {
+		t.Fatal("Save must not write when [project].name is empty")
+	}
+}
