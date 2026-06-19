@@ -119,6 +119,15 @@ type Engine struct {
 	askMu   sync.Mutex
 	askRuns map[string]struct{}
 
+	// conflictMu guards mergeConflicts: the set of review-task IDs the auto-merge
+	// sweep has found to conflict with the current main. Parked here so the sweep
+	// stops re-attempting them every tick; entries are cleared when main advances
+	// (a merge succeeds) or the task's status changes (Retry/Close), either of
+	// which can make the merge clean again. In-memory only — a restart simply
+	// gives each task one fresh attempt.
+	conflictMu     sync.Mutex
+	mergeConflicts map[string]struct{}
+
 	// sample decides, per auto-merge, whether to flag a PR for post-merge audit.
 	// Overridable in tests for determinism; defaults to a rate-based RNG.
 	sample func(rate float64) bool
@@ -139,20 +148,21 @@ func New(s *store.Store, cfg *config.Config, repoRoot string, emit EventFunc) *E
 	sp := agent.NewSubprocess()
 	ssp := agent.NewSubprocess()
 	e := &Engine{
-		store:       s,
-		cfg:         cfg,
-		repoRoot:    repoRoot,
-		gate:        gate.New(),
-		agent:       sp,
-		sessAgent:   ssp,
-		emit:        emit,
-		wake:        make(chan struct{}, 1),
-		running:     map[string]runInfo{},
-		planning:    map[string]int{},
-		planRuns:    map[string]planRunInfo{},
-		sessRuns:    map[string]sessionRunInfo{},
-		sessStreams: map[string]*sessionStream{},
-		askRuns:     map[string]struct{}{},
+		store:          s,
+		cfg:            cfg,
+		repoRoot:       repoRoot,
+		gate:           gate.New(),
+		agent:          sp,
+		sessAgent:      ssp,
+		emit:           emit,
+		wake:           make(chan struct{}, 1),
+		running:        map[string]runInfo{},
+		planning:       map[string]int{},
+		planRuns:       map[string]planRunInfo{},
+		sessRuns:       map[string]sessionRunInfo{},
+		sessStreams:    map[string]*sessionStream{},
+		askRuns:        map[string]struct{}{},
+		mergeConflicts: map[string]struct{}{},
 		sample: func(rate float64) bool {
 			if rate <= 0 {
 				return false
@@ -941,6 +951,20 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 		log.Printf("engine: auto-merge open repo: %v (-> review)", err)
 		return
 	}
+	// Bring the branch up to date with main before merging back, so overlapping
+	// work that landed on main since this task forked surfaces here (in the
+	// task's own worktree) instead of blocking the integration merge.
+	if _, conflicts, serr := repo.SyncBranchFromBase(e.ctx, wt, base); serr != nil {
+		e.setStatus(task.ID, model.TaskReview)
+		e.emitTask(task.ID)
+		log.Printf("engine: auto-merge %q sync with %s failed: %v (-> review)", task.Title, base, serr)
+		return
+	} else if len(conflicts) > 0 {
+		e.setStatus(task.ID, model.TaskReview)
+		e.emitTask(task.ID)
+		log.Printf("engine: auto-merge %q conflicts with %s in %s (-> review)", task.Title, base, strings.Join(conflicts, ", "))
+		return
+	}
 	if err := repo.Merge(e.ctx, base, task.Branch); err != nil {
 		// Conflict or merge error: don't fail the work — hand it to the human.
 		e.setStatus(task.ID, model.TaskReview)
@@ -1102,6 +1126,17 @@ func (e *Engine) Accept(taskID string, force bool) error {
 	base, err := repo.CurrentBranch(e.ctx)
 	if err != nil {
 		return err
+	}
+	// If the task's worktree still exists, bring the branch up to date with the
+	// base first so a conflict surfaces here — naming the offending files —
+	// rather than as an opaque integration-merge failure. The human's recovery
+	// is Retry, which rebuilds on the current base.
+	if wt := e.worktreePath(taskID); dirExists(wt) {
+		if _, conflicts, serr := repo.SyncBranchFromBase(e.ctx, wt, base); serr != nil {
+			return fmt.Errorf("sync branch with %s: %w", base, serr)
+		} else if len(conflicts) > 0 {
+			return fmt.Errorf("%w with %s in: %s — Retry to rebuild on the current base", errMergeConflict, base, strings.Join(conflicts, ", "))
+		}
 	}
 	if err := repo.Merge(e.ctx, base, t.Branch); err != nil {
 		return fmt.Errorf("merge failed: %w", err)
@@ -1536,6 +1571,12 @@ func (e *Engine) worktreePath(taskID string) string {
 	return filepath.Join(e.repoRoot, ".fabrika", "worktrees", taskID)
 }
 
+// dirExists reports whether path is an existing directory.
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 func (e *Engine) setStatus(id, status string) {
 	e.setStatusBy(id, status, "engine", "")
 }
@@ -1552,6 +1593,11 @@ func (e *Engine) setStatusBy(id, status, actor, reason string) {
 	}
 	if t != nil {
 		e.logTransition(id, t.Status, status, actor, reason)
+		// Any move out of review (Retry rebuilds the branch, Close drops it)
+		// invalidates a prior merge-conflict verdict — release the park.
+		if t.Status == model.TaskReview && status != model.TaskReview {
+			e.clearMergeConflict(id)
+		}
 	}
 }
 

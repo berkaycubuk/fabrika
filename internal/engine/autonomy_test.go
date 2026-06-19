@@ -105,6 +105,68 @@ func TestAutoMergeWithReviewerApproval(t *testing.T) {
 	}
 }
 
+// TestAutoMergeSweepParksConflict reproduces the tight-loop bug: a review task
+// whose branch conflicts with main can never auto-merge, so the sweep must park
+// it after one attempt instead of re-Accepting it on every tick. Two tasks edit
+// the same file; the first merges (advancing main), the second is left stale and
+// conflicting.
+func TestAutoMergeSweepParksConflict(t *testing.T) {
+	eng, st, _ := setup(t)
+	// Each worktree path is unique, so appending it makes the two branches edit
+	// the same region of README with different content -> a guaranteed conflict
+	// once the first has merged.
+	registerAgent(t, st, "pwd >> README.md")
+
+	t1 := &model.Task{Title: "first"}
+	if err := st.Tasks.Create(t1); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("dispatch t1")
+	}
+	t2 := &model.Task{Title: "second"}
+	if err := st.Tasks.Create(t2); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("dispatch t2")
+	}
+
+	// Merge t1 -> main advances; t2's branch (forked from the old main) is now stale.
+	if err := eng.Accept(t1.ID, false); err != nil {
+		t.Fatalf("accept t1: %v", err)
+	}
+
+	if err := st.Settings.Set(settingAutoMode, "on"); err != nil {
+		t.Fatal(err)
+	}
+
+	// First sweep: t2 conflicts, so nothing merges and t2 is parked, still in review.
+	if n := eng.sweepAutoMerge(); n != 0 {
+		t.Fatalf("first sweep merged %d, want 0 (t2 conflicts)", n)
+	}
+	if !eng.isParkedConflict(t2.ID) {
+		t.Fatal("t2 should be parked after a conflicting auto-merge")
+	}
+	if got, _ := st.Tasks.Get(t2.ID); got.Status != model.TaskReview {
+		t.Fatalf("t2 status = %q, want review", got.Status)
+	}
+
+	// Second sweep: parked -> skipped, not re-attempted.
+	if n := eng.sweepAutoMerge(); n != 0 {
+		t.Fatalf("second sweep merged %d, want 0", n)
+	}
+	if !eng.isParkedConflict(t2.ID) {
+		t.Fatal("t2 should remain parked")
+	}
+
+	// Moving t2 out of review (Retry) releases the park so a rebuilt branch can try again.
+	eng.setStatusBy(t2.ID, model.TaskReady, "human", "retry")
+	if eng.isParkedConflict(t2.ID) {
+		t.Fatal("park should clear when the task leaves review")
+	}
+}
+
 func TestAuditSamplingFlags(t *testing.T) {
 	eng, st, _ := setup(t)
 	eng.cfg = autoMergeCfg()

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os/exec"
@@ -13,6 +14,11 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/berkaycubuk/fabrika/internal/mutate"
 )
+
+// errMergeConflict marks an Accept failure caused by the task branch conflicting
+// with the base (rather than an infrastructure error). The auto-merge sweep uses
+// it to park the task instead of retrying it every tick.
+var errMergeConflict = errors.New("merge conflict")
 
 // settingRoleReviewer names the agent that holds the reviewer role (optional
 // override; otherwise any enabled agent with the reviewer role is used).
@@ -105,7 +111,13 @@ func (e *Engine) AutoMergeEnabled() bool {
 // sweepAutoMerge merges every task sitting in the review queue when auto mode is
 // on, returning the count successfully merged. It collects the review-task IDs
 // under no lock concern (Accept takes e.mu itself), then Accepts each outside any
-// lock; a merge error (e.g. a conflict) is logged and skipped, not fatal.
+// lock; a merge error is logged and skipped, not fatal.
+//
+// A task whose branch conflicts with main can never auto-merge, so it is parked
+// (markMergeConflict) and skipped on subsequent sweeps — otherwise the 2s tick
+// (plus every Wake) would re-attempt it forever, spamming the log. Parked tasks
+// are released when main advances (a successful merge here) so they get a fresh
+// attempt, since the conflicting work may now be reconcilable.
 func (e *Engine) sweepAutoMerge() int {
 	if !e.AutoMergeEnabled() {
 		return 0
@@ -121,14 +133,56 @@ func (e *Engine) sweepAutoMerge() int {
 	}
 	merged := 0
 	for _, id := range ids {
+		if e.isParkedConflict(id) {
+			continue // known to conflict with the current main; wait for main to move
+		}
 		if err := e.Accept(id, false); err != nil {
-			log.Printf("engine: auto-merge task %s: %v", id, err)
+			if errors.Is(err, errMergeConflict) {
+				e.markMergeConflict(id)
+				log.Printf("engine: auto-merge task %s: %v (parked until main advances)", id, err)
+			} else {
+				log.Printf("engine: auto-merge task %s: %v", id, err)
+			}
 			continue
 		}
 		log.Printf("engine: auto-merged task %s (auto mode)", id)
 		merged++
 	}
+	if merged > 0 {
+		// main advanced — give every parked task another shot next sweep.
+		e.clearMergeConflicts()
+	}
 	return merged
+}
+
+// markMergeConflict parks a task that the sweep found to conflict with main.
+func (e *Engine) markMergeConflict(id string) {
+	e.conflictMu.Lock()
+	e.mergeConflicts[id] = struct{}{}
+	e.conflictMu.Unlock()
+}
+
+// isParkedConflict reports whether a task is currently parked as conflicting.
+func (e *Engine) isParkedConflict(id string) bool {
+	e.conflictMu.Lock()
+	_, ok := e.mergeConflicts[id]
+	e.conflictMu.Unlock()
+	return ok
+}
+
+// clearMergeConflict releases a single parked task — called when its status
+// changes (Retry/Close/re-run), which can make a fresh merge clean.
+func (e *Engine) clearMergeConflict(id string) {
+	e.conflictMu.Lock()
+	delete(e.mergeConflicts, id)
+	e.conflictMu.Unlock()
+}
+
+// clearMergeConflicts releases all parked tasks — called when main advances.
+func (e *Engine) clearMergeConflicts() {
+	e.conflictMu.Lock()
+	clear(e.mergeConflicts)
+	e.conflictMu.Unlock()
 }
 
 // mutationEnabled reports whether the mutation-testing validator is turned on.

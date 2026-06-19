@@ -161,6 +161,51 @@ func (r *Repo) Merge(ctx context.Context, base, branch string) error {
 	return nil
 }
 
+// ConflictedFiles lists paths with unresolved merge conflicts in the index of
+// the work tree at dir (empty when there is no merge in progress).
+func (r *Repo) ConflictedFiles(ctx context.Context, dir string) ([]string, error) {
+	out, err := runIn(ctx, dir, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, line := range strings.Split(out, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			files = append(files, s)
+		}
+	}
+	return files, nil
+}
+
+// SyncBranchFromBase brings the branch checked out at worktreeDir up to date
+// with base by merging base into it, so the branch already contains everything
+// on base before Fabrika merges the branch back. This moves conflicts out of
+// the integration merge (which would block on main) and into the task's own
+// worktree, where they surface against the work that caused them.
+//
+// It returns (updated, conflicts, err): updated is true when a merge commit was
+// made; when base and the branch overlap, the merge is aborted and the
+// conflicted paths are returned with a nil error so the caller can route the
+// task to human review rather than treat it as a failure. A genuinely broken
+// merge (e.g. a dirty tree) is returned as err.
+func (r *Repo) SyncBranchFromBase(ctx context.Context, worktreeDir, base string) (updated bool, conflicts []string, err error) {
+	// Already contains base? Nothing to do — avoids an empty merge commit.
+	if _, aerr := runIn(ctx, worktreeDir, "merge-base", "--is-ancestor", base, "HEAD"); aerr == nil {
+		return false, nil, nil
+	}
+	if _, merr := runIn(ctx, worktreeDir, "merge", "--no-edit", base); merr != nil {
+		conflicts, _ = r.ConflictedFiles(ctx, worktreeDir)
+		if _, aerr := runIn(ctx, worktreeDir, "merge", "--abort"); aerr != nil {
+			return false, conflicts, fmt.Errorf("merge %s into branch at %s: %w (and abort failed: %v)", base, worktreeDir, merr, aerr)
+		}
+		if len(conflicts) > 0 {
+			return false, conflicts, nil
+		}
+		return false, nil, fmt.Errorf("merge %s into branch at %s: %w", base, worktreeDir, merr)
+	}
+	return true, nil, nil
+}
+
 // Remotes lists the configured remote names (one per line from `git remote`).
 func (r *Repo) Remotes(ctx context.Context) ([]string, error) {
 	out, err := r.run(ctx, "remote")
@@ -318,8 +363,14 @@ func runIn(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd.Dir = dir
 	stdout, stderr, err := runCmd(cmd)
 	if err != nil {
+		// git writes some failures (notably merge conflicts) to stdout, not
+		// stderr; fall back to stdout so the real reason is never swallowed.
+		detail := strings.TrimSpace(stderr)
+		if detail == "" {
+			detail = strings.TrimSpace(stdout)
+		}
 		return stdout, fmt.Errorf("git %s: %w: %s",
-			strings.Join(args, " "), err, strings.TrimSpace(stderr))
+			strings.Join(args, " "), err, detail)
 	}
 	return stdout, nil
 }
