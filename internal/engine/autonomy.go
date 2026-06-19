@@ -95,6 +95,42 @@ func (e *Engine) runReviewer(ctx context.Context, rev model.Agent, task model.Ta
 	return verdict.Approve, notes
 }
 
+// AutoMergeEnabled reports whether auto mode is on: review-queue tasks are
+// merged automatically, layered on top of the per-tier auto-merge in finishGreen.
+func (e *Engine) AutoMergeEnabled() bool {
+	v, _ := e.store.Settings.Get(settingAutoMode)
+	return strings.EqualFold(strings.TrimSpace(v), "on")
+}
+
+// sweepAutoMerge merges every task sitting in the review queue when auto mode is
+// on, returning the count successfully merged. It collects the review-task IDs
+// under no lock concern (Accept takes e.mu itself), then Accepts each outside any
+// lock; a merge error (e.g. a conflict) is logged and skipped, not fatal.
+func (e *Engine) sweepAutoMerge() int {
+	if !e.AutoMergeEnabled() {
+		return 0
+	}
+	tasks, err := e.store.Tasks.ListByStatus(model.TaskReview)
+	if err != nil {
+		log.Printf("engine: auto-merge sweep: list review tasks: %v", err)
+		return 0
+	}
+	ids := make([]string, 0, len(tasks))
+	for _, t := range tasks {
+		ids = append(ids, t.ID)
+	}
+	merged := 0
+	for _, id := range ids {
+		if err := e.Accept(id, false); err != nil {
+			log.Printf("engine: auto-merge task %s: %v", id, err)
+			continue
+		}
+		log.Printf("engine: auto-merged task %s (auto mode)", id)
+		merged++
+	}
+	return merged
+}
+
 // mutationEnabled reports whether the mutation-testing validator is turned on.
 func (e *Engine) mutationEnabled() bool {
 	v, _ := e.store.Settings.Get(settingMutation)
