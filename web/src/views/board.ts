@@ -18,7 +18,7 @@ import { renderTransitionTimeline } from "./history.js";
 import { registerReleaseListener } from "../ws.js";
 import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
-import { attachmentGallery, imageAttach } from "./attachment.js";
+import { attachmentGallery, imageAttach, fileAttach } from "./attachment.js";
 import { ciBadge } from "./ci-badge.js";
 import { emptyFilter, matchesFilter, countLabel, distinctValues, type CardFilter, type Filterable } from "./board-filter.js";
 import { mentionQuery, matchAgents, applyMention } from "../mentions.js";
@@ -1188,10 +1188,15 @@ function openDefine(): void {
   const intent = el("textarea", { placeholder: "The why + desired outcome. What does done look like? Paste images for context.", rows: "5" }) as HTMLTextAreaElement;
   const constraints = el("textarea", { placeholder: "Constraints, one per line (e.g. PCI-compliant, works on mobile)", rows: "3" }) as HTMLTextAreaElement;
   const err = el("div", { class: "form-error" });
-  const attach = imageAttach(intent, err);
+  const attach = fileAttach({ err, pasteTarget: intent });
 
   const form = el("form", {
     class: "modal-form",
+    ondragover: (e: Event) => { e.preventDefault(); },
+    ondrop: (e: Event) => {
+      e.preventDefault();
+      attach.accept(Array.from((e as DragEvent).dataTransfer?.files ?? []));
+    },
     onsubmit: async (e: Event) => {
       e.preventDefault();
       err.textContent = "";
@@ -1211,7 +1216,7 @@ function openDefine(): void {
   }, [
     field("Outcome", title),
     field("Intent", intent),
-    field("Images", el("div", { class: "attach-field" }, [attach.previews, ...attach.controls])),
+    field("Attachments", attach.el),
     field("Constraints", constraints),
     err,
     el("div", { class: "form-actions" }, [
@@ -1255,10 +1260,15 @@ function openCreateTask(): void {
   ]) as HTMLSelectElement;
   priority.value = "medium";
   const err = el("div", { class: "form-error" });
-  const attach = imageAttach(spec, err);
+  const attach = fileAttach({ err, pasteTarget: spec });
 
   const form = el("form", {
     class: "modal-form",
+    ondragover: (e: Event) => { e.preventDefault(); },
+    ondrop: (e: Event) => {
+      e.preventDefault();
+      attach.accept(Array.from((e as DragEvent).dataTransfer?.files ?? []));
+    },
     onsubmit: async (e: Event) => {
       e.preventDefault();
       err.textContent = "";
@@ -1280,7 +1290,7 @@ function openCreateTask(): void {
   }, [
     field("Title", title),
     field("Spec", spec),
-    field("Images", el("div", { class: "attach-field" }, [attach.previews, ...attach.controls])),
+    field("Attachments", attach.el),
     field("Verify commands", verify),
     field("Tags", tags),
     field("Priority", priority),
