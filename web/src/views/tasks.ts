@@ -1,13 +1,76 @@
-// Tasks view: one flat, scannable list of every task in the factory. Each row
-// carries a right-side cluster that answers "what is this task doing right now?"
-// — a live pulse while an agent works, a "needs you" flag at a human gate, or a
-// relative timestamp otherwise — plus a small agent avatar chip. Filter tabs
-// narrow the list client-side without a refetch.
-import { el, clear } from "../dom.js";
-import { button, tag } from "../components.js";
+// Tasks view: unified list of all tasks across the factory. Each row carries a
+// status glyph + colored pill on the left that track the task through its
+// lifecycle, the same way the board columns read; on the right a live cluster
+// answers "what's it doing right now?" — a live pulse while an agent works, an
+// amber "needs you" at a human gate, or a relative timestamp otherwise — beside
+// a small agent avatar chip. Filter tabs narrow rows client-side.
 import { api } from "../api.js";
+import { el, clear } from "../dom.js";
+import { button, pill, tag } from "../components.js";
 import { pulseEl, IN_FLIGHT, openTaskDetail } from "./board.js";
 import type { Task, Agent } from "../types.js";
+
+// A status glyph shape. Kept abstract from any one status so the same shape can
+// stand for several (running and claimed both spin) and the CSS owns the look.
+type Glyph = "hollow" | "spinner" | "ring" | "check" | "dot";
+
+interface StatusMeta {
+  label: string;
+  glyph: Glyph;
+  // Colour keyword resolved to a `tg-<tone>` CSS class. The pill picks up its
+  // own colour from `status-<status>` to match the board column.
+  tone: "indigo" | "accent" | "amber" | "green" | "red" | "muted";
+}
+
+// Single source of truth for how a task.status reads on the Tasks page. Glyphs
+// mirror the board: hollow indigo while queued (backlog/ready), a stage-coloured
+// dashed spinner in flight (running=accent, verifying=amber), an amber
+// ring-with-dot when a human gate is waiting (review → Accept), a green check
+// once merged. Unknown statuses fall back to a muted dot below.
+export const STATUS_META: Record<string, StatusMeta> = {
+  backlog:   { label: "backlog",   glyph: "hollow",  tone: "indigo" },
+  ready:     { label: "ready",     glyph: "hollow",  tone: "indigo" },
+  claimed:   { label: "claimed",   glyph: "spinner", tone: "accent" },
+  running:   { label: "running",   glyph: "spinner", tone: "accent" },
+  verifying: { label: "verifying", glyph: "spinner", tone: "amber" },
+  review:    { label: "in review", glyph: "ring",    tone: "amber" },
+  blocked:   { label: "blocked",   glyph: "ring",    tone: "red" },
+  failed:    { label: "failed",    glyph: "dot",     tone: "red" },
+  merged:    { label: "merged",    glyph: "check",   tone: "green" },
+  closed:    { label: "closed",    glyph: "dot",     tone: "muted" },
+};
+
+const FALLBACK: StatusMeta = { label: "", glyph: "dot", tone: "muted" };
+
+function metaFor(status: string): StatusMeta {
+  return STATUS_META[status] ?? { ...FALLBACK, label: status };
+}
+
+// statusGlyph builds the lifecycle-stage glyph for a status. The shape and
+// colour are pure CSS (see .tg in style.css); we only pick the classes and label
+// the node for assistive tech.
+export function statusGlyph(status: string): HTMLElement {
+  const m = metaFor(status);
+  return el("span", {
+    class: `tg tg-${m.glyph} tg-${m.tone}`,
+    role: "img",
+    title: m.label,
+    "aria-label": `status: ${m.label}`,
+  });
+}
+
+// statusPill builds the colored lifecycle pill. The `status-<status>` class is
+// what colours it to match the board column it would sit in.
+export function statusPill(status: string): HTMLElement {
+  return pill(metaFor(status).label, `status-${status}`);
+}
+
+// riskChip renders the risk tier as a .tag chip (low/medium/high), reusing the
+// existing risk-* tag colours. Empty tiers produce nothing.
+export function riskChip(tier: string): HTMLElement | null {
+  if (!tier) return null;
+  return tag(tier, `risk-${tier}`);
+}
 
 // Tab definitions: each is a predicate over a task. "needs" mirrors the board's
 // gate columns (work parked for a human), "running" the in-flight set, "done"
@@ -107,7 +170,7 @@ function paint(): void {
     if (count) count.textContent = String(searched.filter(t.match).length);
   }
   const rows = searched.filter(tabMatch);
-  list.replaceChildren();
+  clear(list);
   if (rows.length === 0) {
     list.append(el("div", { class: "board-empty" }, ["No tasks"]));
     return;
@@ -116,21 +179,22 @@ function paint(): void {
 }
 
 function taskRow(t: Task): HTMLElement {
+  const meta: (Node | string)[] = [statusPill(t.status)];
+  const risk = riskChip(t.riskTier);
+  if (risk) meta.push(risk);
   return el("div", { class: "task-row", onclick: () => openTaskDetail(t, storedAgents) }, [
+    statusGlyph(t.status),
     el("div", { class: "task-row-main" }, [
       el("div", { class: "task-row-title" }, [t.title]),
-      el("div", { class: "task-row-sub" }, [
-        tag(t.status, `status-${t.status}`),
-        tag(t.riskTier, `risk-${t.riskTier}`),
-      ]),
     ]),
-    el("div", { class: "task-row-right" }, [meta(t), avatarChip(t)]),
+    el("div", { class: "task-row-meta" }, meta),
+    el("div", { class: "task-row-right" }, [liveMeta(t), avatarChip(t)]),
   ]);
 }
 
-// meta is the right-cluster status line: a live pulse while the agent works, an
-// amber "needs you" at a gate, otherwise when the task was created.
-function meta(t: Task): HTMLElement {
+// liveMeta is the right-cluster status line: a live pulse while the agent works,
+// an amber "needs you" at a gate, otherwise when the task was created.
+function liveMeta(t: Task): HTMLElement {
   if (IN_FLIGHT.includes(t.status)) return pulseEl(t);
   if (needsYou(t)) {
     return el("div", { class: "task-needs" }, [

@@ -36,6 +36,7 @@
   --muted: #837c70;
   --accent: #5b8cff;
   --accent-ink: #0b1020;
+  --indigo: #7c7fff;
   --green: #7fb98a;
   --amber: #d9a44a;
   --red: #d9695a;
@@ -111,6 +112,7 @@
   --muted: #6b6560;
   --accent: #4a6adf;
   --accent-ink: #ffffff;
+  --indigo: #5a5fe0;
 
   --on-accent: #ffffff;
   --border-hover: #b0ab9e;
@@ -338,6 +340,21 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 .pill[class*="status-"] { background: color-mix(in srgb, var(--pill-accent) 16%, transparent); color: var(--accent); }
 .pill.status-error { background: color-mix(in srgb, var(--pill-red) 16%, transparent); color: var(--red); }
 .pill.status-planning { background: color-mix(in srgb, var(--pill-amber) 16%, transparent); color: var(--amber); }
+/* Lifecycle pills, coloured to match the board columns each status sits in:
+   queued (backlog/ready) reads muted, in-flight reads accent (the default
+   above), verifying/review carry amber, merged reads green, dead ends red. */
+.pill.status-backlog, .pill.status-ready, .pill.status-closed {
+  background: color-mix(in srgb, var(--pill-grey) 16%, transparent); color: var(--muted);
+}
+.pill.status-verifying, .pill.status-review {
+  background: color-mix(in srgb, var(--pill-amber) 16%, transparent); color: var(--amber);
+}
+.pill.status-merged {
+  background: color-mix(in srgb, var(--pill-green) 16%, transparent); color: var(--green);
+}
+.pill.status-blocked, .pill.status-failed {
+  background: color-mix(in srgb, var(--pill-red) 16%, transparent); color: var(--red);
+}
 .bigtask-error { margin-top: var(--space-4); }
 .tag {
   font-size: var(--fs-xs);
@@ -358,6 +375,79 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 .tag.reporter-user { color: var(--teal); }
 .tag.reporter-planner { color: var(--accent); }
 .verify-cmd { background: var(--panel-2); padding: var(--space-1) var(--space-4); border-radius: var(--radius); }
+
+/* ── Task lifecycle status glyphs ──────────────────────────────────────────
+   A 12px shape that reads the stage at a glance, colour driven by currentColor
+   via the tg-<tone> modifiers. Hollow circle = queued, dashed spinner = an
+   agent is on it, ring-with-dot = a human gate is waiting, check = merged. */
+.tg {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  position: relative;
+}
+.tg-indigo { color: var(--indigo); }
+.tg-accent { color: var(--accent); }
+.tg-amber  { color: var(--amber); }
+.tg-green  { color: var(--green); }
+.tg-red    { color: var(--red); }
+.tg-muted  { color: var(--muted); }
+
+.tg-hollow {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+.tg-spinner {
+  border: 1.5px dashed currentColor;
+  border-radius: 50%;
+  animation: tg-spin 1.8s linear infinite;
+}
+@keyframes tg-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tg-spinner { animation: none; } }
+.tg-ring {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+.tg-ring::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tg-dot { border-radius: 50%; background: currentColor; }
+.tg-check::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* ── Tasks page list ───────────────────────────────────────────────────────*/
+.task-list { display: flex; flex-direction: column; }
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.task-row:hover { background: var(--panel-2); }
+.task-row-main { flex: 1 1 auto; min-width: 0; }
+.task-row-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-row-meta { display: flex; align-items: center; gap: var(--space-3); flex: 0 0 auto; }
 
 .ci-fail {
   color: var(--red);
@@ -860,8 +950,8 @@ button.option:hover { border-color: var(--accent); }
 .board-col.gate .board-col-head { color: var(--text); }
 .board-col.gate { border-top: 2px solid var(--amber); }
 
-/* ── Tasks list view ───────────────────────────────────────────────────── */
-.task-tabs { display: flex; gap: var(--space-3); margin-top: var(--space-9); }
+/* ── Tasks list view: filter tabs + per-row live cluster ─────────────────── */
+.task-tabs { display: flex; gap: var(--space-3); margin: var(--space-9) 0 var(--space-2); }
 .task-tab {
   display: inline-flex;
   align-items: center;
@@ -889,23 +979,10 @@ button.option:hover { border-color: var(--accent); }
 }
 .task-tab.active .task-tab-count { color: var(--accent); border-color: color-mix(in srgb, var(--pill-accent) 40%, transparent); }
 
-.task-list { margin-top: var(--space-7); display: flex; flex-direction: column; gap: var(--space-3); }
-.task-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-5) var(--space-6);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: border-color 120ms ease, transform 120ms ease;
-}
-.task-row:hover { border-color: var(--accent); }
-.task-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
-.task-row-title { font-weight: 600; font-size: var(--fs-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-row-sub { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
-.task-row-right { display: flex; align-items: center; gap: var(--space-6); flex-shrink: 0; }
+/* Rows themselves are styled above; here we make them clickable and add the
+   right-hand live cluster (pulse / needs-you / timestamp + avatar). */
+.task-row { cursor: pointer; }
+.task-row-right { display: flex; align-items: center; gap: var(--space-6); flex: 0 0 auto; }
 .task-row-right .pulse { margin-top: 0; }
 .task-time { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
 .task-needs {
