@@ -1178,6 +1178,16 @@ button.option:hover { border-color: var(--accent); }
 }
 .evidence-artifacts { margin-top: var(--space-4); }
 .attach-field { display: flex; flex-direction: column; gap: var(--space-4); align-items: flex-start; }
+/* File-attachment widget (fileAttach / fileChip) */
+.attach-files { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; }
+.file-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px 5px 10px; background: var(--panel-2); border: 1px solid var(--border); font-family: var(--mono, monospace); }
+.chip-name { color: var(--text); font-size: var(--fs-md); font-weight: 500; }
+.chip-size { color: var(--muted); font-size: var(--fs-md); }
+.chip-clip { width: 12px; height: 12px; color: var(--muted); flex-shrink: 0; }
+.chip-remove { all: unset; cursor: pointer; color: var(--muted); font-size: var(--fs-base); line-height: 1; }
+.chip-remove:hover { color: var(--text); }
+.attach-add { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px 5px 10px; background: var(--panel-2); border: 1px dashed var(--border-hover); color: var(--muted); cursor: pointer; font-family: var(--mono, monospace); font-size: var(--fs-md); }
+.attach-add:hover { border-color: var(--text); }
 .assign-select { font-size: var(--fs-base); padding: var(--space-3) var(--space-4); flex: 1; }
 .detail .stat-grid { grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-4); }
 .detail .share-table { margin-top: 0; }
