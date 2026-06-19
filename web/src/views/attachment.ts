@@ -55,11 +55,24 @@ export function attachmentList(urls: string[]): HTMLElement {
   const rows = urls.map((url) => {
     const filename = url.split("/").pop() ?? url;
     const sizeEl = el("span", { class: "attachment-size" }, ["—"]);
-    const row = el("div", { class: "attachment-row" }, [
+    const meta = el("div", { class: "attachment-meta" }, [
       el("span", { class: "attachment-name", onclick: () => openAttachment(url) }, [filename]),
       sizeEl,
       el("a", { href: url, download: "", class: "attachment-dl" }, ["↓"]),
     ]);
+    const children = IMAGE_EXT.test(url)
+      ? [
+          el("img", {
+            src: url,
+            class: "attachment-thumb",
+            alt: filename,
+            loading: "lazy",
+            onclick: () => openAttachment(url),
+          }, []),
+          meta,
+        ]
+      : [meta];
+    const row = el("div", { class: "attachment-row" }, children);
     fetch(url, { method: "HEAD" }).then((r) => {
       const len = r.headers.get("content-length");
       if (len) sizeEl.textContent = formatBytes(Number(len));
