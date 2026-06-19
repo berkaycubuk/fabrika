@@ -1288,6 +1288,107 @@ button.option:hover { border-color: var(--accent); }
    Touches list doesn't read as a heavier block at the bottom of the column. */
 .modal-aside .verify-cmd { font-size: var(--fs-sm); }
 .modal-form { display: flex; flex-direction: column; gap: var(--space-6); }
+
+/* ── New task modal (custom topbar + footer chrome) ─────────────────────────
+   A wider panel with its own header/footer rather than the default title bar:
+   F badge · New task · in <project> up top, Cancel / Plan & create down below,
+   and an Enable-planning toggle that swaps the direct-create flow for a plan. */
+.create-task-modal { max-width: 720px; }
+.create-task-modal .modal-body { padding: var(--space-10) var(--space-10) var(--space-8); }
+.create-task-form { gap: var(--space-8); }
+.create-task-form .title-input { font-size: var(--fs-xl); font-weight: 600; padding: var(--space-6) var(--space-7); }
+
+.modal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-8) var(--space-6) var(--space-9);
+  border-bottom: 1px solid var(--border);
+}
+.modal-topbar-title { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.modal-logo {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; flex-shrink: 0;
+  background: var(--accent); color: var(--accent-ink);
+  font-size: var(--fs-xs); font-weight: 700; line-height: 1;
+}
+.modal-topbar-name { color: var(--text); font-size: var(--fs-lg); font-weight: 600; }
+.modal-topbar-ctx { color: var(--muted); font-size: var(--fs-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.modal-topbar-right { display: flex; align-items: center; gap: var(--space-6); flex-shrink: 0; }
+.kbd {
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--muted); font-size: var(--fs-sm); font-weight: 500;
+  padding: 2px 7px; line-height: 1.4;
+}
+
+/* Uppercase small-caps field label, distinct from the default form label. */
+.task-field > label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+/* Enable-planning toggle — a tinted row that lights up when active. */
+.plan-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-7);
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.plan-toggle.active { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.plan-toggle-text { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.plan-toggle-head { display: flex; align-items: center; gap: var(--space-4); }
+.plan-bolt { color: var(--indigo); font-size: var(--fs-md); }
+.plan-title { color: var(--text); font-size: var(--fs-lg); font-weight: 600; }
+.plan-sub { margin: 0; color: var(--muted); font-size: var(--fs-base); }
+
+/* "What happens next" — the plan-review pipeline, shown only while planning is on. */
+.plan-next {
+  display: flex; flex-direction: column; gap: var(--space-6);
+  padding: var(--space-7);
+  background: var(--bg); border: 1px solid var(--border);
+}
+.plan-next[hidden] { display: none; }
+.plan-next-label { color: var(--muted); font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.8px; }
+.plan-flow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
+.flow-step {
+  display: inline-flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); font-size: var(--fs-md); font-weight: 500;
+}
+.flow-arrow { color: var(--muted); font-size: var(--fs-md); }
+.flow-ico { font-size: var(--fs-base); line-height: 1; }
+.flow-ico.bolt { color: var(--indigo); }
+.flow-ico.diamond { color: var(--amber); }
+.flow-ico.play { color: var(--green); }
+.plan-next-note { margin: 0; color: var(--muted); font-size: var(--fs-base); line-height: 1.5; }
+
+/* Footer action bar. */
+.modal-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-8) var(--space-6) var(--space-9);
+  background: var(--panel); border-top: 1px solid var(--border);
+}
+.modal-footer-hint { display: flex; align-items: center; gap: var(--space-4); min-width: 0; color: var(--muted); font-size: var(--fs-md); font-weight: 500; }
+.modal-footer-hint .hint-ico { flex-shrink: 0; color: var(--green); }
+.modal-footer-hint .hint-ico.diamond { color: var(--indigo); }
+.modal-footer-hint .hint-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-footer-actions { display: flex; align-items: center; gap: var(--space-6); flex-shrink: 0; }
+.modal-footer-actions button { white-space: nowrap; }
+.btn-ghost { background: none; border: none; color: var(--muted); padding: var(--space-3) var(--space-7); }
+.btn-ghost:hover { color: var(--text); border-color: transparent; }
+.modal-footer-actions button.primary { display: inline-flex; align-items: center; gap: var(--space-3); }
+.btn-kbd {
+  background: rgba(11, 16, 32, 0.18);
+  font-size: var(--fs-sm); font-weight: 700;
+  padding: 1px 5px; line-height: 1.4;
+}
+
 .detail { display: flex; flex-direction: column; gap: var(--space-6); }
 .detail .card-actions { margin-top: var(--space-3); }
 

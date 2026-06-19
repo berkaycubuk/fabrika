@@ -9,7 +9,18 @@ let overlay: HTMLElement | null = null;
 export function openModal(
   title: string,
   body: HTMLElement,
-  opts: { wide?: boolean; subtitle?: string; sidebar?: HTMLElement } = {},
+  opts: {
+    wide?: boolean;
+    subtitle?: string;
+    sidebar?: HTMLElement;
+    // Custom chrome: when given, `header` replaces the default title bar and
+    // `footer` is appended below the body (e.g. the Create-task modal's topbar
+    // and Cancel / Plan & create action bar). `className` adds a modifier class
+    // to the panel for scoped styling.
+    header?: HTMLElement;
+    footer?: HTMLElement;
+    className?: string;
+  } = {},
 ): void {
   closeModal();
   const heading: HTMLElement[] = [el("h2", {}, [title])];
@@ -22,14 +33,15 @@ export function openModal(
         el("div", { class: "modal-aside" }, [opts.sidebar]),
       ])
     : el("div", { class: "modal-body" }, [body]);
-  const cls = "modal" + (opts.wide ? " wide" : "") + (opts.sidebar ? " split" : "");
-  const panel = el("div", { class: cls }, [
-    el("div", { class: "modal-head" }, [
-      el("div", {}, heading),
-      el("button", { class: "modal-x", title: "Close", onclick: closeModal }, ["✕"]),
-    ]),
-    modalBody,
+  const head = opts.header ?? el("div", { class: "modal-head" }, [
+    el("div", {}, heading),
+    el("button", { class: "modal-x", title: "Close", onclick: closeModal }, ["✕"]),
   ]);
+  const cls = "modal" + (opts.wide ? " wide" : "") + (opts.sidebar ? " split" : "") +
+    (opts.className ? " " + opts.className : "");
+  const panelChildren: HTMLElement[] = [head, modalBody];
+  if (opts.footer) panelChildren.push(opts.footer);
+  const panel = el("div", { class: cls }, panelChildren);
   // Clicking the overlay outside the modal must not close it — only the
   // Cancel button or the top-right ✕ dismiss the modal.
   const o = el("div", { class: "modal-overlay" }, [panel]);
