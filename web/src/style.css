@@ -343,6 +343,9 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 /* Lifecycle pills, coloured to match the board columns each status sits in:
    queued (backlog/ready) reads muted, in-flight reads accent (the default
    above), verifying/review carry amber, merged reads green, dead ends red. */
+.pill.status-planned {
+  background: color-mix(in srgb, var(--indigo) 16%, transparent); color: var(--indigo);
+}
 .pill.status-backlog, .pill.status-ready, .pill.status-closed {
   background: color-mix(in srgb, var(--pill-grey) 16%, transparent); color: var(--muted);
 }
