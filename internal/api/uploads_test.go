@@ -61,9 +61,10 @@ func TestImageUploadAndServe(t *testing.T) {
 		t.Fatalf("serve: %d (%d bytes)", rec.Code, rec.Body.Len())
 	}
 
-	// Non-image payloads are rejected.
-	if rec := doUpload(t, h, []byte("just text, not an image")); rec.Code != http.StatusBadRequest {
-		t.Fatalf("non-image upload: %d %s", rec.Code, rec.Body.String())
+	// Application-octet-stream (unrecognised binary) is rejected.
+	binPayload := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
+	if rec := doUpload(t, h, binPayload); rec.Code != http.StatusBadRequest {
+		t.Fatalf("binary upload: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// Names that aren't generated uploads (e.g. traversal attempts) 404.
