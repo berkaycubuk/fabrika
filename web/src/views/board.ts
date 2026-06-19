@@ -59,7 +59,7 @@ const COLUMNS: { id: ColId; label: string; gate?: boolean }[] = [
   { id: "merged", label: "Merged" },
   { id: "closed", label: "Closed" },
 ];
-const IN_FLIGHT = ["claimed", "running"];
+export const IN_FLIGHT = ["claimed", "running"];
 // Big-task statuses shown in the Planning column: the request is in (or awaiting)
 // planning, or planning errored. Planned/running/done big tasks move on.
 const PRE_PLAN = ["draft", "planning", "error"];
@@ -436,7 +436,9 @@ export function onHeartbeat(hb: Heartbeat): void {
 
 // pulseEl builds the live activity line for an in-flight task card, seeded from
 // the last known pulse so it isn't blank until the next heartbeat arrives.
-function pulseEl(t: Task): HTMLElement {
+// Exported so the Tasks list reuses the exact same liveness rendering (and the
+// shared heartbeat repaint, which targets [data-pulse] nodes regardless of view).
+export function pulseEl(t: Task): HTMLElement {
   const node = el("div", { class: "pulse", "data-pulse": t.id });
   paintPulse(node, liveness.get(t.id));
   return node;

@@ -189,6 +189,10 @@ type TaskRepo struct{ db *sql.DB }
 
 const taskCols = `id, big_task_id, title, spec, acceptance, depends_on, touch_paths, tags, attachments, risk_tier, priority, status, branch, agent_id, preferred_agent_id, auto_merged, audit_flagged, reverted, reporter, merge_commit_sha, release_id, ci_status, ci_run_url`
 
+// taskReadCols is taskCols plus the read-only created_at (which has a DEFAULT and
+// is never inserted explicitly). scanTask reads this column set.
+const taskReadCols = taskCols + `, created_at`
+
 // Create inserts a Task, assigning an ID and defaults if absent.
 func (r *TaskRepo) Create(t *model.Task) error {
 	if t.ID == "" {
@@ -223,13 +227,13 @@ func (r *TaskRepo) Create(t *model.Task) error {
 
 // Get returns a Task by ID.
 func (r *TaskRepo) Get(id string) (*model.Task, error) {
-	row := r.db.QueryRow(`SELECT `+taskCols+` FROM tasks WHERE id=?`, id)
+	row := r.db.QueryRow(`SELECT `+taskReadCols+` FROM tasks WHERE id=?`, id)
 	return scanTask(row)
 }
 
 // ListByBigTask returns the tasks belonging to a big task, newest-first.
 func (r *TaskRepo) ListByBigTask(bigTaskID string) ([]model.Task, error) {
-	rows, err := r.db.Query(`SELECT `+taskCols+` FROM tasks WHERE big_task_id=? ORDER BY created_at DESC`, bigTaskID)
+	rows, err := r.db.Query(`SELECT `+taskReadCols+` FROM tasks WHERE big_task_id=? ORDER BY created_at DESC`, bigTaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +251,7 @@ func (r *TaskRepo) ListByBigTask(bigTaskID string) ([]model.Task, error) {
 
 // List returns all Tasks newest-first.
 func (r *TaskRepo) List() ([]model.Task, error) {
-	rows, err := r.db.Query(`SELECT ` + taskCols + ` FROM tasks ORDER BY created_at DESC`)
+	rows, err := r.db.Query(`SELECT ` + taskReadCols + ` FROM tasks ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +417,7 @@ func (r *TaskRepo) ListByStatus(statuses ...string) ([]model.Task, error) {
 	for i, s := range statuses {
 		args[i] = s
 	}
-	rows, err := r.db.Query(`SELECT `+taskCols+` FROM tasks WHERE status IN (`+ph+`) ORDER BY created_at DESC`, args...)
+	rows, err := r.db.Query(`SELECT `+taskReadCols+` FROM tasks WHERE status IN (`+ph+`) ORDER BY created_at DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +467,7 @@ func scanTask(s scanner) (*model.Task, error) {
 	err := s.Scan(&t.ID, &t.BigTaskID, &t.Title, &t.Spec, &acc, &dependsOn, &touchPaths, &tags, &attachments,
 		&t.RiskTier, &t.Priority, &t.Status, &t.Branch, &t.AgentID, &t.PreferredAgentID,
 		&autoMerged, &auditFlagged, &reverted, &t.Reporter, &t.MergeCommitSHA, &t.ReleaseID,
-		&t.CIStatus, &t.CIRunURL)
+		&t.CIStatus, &t.CIRunURL, &t.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

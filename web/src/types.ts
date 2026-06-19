@@ -45,6 +45,7 @@ export interface Task {
   pushed?: boolean;
   reverted: boolean;
   reporter: string;
+  createdAt: string;
   releaseId?: string;
   ciStatus?: string;
   ciRunUrl?: string;
