@@ -33,6 +33,7 @@ type Metrics struct {
 	WIP        int            `json:"wip"`        // tasks currently running/verifying
 	Planning   int            `json:"planning"`   // big tasks currently being planned
 	WIPCap     int            `json:"wipCap"`     // configured ceiling (0 = unlimited)
+	Planned    int            `json:"planned"`    // planner-produced tasks awaiting approval
 	Ready      int            `json:"ready"`      // queued, awaiting an agent slot
 	InReview   int            `json:"inReview"`   // awaiting human accept
 	Blocked    int            `json:"blocked"`    // escalated/blocked
@@ -84,6 +85,8 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 		switch t.Status {
 		case model.TaskRunning, model.TaskVerifying, model.TaskClaimed:
 			m.WIP++
+		case model.TaskPlanned:
+			m.Planned++
 		case model.TaskReady:
 			m.Ready++
 		case model.TaskReview:
