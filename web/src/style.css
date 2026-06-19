@@ -950,6 +950,70 @@ button.option:hover { border-color: var(--accent); }
 .board-col.gate .board-col-head { color: var(--text); }
 .board-col.gate { border-top: 2px solid var(--amber); }
 
+/* ── Tasks list view: filter tabs + per-row live cluster ─────────────────── */
+.task-tabs { display: flex; gap: var(--space-3); margin: var(--space-9) 0 var(--space-2); }
+.task-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.task-tab:hover { color: var(--text); border-color: var(--accent); }
+.task-tab.active { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+.task-tab-count {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 var(--space-3);
+  min-width: 18px;
+  text-align: center;
+}
+.task-tab.active .task-tab-count { color: var(--accent); border-color: color-mix(in srgb, var(--pill-accent) 40%, transparent); }
+
+/* Rows themselves are styled above; here we make them clickable and add the
+   right-hand live cluster (pulse / needs-you / timestamp + avatar). */
+.task-row { cursor: pointer; }
+.task-row-right { display: flex; align-items: center; gap: var(--space-6); flex: 0 0 auto; }
+.task-row-right .pulse { margin-top: 0; }
+.task-time { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+.task-needs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--amber);
+  white-space: nowrap;
+}
+
+.task-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.task-avatar.unassigned {
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  box-shadow: none;
+}
+
 .task-evidence { display: flex; flex-direction: column; gap: var(--space-6); }
 .task-evidence:empty { display: none; }
 

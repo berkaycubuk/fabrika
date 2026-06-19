@@ -145,6 +145,10 @@ type Task struct {
 	// Pushed is computed at read time: true when the merged work's commit is
 	// reachable from the remote-tracking ref for the base branch.
 	Pushed bool `json:"pushed"`
+
+	// CreatedAt is the row's insert time (UTC, "YYYY-MM-DD HH:MM:SS"); read-only,
+	// surfaced so list views can show a relative timestamp.
+	CreatedAt string `json:"createdAt"`
 }
 
 // Release is a deployment of a merged SHA, progressing through a deploy/bake

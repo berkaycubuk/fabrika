@@ -10,7 +10,7 @@ import { renderBoard, onBoardEvent, onHeartbeat } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
 import { renderConfig } from "./views/config.js";
 import { renderCrons } from "./views/crons.js";
-import { renderTasks } from "./views/tasks.js";
+import { renderTasks, onTasksEvent } from "./views/tasks.js";
 import type { FabrikaEvent, Heartbeat } from "./types.js";
 
 interface Nav {
@@ -114,6 +114,7 @@ function main(): void {
     // task/plan), the factory views own the registry/metrics.
     onBoardEvent(e);
     onFactoryEvent();
+    onTasksEvent();
     if (e.type.startsWith("agent.")) onAgentEvent();
   }, {
     // Link is up — reflect it immediately, even before any event arrives.
@@ -124,6 +125,7 @@ function main(): void {
       setConn("live");
       onBoardEvent();
       onFactoryEvent();
+      onTasksEvent();
       onAgentEvent();
     },
     onDisconnect: () => setConn("reconnecting"),
