@@ -94,7 +94,7 @@ export function renderBoard(root: HTMLElement): void {
           style: "display:none",
           onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
         }, ["Push"]),
-        button("Create task", { variant: "primary", onclick: openCreateTask }),
+        button("Create task", { variant: "primary", onclick: () => openCreateTask() }),
       ]),
     ]),
     el("div", { id: "board-err", class: "form-error" }, []),
@@ -1198,7 +1198,7 @@ function currentProjectName(): string {
 // agent (createTask); flip "Enable planning" and it becomes a big task a planner
 // decomposes for your approval (createBigTask). The footer hint, the submit
 // label, and the "what happens next" panel all track the toggle.
-function openCreateTask(): void {
+export function openCreateTask(onCreated: () => void = refresh): void {
   const title = el("input", { class: "title-input", placeholder: "Title (e.g. Add /healthz endpoint)" }) as HTMLInputElement;
   const desc = el("textarea", { placeholder: "What to build, where, and any constraints… Paste images for context.", rows: "4" }) as HTMLTextAreaElement;
   const err = el("div", { class: "form-error" });
@@ -1312,7 +1312,7 @@ function openCreateTask(): void {
         });
       }
       closeModal();
-      refresh();
+      onCreated();
     } catch (e2) {
       err.textContent = (e2 as Error).message;
     }

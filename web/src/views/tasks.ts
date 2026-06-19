@@ -7,7 +7,7 @@
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { button, pill, tag } from "../components.js";
-import { pulseEl, IN_FLIGHT, openTaskDetail } from "./board.js";
+import { pulseEl, IN_FLIGHT, openTaskDetail, openCreateTask } from "./board.js";
 import { ciBadge } from "./ci-badge.js";
 import { pushStatusLabel } from "../push.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
@@ -151,8 +151,7 @@ export function renderTasks(root: HTMLElement): void {
         },
       }),
       el("div", { class: "header-actions" }, [
-        button("Create task", { onclick: () => {} }),
-        button("Define big task", { variant: "primary", onclick: () => {} }),
+        button("Create task", { onclick: () => openCreateTask(refresh) }),
       ]),
     ]),
     el("div", { class: "task-toolbar" }, [
