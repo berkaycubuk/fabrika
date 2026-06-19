@@ -129,16 +129,21 @@ func (r *Repo) Diff(ctx context.Context, base, branch string) (string, error) {
 	return r.run(ctx, "diff", base+"..."+branch)
 }
 
-// ChangedFiles lists files changed on branch relative to base.
+// ChangedFiles lists files changed on branch relative to base. It uses -z so
+// paths come back NUL-separated and verbatim: `git diff --name-only` otherwise
+// quotes and octal-escapes any path with non-ASCII or special bytes (e.g.
+// "src/auth/caf\303\251.go"), and those mangled strings would silently fail the
+// risk-tier and locked-glob matching that consume this list — letting a
+// high-risk or locked file slip through as if it were unmatched.
 func (r *Repo) ChangedFiles(ctx context.Context, base, branch string) ([]string, error) {
-	out, err := r.run(ctx, "diff", "--name-only", base+"..."+branch)
+	out, err := r.run(ctx, "diff", "--name-only", "-z", base+"..."+branch)
 	if err != nil {
 		return nil, err
 	}
 	var files []string
-	for _, line := range strings.Split(out, "\n") {
-		if s := strings.TrimSpace(line); s != "" {
-			files = append(files, s)
+	for _, name := range strings.Split(out, "\x00") {
+		if name != "" {
+			files = append(files, name)
 		}
 	}
 	return files, nil

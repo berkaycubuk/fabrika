@@ -174,6 +174,51 @@ func TestWorktreeAndDiff(t *testing.T) {
 	}
 }
 
+// TestChangedFilesNonASCII guards that a path with non-ASCII bytes comes back
+// verbatim rather than git's quoted/octal-escaped form ("caf\303\251.go"),
+// which would slip past the risk-tier and locked-glob matching downstream.
+func TestChangedFilesNonASCII(t *testing.T) {
+	ctx := context.Background()
+	root := initRepo(t)
+
+	r, err := Open(ctx, root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	wt := filepath.Join(t.TempDir(), "wt")
+	if err := r.AddWorktree(ctx, wt, "task/unicode", "main"); err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	const name = "café.go"
+	if err := os.WriteFile(filepath.Join(wt, name), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commit := exec.Command("git", "commit", "-aqm", "add unicode file")
+	commit.Dir = wt
+	commit.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	add := exec.Command("git", "add", ".")
+	add.Dir = wt
+	if out, err := add.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	if out, err := commit.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+
+	files, err := r.ChangedFiles(ctx, "main", "task/unicode")
+	if err != nil {
+		t.Fatalf("ChangedFiles: %v", err)
+	}
+	if len(files) != 1 || files[0] != name {
+		t.Fatalf("changed files = %#v, want [%q]", files, name)
+	}
+}
+
 func TestCoAuthorTrailer(t *testing.T) {
 	const want = "Co-authored-by: fabrika <noreply@fabrika-ai.com>"
 	if CoAuthorTrailer != want {
