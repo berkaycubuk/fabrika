@@ -41,6 +41,7 @@ type Store struct {
 	Sessions    *SessionRepo
 	Crons       *CronRepo
 	Transitions *TransitionRepo
+	Uploads     *UploadRepo
 }
 
 // Open opens (creating if needed) both databases and applies migrations.
@@ -97,6 +98,7 @@ func Open(globalDir, projectDir string) (*Store, error) {
 	s.Sessions = &SessionRepo{db: project}
 	s.Crons = &CronRepo{db: project}
 	s.Transitions = &TransitionRepo{db: project}
+	s.Uploads = &UploadRepo{db: project}
 	if err := s.Crons.bootstrap(); err != nil {
 		global.Close()
 		project.Close()

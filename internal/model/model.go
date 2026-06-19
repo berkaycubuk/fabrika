@@ -260,6 +260,17 @@ type Comment struct {
 	CreatedAt   string   `json:"createdAt"`
 }
 
+// Upload is per-upload metadata for a generalized file attachment. The blob
+// itself lives on disk under .fabrika/uploads; this row lets it survive restart
+// and be served back with its original filename and content type.
+type Upload struct {
+	Name        string `json:"name"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"contentType"`
+	Size        int64  `json:"size"`
+	CreatedAt   string `json:"createdAt"`
+}
+
 // TaskTransition records a task lifecycle status change in the per-project store.
 type TaskTransition struct {
 	ID         string `json:"id"`
