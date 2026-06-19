@@ -31,6 +31,7 @@ interface StatusMeta {
 // ring-with-dot when a human gate is waiting (review → Accept), a green check
 // once merged. Unknown statuses fall back to a muted dot below.
 export const STATUS_META: Record<string, StatusMeta> = {
+  planned:   { label: "planned",   glyph: "hollow",  tone: "indigo" },
   backlog:   { label: "backlog",   glyph: "hollow",  tone: "indigo" },
   ready:     { label: "ready",     glyph: "hollow",  tone: "indigo" },
   claimed:   { label: "claimed",   glyph: "spinner", tone: "accent" },
