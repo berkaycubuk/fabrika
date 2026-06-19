@@ -430,24 +430,55 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
   transform: rotate(45deg);
 }
 
-/* ── Tasks page list ───────────────────────────────────────────────────────*/
+/* ── Tasks page list ───────────────────────────────────────────────────────
+   A flat unified list: one row per task, hairline-separated. Rows bleed to the
+   content edges and carry their own ~11px/32px padding (closest spacing tokens),
+   so the header, error and rows all align at the same gutter. */
+.content:has(.task-list) { padding-left: 0; padding-right: 0; }
+.content:has(.task-list) .view-header,
+.content:has(.task-list) #tasks-err {
+  padding-left: var(--space-13);
+  padding-right: var(--space-13);
+}
 .task-list { display: flex; flex-direction: column; }
 .task-row {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-2);
+  padding: var(--space-6) var(--space-13);
   border-bottom: 1px solid var(--border);
 }
 .task-row:hover { background: var(--panel-2); }
-.task-row-main { flex: 1 1 auto; min-width: 0; }
+.task-row-id { flex: 0 0 auto; font-size: var(--fs-sm); }
+.task-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
 .task-row-title {
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.task-row-meta { display: flex; align-items: center; gap: var(--space-3); flex: 0 0 auto; }
+.task-row-crumb {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-row-right { display: flex; align-items: center; gap: var(--space-3); flex: 0 0 auto; }
+.task-row-metacol {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
 
 .ci-fail {
   color: var(--red);

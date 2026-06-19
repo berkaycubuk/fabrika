@@ -3,12 +3,15 @@
 // lifecycle, the same way the board columns read; on the right a live cluster
 // answers "what's it doing right now?" — a live pulse while an agent works, an
 // amber "needs you" at a human gate, or a relative timestamp otherwise — beside
-// a small agent avatar chip. Filter tabs narrow rows client-side.
+// the assigned agent's avatar. Filter tabs narrow rows client-side.
 import { api } from "../api.js";
 import { el, clear } from "../dom.js";
 import { button, pill, tag } from "../components.js";
 import { pulseEl, IN_FLIGHT, openTaskDetail } from "./board.js";
-import type { Task, Agent } from "../types.js";
+import { ciBadge } from "./ci-badge.js";
+import { pushStatusLabel } from "../push.js";
+import { DEFAULT_AVATAR } from "../avatar.js";
+import type { Task, Agent, BigTask } from "../types.js";
 
 // A status glyph shape. Kept abstract from any one status so the same shape can
 // stand for several (running and claimed both spin) and the CSS owns the look.
@@ -91,8 +94,33 @@ function needsYou(t: Task): boolean {
   return GATE_STATUSES.includes(t.status) || (t.status === "merged" && t.auditFlagged);
 }
 
+// avatarFor renders the assigned agent's photo as a small avatar, name on hover;
+// the generic silhouette stands in until an agent self-photo is set. Mirrors the
+// board's agentPhoto so a task reads the same on either surface.
+function avatarFor(agents: Agent[], id: string): HTMLElement {
+  const a = agents.find((x) => x.id === id);
+  const name = a?.name ?? "—";
+  return el("img", { class: "card-agent-photo", src: a?.photo || DEFAULT_AVATAR, alt: name, title: name });
+}
+
+// metaColumn is the right-aligned secondary cluster: priority (only when it
+// deviates from the medium default), a CI-failure badge, and a push-status tag.
+// Empty when none apply, so a quiet task carries no noise. Mirrors the board
+// card's meta so the same signals read the same way here.
+function metaColumn(t: Task): HTMLElement | null {
+  const items: (Node | string)[] = [];
+  if (t.priority && t.priority !== "medium") items.push(tag(t.priority, `priority-${t.priority}`));
+  const badge = ciBadge(t);
+  if (badge) items.push(badge);
+  const pl = pushStatusLabel(t);
+  if (pl) items.push(tag(pl, `push-${pl}`));
+  if (items.length === 0) return null;
+  return el("div", { class: "task-row-metacol" }, items);
+}
+
 let storedTasks: Task[] = [];
 let storedAgents: Agent[] = [];
+let bigTaskTitles = new Map<string, string>();
 let activeTab: TabId = "all";
 let search = "";
 
@@ -146,11 +174,16 @@ async function refresh(): Promise<void> {
   if (!list) return;
   const errBox = document.getElementById("tasks-err");
   try {
-    const [tasks, agents] = await Promise.all([api.listTasks(), api.listAgents()]);
+    const [tasks, agents, bigTasks] = await Promise.all([
+      api.listTasks(),
+      api.listAgents(),
+      api.listBigTasks(),
+    ]);
     if (!document.getElementById("task-list")) return;
     if (errBox) errBox.textContent = "";
     storedTasks = tasks;
     storedAgents = agents;
+    bigTaskTitles = new Map<string, string>(bigTasks.map((b: BigTask) => [b.id, b.title]));
     paint();
   } catch (e) {
     if (errBox) errBox.textContent = (e as Error).message;
@@ -178,17 +211,27 @@ function paint(): void {
   for (const t of rows) list.append(taskRow(t));
 }
 
+// taskRow renders one task left to right: lifecycle glyph, muted short id,
+// semibold title with an optional parent big-task breadcrumb, then the lifecycle
+// pill + risk tag + meta column (priority/CI/push), and finally the live status
+// line beside the assigned agent's avatar. Clicking the row opens its detail.
 function taskRow(t: Task): HTMLElement {
+  const main: (Node | string)[] = [el("div", { class: "task-row-title" }, [t.title])];
+  const parent = t.bigTaskId ? bigTaskTitles.get(t.bigTaskId) : undefined;
+  if (parent) main.push(el("span", { class: "task-row-crumb" }, [`› ${parent}`]));
+
   const meta: (Node | string)[] = [statusPill(t.status)];
   const risk = riskChip(t.riskTier);
   if (risk) meta.push(risk);
+  const mc = metaColumn(t);
+  if (mc) meta.push(mc);
+
   return el("div", { class: "task-row", onclick: () => openTaskDetail(t, storedAgents) }, [
     statusGlyph(t.status),
-    el("div", { class: "task-row-main" }, [
-      el("div", { class: "task-row-title" }, [t.title]),
-    ]),
+    el("span", { class: "task-row-id muted" }, [t.id.slice(0, 6)]),
+    el("div", { class: "task-row-main" }, main),
     el("div", { class: "task-row-meta" }, meta),
-    el("div", { class: "task-row-right" }, [liveMeta(t), avatarChip(t)]),
+    el("div", { class: "task-row-right" }, [liveMeta(t), avatarFor(storedAgents, t.agentId)]),
   ]);
 }
 
@@ -203,16 +246,6 @@ function liveMeta(t: Task): HTMLElement {
     ]);
   }
   return el("div", { class: "task-time", title: t.createdAt }, [relTime(t.createdAt)]);
-}
-
-// avatarChip is a small round chip with the assigned agent's initial; an empty
-// dashed ring stands in when the task is unassigned.
-function avatarChip(t: Task): HTMLElement {
-  if (!t.agentId) return el("span", { class: "task-avatar unassigned", title: "unassigned" }, []);
-  const a = storedAgents.find((x) => x.id === t.agentId);
-  const name = a?.name ?? "—";
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
-  return el("span", { class: "task-avatar", title: name }, [initial]);
 }
 
 // relTime renders a UTC "YYYY-MM-DD HH:MM:SS" stamp as a compact age (just now,
