@@ -6,10 +6,10 @@ import type { ConfigManifest } from "../types.js";
 
 const VERB_KEYS = ["setup", "build", "test", "lint", "typecheck", "verify", "e2e", "run"] as const;
 
-function toToml(m: ConfigManifest): string {
+export function toToml(m: ConfigManifest): string {
   const lines: string[] = [];
   lines.push("[project]");
-  lines.push(`name = "${m.project.name}"`);
+  lines.push(`name = "${m.project.name.replace(/"/g, '\\"')}"`);
   lines.push("");
   lines.push("[verbs]");
   for (const k of VERB_KEYS) {
@@ -27,7 +27,7 @@ function toToml(m: ConfigManifest): string {
   return lines.join("\n") + "\n";
 }
 
-function fromToml(s: string): ConfigManifest {
+export function fromToml(s: string): ConfigManifest {
   const m: ConfigManifest = {
     project: { name: "" },
     verbs: Object.fromEntries(VERB_KEYS.map((k) => [k, ""])) as ConfigManifest["verbs"],
