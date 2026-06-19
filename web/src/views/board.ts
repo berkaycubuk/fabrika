@@ -633,11 +633,35 @@ export function openPlanDetail(p: Plan): void {
     actionRow([
       button("Approve plan", { variant: "primary", onclick: () => act(() => api.approvePlan(p.id)) }),
       button("Request changes", { variant: "danger", onclick: () => {
-        promptModal({
-          title: "Request changes",
+        const textarea = el("textarea", {
+          class: "prompt-input comment-input",
+          rows: "4",
           placeholder: "What should the planner change?",
-          submitLabel: "Send",
-        }, (feedback) => act(() => api.revisePlan(p.id, feedback)));
+        }) as HTMLTextAreaElement;
+        const err = el("div", { class: "form-error" }, []);
+        const attach = imageAttach(textarea, err);
+        const submit = () => {
+          const feedback = textarea.value.trim();
+          if (!feedback) return;
+          const attachments = attach.urls();
+          closeModal();
+          act(() => api.revisePlan(p.id, feedback, attachments));
+        };
+        textarea.addEventListener("keydown", (e: KeyboardEvent) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+        });
+        const body = el("div", {}, [
+          textarea,
+          attach.previews,
+          err,
+          el("div", { class: "form-actions" }, [
+            ...attach.controls,
+            button("Cancel", { onclick: closeModal }),
+            button("Send", { variant: "primary", onclick: submit }),
+          ]),
+        ]);
+        openModal("Request changes", body);
+        textarea.focus();
       }}),
       button("Reject", { variant: "danger", onclick: () => act(() => api.rejectPlan(p.id)) }),
     ]),
