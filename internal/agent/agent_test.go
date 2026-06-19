@@ -41,7 +41,7 @@ func TestRenderPromptCoAuthor(t *testing.T) {
 
 func TestRenderPromptAttachments(t *testing.T) {
 	out := RenderPrompt(model.Task{Title: "x"}, nil, []string{"/repo/.fabrika/uploads/a.png"}, nil, "")
-	if !strings.Contains(out, "## Attached images") || !strings.Contains(out, "/repo/.fabrika/uploads/a.png") {
+	if !strings.Contains(out, "## Attached files") || !strings.Contains(out, "/repo/.fabrika/uploads/a.png") {
 		t.Fatalf("RenderPrompt output missing attachment paths:\n%s", out)
 	}
 }

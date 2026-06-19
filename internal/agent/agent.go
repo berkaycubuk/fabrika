@@ -193,7 +193,7 @@ func RenderPrompt(t model.Task, conventions []model.Convention, attachments []st
 		fmt.Fprintf(&b, "## Previous attempt failed\nA prior run of this task failed. Do not repeat it — diagnose and fix the cause:\n\n```\n%s\n```\n\n", lastFailure)
 	}
 	if len(attachments) > 0 {
-		b.WriteString("## Attached images\nThe task includes these image files — read them for context (mockups, screenshots, diagrams):\n")
+		b.WriteString("## Attached files\nThe task includes these files — read each one for context. They may be images (mockups, screenshots, diagrams) or documents (specs, data, logs):\n")
 		for _, p := range attachments {
 			fmt.Fprintf(&b, "  - %s\n", p)
 		}
