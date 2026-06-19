@@ -45,6 +45,7 @@ const (
 	settingMutation            = "mutation_testing"     // "on" enables the mutation-testing gate validator
 	settingQuarantineThreshold = "quarantine_threshold" // consecutive fails before an agent is skipped
 	settingIdleTimeout         = "agent_idle_timeout"   // duration of agent silence before it's killed as stalled (0/"off" disables)
+	settingAutoMode            = "auto_mode"            // "on" auto-merges review-queue tasks without a human
 )
 
 // runInfo records what an in-flight task is doing, for slot accounting and
@@ -328,6 +329,7 @@ func (e *Engine) loop() {
 	for {
 		e.dispatchReady()
 		e.dispatchPlanning()
+		e.sweepAutoMerge()
 		select {
 		case <-e.ctx.Done():
 			return
