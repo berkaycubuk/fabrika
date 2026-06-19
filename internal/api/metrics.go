@@ -49,6 +49,7 @@ type Metrics struct {
 	ChangeFailRate  float64 `json:"changeFailRate"`  // reverted / merged — keep flat as autonomy widens
 	AuditRate       float64 `json:"auditRate"`       // configured post-merge audit sampling rate
 	MutationTesting bool    `json:"mutationTesting"` // mutation-testing validator enabled
+	AutoMode        bool    `json:"autoMode"`        // auto-merge review-queue tasks without a human
 
 	TotalTokens int `json:"totalTokens"` // board-wide sum of agent token usage
 }
@@ -216,6 +217,9 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	if v, _ := s.store.Settings.Get("mutation_testing"); v != "" {
 		m.MutationTesting = strings.EqualFold(v, "on")
+	}
+	if v, _ := s.store.Settings.Get("auto_mode"); v != "" {
+		m.AutoMode = strings.EqualFold(v, "on")
 	}
 
 	writeJSON(w, http.StatusOK, m)

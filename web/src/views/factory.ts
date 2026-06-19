@@ -81,6 +81,10 @@ function autonomyControls(m: Metrics): HTMLElement {
   mutation.checked = m.mutationTesting;
   mutation.onchange = () => saveSetting({ mutation_testing: mutation.checked ? "on" : "off" });
 
+  const autoMode = el("input", { type: "checkbox", title: "Auto-merge review-queue tasks without a human" }) as HTMLInputElement;
+  autoMode.checked = m.autoMode;
+  autoMode.onchange = () => saveSetting({ auto_mode: autoMode.checked ? "on" : "off" });
+
   const setRate = el("form", {
     class: "wip-cap",
     onsubmit: (e: Event) => {
@@ -92,6 +96,7 @@ function autonomyControls(m: Metrics): HTMLElement {
     rate,
     button("Set", { variant: "primary", type: "submit" }),
     el("label", { class: "checkbox" }, [mutation, "mutation testing"]),
+    el("label", { class: "checkbox" }, [autoMode, "auto mode"]),
   ]);
 
   return el("div", { class: "metrics-bar", style: "margin-top:16px" }, [setWip, setRate]);
