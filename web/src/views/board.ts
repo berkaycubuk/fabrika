@@ -18,7 +18,7 @@ import { renderTransitionTimeline } from "./history.js";
 import { registerReleaseListener } from "../ws.js";
 import { pushStatusLabel } from "../push.js";
 import { renderDiff } from "./diff-view.js";
-import { attachmentGallery, imageAttach, fileAttach } from "./attachment.js";
+import { attachmentGallery, attachmentList, imageAttach, fileAttach } from "./attachment.js";
 import { ciBadge } from "./ci-badge.js";
 import { emptyFilter, matchesFilter, countLabel, distinctValues, type CardFilter, type Filterable } from "./board-filter.js";
 import { mentionQuery, matchAgents, applyMention } from "../mentions.js";
@@ -857,7 +857,12 @@ export function openTaskDetail(t: Task, agents: Agent[]): void {
   const children: (Node | string)[] = [];
   if (t.spec) children.push(el("p", { class: "card-spec" }, [t.spec]));
   else children.push(el("span", {}));
-  if (t.attachments?.length) children.push(attachmentGallery(t.attachments));
+  if (t.attachments?.length) {
+    children.push(el("div", { class: "evidence-artifacts" }, [
+      el("div", { class: "section-h sm" }, ["Attachments"]),
+      attachmentList(t.attachments),
+    ]));
+  }
   for (const c of t.acceptance?.verifyCmds ?? []) children.push(el("code", { class: "verify-cmd" }, [c]));
   if (STEERABLE.includes(t.status)) children.push(steerRow(t, agents));
   if (t.status === "closed") {

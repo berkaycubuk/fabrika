@@ -37,6 +37,38 @@ export function formatFileSize(bytes: number): string {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let val = n / 1024;
+  let unit = units[0];
+  for (let i = 0; i < units.length; i++) {
+    unit = units[i];
+    if (val < 1024 || i === units.length - 1) break;
+    val /= 1024;
+  }
+  const str = val.toFixed(1);
+  return `${str.endsWith(".0") ? str.slice(0, -2) : str} ${unit}`;
+}
+
+export function attachmentList(urls: string[]): HTMLElement {
+  const rows = urls.map((url) => {
+    const filename = url.split("/").pop() ?? url;
+    const sizeEl = el("span", { class: "attachment-size" }, ["—"]);
+    const row = el("div", { class: "attachment-row" }, [
+      el("span", { class: "attachment-name", onclick: () => openAttachment(url) }, [filename]),
+      sizeEl,
+      el("a", { href: url, download: "", class: "attachment-dl" }, ["↓"]),
+    ]);
+    fetch(url, { method: "HEAD" }).then((r) => {
+      const len = r.headers.get("content-length");
+      if (len) sizeEl.textContent = formatBytes(Number(len));
+    }).catch(() => {});
+    return row;
+  });
+  return el("div", { class: "attachment-list" }, rows);
+}
+
 export function fileChip(opts: { name: string; size: number; onRemove: () => void }): HTMLElement {
   const chip = el("div", { class: "file-chip" }, []);
 
