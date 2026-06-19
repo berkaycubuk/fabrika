@@ -80,6 +80,15 @@ func (r *BigTaskRepo) SetPlannerAgent(id, agentID string) error {
 	return mustAffect(res)
 }
 
+// SetAttachments persists a big task's attachment URL list.
+func (r *BigTaskRepo) SetAttachments(id string, urls []string) error {
+	res, err := r.db.Exec(`UPDATE bigtasks SET attachments=? WHERE id=?`, jsonStrings(urls), id)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res)
+}
+
 // SetPlanFeedback records plan-revision feedback on a big task.
 func (r *BigTaskRepo) SetPlanFeedback(id, feedback string) error {
 	res, err := r.db.Exec(`UPDATE bigtasks SET plan_feedback=? WHERE id=?`, feedback, id)

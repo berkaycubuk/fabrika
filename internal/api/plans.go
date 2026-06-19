@@ -98,7 +98,8 @@ func (s *Server) rejectPlan(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) revisePlan(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Feedback string `json:"feedback"`
+		Feedback    string   `json:"feedback"`
+		Attachments []string `json:"attachments"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -108,7 +109,13 @@ func (s *Server) revisePlan(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "feedback is required")
 		return
 	}
-	if err := s.engine.RevisePlan(r.PathValue("id"), body.Feedback); err != nil {
+	for _, a := range body.Attachments {
+		if !isUploadURL(a) {
+			writeErr(w, http.StatusBadRequest, "invalid attachment URL: "+a)
+			return
+		}
+	}
+	if err := s.engine.RevisePlan(r.PathValue("id"), body.Feedback, body.Attachments); err != nil {
 		mapEngineErr(w, err)
 		return
 	}
