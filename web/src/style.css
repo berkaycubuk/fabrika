@@ -434,7 +434,7 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
    A flat unified list: one row per task, hairline-separated. Rows bleed to the
    content edges and carry their own ~11px/32px padding (closest spacing tokens),
    so the header, error and rows all align at the same gutter. */
-.content:has(.task-list) { padding-left: 0; padding-right: 0; }
+.content:has(.task-list) { max-width: none; padding-left: 0; padding-right: 0; }
 .content:has(.task-list) .view-header,
 .content:has(.task-list) #tasks-err {
   padding-left: var(--space-13);
