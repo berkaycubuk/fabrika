@@ -1,0 +1,15 @@
+name: Trigger website rebuild
+
+# When a GitHub release is published, ping the Netlify build hook so the
+# website rebuilds and picks up the new release notes.
+on:
+  release:
+    types: [published]
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Netlify build
+        run: |
+          curl -fsSL -X POST -d '{}' "${{ secrets.NETLIFY_BUILD_HOOK }}"
