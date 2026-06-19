@@ -94,7 +94,7 @@ export function renderBoard(root: HTMLElement): void {
           style: "display:none",
           onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
         }, ["Push"]),
-        button("Create task", { onclick: openCreateTask }),
+        button("Create task", { onclick: () => openCreateTask() }),
         button("Define big task", { variant: "primary", onclick: openDefine }),
       ]),
     ]),
@@ -1253,7 +1253,7 @@ function openDefine(): void {
   });
 }
 
-function openCreateTask(): void {
+export function openCreateTask(onCreated: () => void = refresh): void {
   const title = el("input", { placeholder: "Title (e.g. Add /healthz endpoint)" }) as HTMLInputElement;
   const spec = el("textarea", { placeholder: "What to build, where, and any constraints… Paste images for context.", rows: "4" }) as HTMLTextAreaElement;
   const verify = el("textarea", { placeholder: "Verify commands, one per line (e.g. go test ./...)", rows: "3" }) as HTMLTextAreaElement;
@@ -1287,7 +1287,7 @@ function openCreateTask(): void {
           attachments: attach.urls(),
         });
         closeModal();
-        refresh();
+        onCreated();
       } catch (e2) {
         err.textContent = (e2 as Error).message;
       }
