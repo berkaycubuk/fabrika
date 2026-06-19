@@ -151,7 +151,7 @@ export function renderTasks(root: HTMLElement): void {
         },
       }),
       el("div", { class: "header-actions" }, [
-        button("Create task", { onclick: () => openCreateTask(refresh) }),
+        button("Create task", { variant: "primary", onclick: () => openCreateTask(refresh) }),
       ]),
     ]),
     el("div", { class: "task-toolbar" }, [
