@@ -137,10 +137,15 @@ func (e *Engine) sweepAutoMerge() int {
 			continue // known to conflict with the current main; wait for main to move
 		}
 		if err := e.Accept(id, false); err != nil {
-			if errors.Is(err, errMergeConflict) {
+			switch {
+			case errors.Is(err, errResolutionStarted):
+				// A stale-branch conflict was handed to the agent; it will merge or
+				// route to review on its own. Not a failure, not yet merged.
+				log.Printf("engine: auto-merge task %s: resolving conflict", id)
+			case errors.Is(err, errMergeConflict):
 				e.markMergeConflict(id)
 				log.Printf("engine: auto-merge task %s: %v (parked until main advances)", id, err)
-			} else {
+			default:
 				log.Printf("engine: auto-merge task %s: %v", id, err)
 			}
 			continue

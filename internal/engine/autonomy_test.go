@@ -105,17 +105,13 @@ func TestAutoMergeWithReviewerApproval(t *testing.T) {
 	}
 }
 
-// TestAutoMergeSweepParksConflict reproduces the tight-loop bug: a review task
-// whose branch conflicts with main can never auto-merge, so the sweep must park
-// it after one attempt instead of re-Accepting it on every tick. Two tasks edit
-// the same file; the first merges (advancing main), the second is left stale and
-// conflicting.
-func TestAutoMergeSweepParksConflict(t *testing.T) {
-	eng, st, _ := setup(t)
-	// Each worktree path is unique, so appending it makes the two branches edit
-	// the same region of README with different content -> a guaranteed conflict
-	// once the first has merged.
-	registerAgent(t, st, "pwd >> README.md")
+// staleConflictPair dispatches two tasks that edit the same region of README
+// (via the given agent command), then merges the first so the second is left
+// stale and conflicting against main. Returns the two task IDs. The agent
+// command runs for both the initial work and the later resolution.
+func staleConflictPair(t *testing.T, eng *Engine, st *store.Store, agentCmd string) (string, string) {
+	t.Helper()
+	registerAgent(t, st, agentCmd)
 
 	t1 := &model.Task{Title: "first"}
 	if err := st.Tasks.Create(t1); err != nil {
@@ -131,38 +127,76 @@ func TestAutoMergeSweepParksConflict(t *testing.T) {
 	if !eng.dispatchOnce() {
 		t.Fatal("dispatch t2")
 	}
-
-	// Merge t1 -> main advances; t2's branch (forked from the old main) is now stale.
+	// Merge t1 -> main advances; t2 (forked from the old main) is now stale.
 	if err := eng.Accept(t1.ID, false); err != nil {
 		t.Fatalf("accept t1: %v", err)
 	}
+	return t1.ID, t2.ID
+}
+
+// TestAcceptResolvesConflict: a human merging a stale, conflicting task triggers
+// an agent auto-resolution that, when the agent clears the markers and the gate
+// passes, merges the task without further human action.
+func TestAcceptResolvesConflict(t *testing.T) {
+	eng, st, repo := setup(t)
+	// One command serves both phases: initial work appends the (unique) worktree
+	// path so the two branches diverge and conflict; on resolution it sees the
+	// merge markers and rewrites README to a clean, marker-free file.
+	_, t2 := staleConflictPair(t, eng, st,
+		"if grep -q '<<<<<<<' README.md; then printf 'resolved\\n' > README.md; else pwd >> README.md; fi")
+
+	// Human clicks merge: conflict detected -> resolution dispatched (not an error).
+	err := eng.Accept(t2, false)
+	if !eng.IsResolutionStarted(err) {
+		t.Fatalf("Accept = %v, want resolution-started signal", err)
+	}
+	if got, _ := st.Tasks.Get(t2); got.Status != model.TaskRunning {
+		t.Fatalf("t2 status = %q, want running (resolving)", got.Status)
+	}
+
+	// Resolution runs async -> ends merged, with the resolved content on main.
+	waitStatus(t, st, t2, model.TaskMerged, 10*time.Second)
+	data, err := os.ReadFile(filepath.Join(repo, "README.md"))
+	if err != nil || string(data) != "resolved\n" {
+		t.Fatalf("README on main = %q (err %v), want resolved", data, err)
+	}
+	if eng.isParkedConflict(t2) {
+		t.Fatal("a merged task should not stay parked")
+	}
+}
+
+// TestResolutionFailureParks: when the agent fails to clear the conflict markers,
+// the task lands back in review and is parked so the sweep won't re-resolve it
+// every tick. The park clears when the task leaves review (Retry).
+func TestResolutionFailureParks(t *testing.T) {
+	eng, st, _ := setup(t)
+	// "pwd >>" appends without removing the merge markers -> resolution fails.
+	_, t2 := staleConflictPair(t, eng, st, "pwd >> README.md")
 
 	if err := st.Settings.Set(settingAutoMode, "on"); err != nil {
 		t.Fatal(err)
 	}
-
-	// First sweep: t2 conflicts, so nothing merges and t2 is parked, still in review.
+	// First sweep starts a resolution (nothing merged yet).
 	if n := eng.sweepAutoMerge(); n != 0 {
-		t.Fatalf("first sweep merged %d, want 0 (t2 conflicts)", n)
+		t.Fatalf("first sweep merged %d, want 0 (resolution dispatched)", n)
 	}
-	if !eng.isParkedConflict(t2.ID) {
-		t.Fatal("t2 should be parked after a conflicting auto-merge")
-	}
-	if got, _ := st.Tasks.Get(t2.ID); got.Status != model.TaskReview {
-		t.Fatalf("t2 status = %q, want review", got.Status)
+	// Resolution fails -> back to review, parked.
+	waitStatus(t, st, t2, model.TaskReview, 10*time.Second)
+	if !eng.isParkedConflict(t2) {
+		t.Fatal("a failed resolution should park the task")
 	}
 
-	// Second sweep: parked -> skipped, not re-attempted.
+	// Subsequent sweeps must not start another resolution (stays in review).
 	if n := eng.sweepAutoMerge(); n != 0 {
 		t.Fatalf("second sweep merged %d, want 0", n)
 	}
-	if !eng.isParkedConflict(t2.ID) {
-		t.Fatal("t2 should remain parked")
+	if got, _ := st.Tasks.Get(t2); got.Status != model.TaskReview {
+		t.Fatalf("t2 status = %q, want review (not re-resolving)", got.Status)
 	}
 
-	// Moving t2 out of review (Retry) releases the park so a rebuilt branch can try again.
-	eng.setStatusBy(t2.ID, model.TaskReady, "human", "retry")
-	if eng.isParkedConflict(t2.ID) {
+	// Retry releases the park so a fresh rebuild can try again.
+	eng.setStatusBy(t2, model.TaskReady, "human", "retry")
+	if eng.isParkedConflict(t2) {
 		t.Fatal("park should clear when the task leaves review")
 	}
 }

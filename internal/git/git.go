@@ -206,6 +206,54 @@ func (r *Repo) SyncBranchFromBase(ctx context.Context, worktreeDir, base string)
 	return true, nil, nil
 }
 
+// StartConflictMerge begins merging base into the branch checked out at
+// worktreeDir, leaving the merge in progress so an agent can resolve it in the
+// working tree. Unlike SyncBranchFromBase, a conflict is NOT aborted: the
+// returned paths carry conflict markers and the index holds unmerged entries,
+// ready for CommitMerge (after resolution) or AbortMerge (to give up).
+//
+// It returns (conflicts, err): a non-empty conflicts slice means the merge is
+// paused mid-conflict; an empty slice with nil err means base merged cleanly and
+// was committed (nothing to resolve). A merge that fails for a non-conflict
+// reason (e.g. a dirty tree) is aborted and returned as err.
+func (r *Repo) StartConflictMerge(ctx context.Context, worktreeDir, base string) (conflicts []string, err error) {
+	if _, aerr := runIn(ctx, worktreeDir, "merge-base", "--is-ancestor", base, "HEAD"); aerr == nil {
+		return nil, nil // already contains base; nothing to merge
+	}
+	if _, merr := runIn(ctx, worktreeDir, "merge", "--no-edit", base); merr != nil {
+		conflicts, _ = r.ConflictedFiles(ctx, worktreeDir)
+		if len(conflicts) > 0 {
+			return conflicts, nil // paused mid-conflict for resolution
+		}
+		// Not a content conflict — leave nothing half-merged behind.
+		if _, aerr := runIn(ctx, worktreeDir, "merge", "--abort"); aerr != nil {
+			return nil, fmt.Errorf("merge %s into branch at %s: %w (and abort failed: %v)", base, worktreeDir, merr, aerr)
+		}
+		return nil, fmt.Errorf("merge %s into branch at %s: %w", base, worktreeDir, merr)
+	}
+	return nil, nil // merged cleanly
+}
+
+// CommitMerge stages the (resolved) working tree and completes an in-progress
+// merge at worktreeDir with msg. Use it after an agent has cleared the conflict
+// markers left by StartConflictMerge.
+func (r *Repo) CommitMerge(ctx context.Context, worktreeDir, msg string) error {
+	if _, err := runIn(ctx, worktreeDir, "add", "-A"); err != nil {
+		return err
+	}
+	if _, err := runIn(ctx, worktreeDir, "commit", "--no-edit", "-m", msg); err != nil {
+		return err
+	}
+	return nil
+}
+
+// AbortMerge aborts an in-progress merge at worktreeDir, restoring the branch to
+// its pre-merge state. Safe to call when no merge is in progress (best-effort).
+func (r *Repo) AbortMerge(ctx context.Context, worktreeDir string) error {
+	_, err := runIn(ctx, worktreeDir, "merge", "--abort")
+	return err
+}
+
 // Remotes lists the configured remote names (one per line from `git remote`).
 func (r *Repo) Remotes(ctx context.Context) ([]string, error) {
 	out, err := r.run(ctx, "remote")

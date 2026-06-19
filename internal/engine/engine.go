@@ -1128,14 +1128,24 @@ func (e *Engine) Accept(taskID string, force bool) error {
 		return err
 	}
 	// If the task's worktree still exists, bring the branch up to date with the
-	// base first so a conflict surfaces here — naming the offending files —
-	// rather than as an opaque integration-merge failure. The human's recovery
-	// is Retry, which rebuilds on the current base.
+	// base first so overlapping work that landed on main since the task forked is
+	// reconciled before the integration merge. On a clean sync we merge below; on
+	// a conflict we hand the worktree to the agent to resolve (async), re-gate,
+	// and merge — rather than bouncing the conflict back to the human.
 	if wt := e.worktreePath(taskID); dirExists(wt) {
 		if _, conflicts, serr := repo.SyncBranchFromBase(e.ctx, wt, base); serr != nil {
 			return fmt.Errorf("sync branch with %s: %w", base, serr)
 		} else if len(conflicts) > 0 {
-			return fmt.Errorf("%w with %s in: %s — Retry to rebuild on the current base", errMergeConflict, base, strings.Join(conflicts, ", "))
+			if e.isParkedConflict(taskID) {
+				// A prior auto-resolution already failed for this branch against the
+				// current main; don't spin up another. Retry rebuilds from scratch.
+				return fmt.Errorf("%w with %s in: %s — auto-resolution failed; Retry to rebuild on the current base",
+					errMergeConflict, base, strings.Join(conflicts, ", "))
+			}
+			if err := e.startConflictResolution(*t, base, conflicts); err != nil {
+				return fmt.Errorf("%w with %s in: %s — %v", errMergeConflict, base, strings.Join(conflicts, ", "), err)
+			}
+			return errResolutionStarted
 		}
 	}
 	if err := repo.Merge(e.ctx, base, t.Branch); err != nil {

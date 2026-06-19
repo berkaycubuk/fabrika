@@ -356,6 +356,12 @@ func (s *Server) acceptTask(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = decodeJSON(r, &body) // body is optional; absent means a normal accept
 	if err := s.engine.Accept(r.PathValue("id"), body.Force); err != nil {
+		// A stale-branch conflict is handed to the agent to auto-resolve and merge;
+		// that is a successful hand-off, not an error the human must act on.
+		if s.engine.IsResolutionStarted(err) {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "resolving"})
+			return
+		}
 		mapEngineErr(w, err)
 		return
 	}
@@ -428,7 +434,9 @@ func (s *Server) acceptBatch(w http.ResponseWriter, r *http.Request) {
 	results := make([]batchResult, len(body.IDs))
 	for i, id := range body.IDs {
 		results[i] = batchResult{ID: id}
-		if err := s.engine.Accept(id, false); err != nil {
+		// A conflict handed to the agent for auto-resolution is a successful
+		// hand-off, not a batch failure.
+		if err := s.engine.Accept(id, false); err != nil && !s.engine.IsResolutionStarted(err) {
 			results[i].Err = err.Error()
 		} else {
 			results[i].OK = true
