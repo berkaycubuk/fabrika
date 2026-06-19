@@ -410,6 +410,110 @@ func TestMergeConflictAborts(t *testing.T) {
 	}
 }
 
+// gitRunner returns a helper that runs git in dir with a deterministic identity.
+func gitRunner(t *testing.T, dir string) func(args ...string) {
+	t.Helper()
+	return func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+func TestSyncBranchFromBase(t *testing.T) {
+	ctx := context.Background()
+
+	// Non-overlapping changes: main advances on file A, branch edited file B.
+	// Sync should merge cleanly and report the branch updated.
+	t.Run("clean", func(t *testing.T) {
+		dir := initRepo(t)
+		r, err := Open(ctx, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wt := filepath.Join(t.TempDir(), "wt")
+		if err := r.AddWorktree(ctx, wt, "task/clean", "main"); err != nil {
+			t.Fatal(err)
+		}
+		// Branch edits a new file.
+		runBr := gitRunner(t, wt)
+		if err := os.WriteFile(filepath.Join(wt, "branch.txt"), []byte("b\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runBr("add", "branch.txt")
+		runBr("commit", "-qm", "branch work")
+		// main advances on an unrelated file.
+		runMain := gitRunner(t, dir)
+		if err := os.WriteFile(filepath.Join(dir, "main.txt"), []byte("m\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runMain("add", "main.txt")
+		runMain("commit", "-qm", "main work")
+
+		updated, conflicts, err := r.SyncBranchFromBase(ctx, wt, "main")
+		if err != nil || len(conflicts) != 0 || !updated {
+			t.Fatalf("clean sync: updated=%v conflicts=%v err=%v", updated, conflicts, err)
+		}
+		// Branch now contains main's commit.
+		if _, err := os.Stat(filepath.Join(wt, "main.txt")); err != nil {
+			t.Fatalf("branch should contain main.txt after sync: %v", err)
+		}
+		// A second sync is a no-op (base already an ancestor).
+		updated, _, err = r.SyncBranchFromBase(ctx, wt, "main")
+		if err != nil || updated {
+			t.Fatalf("second sync should be a no-op: updated=%v err=%v", updated, err)
+		}
+	})
+
+	// Overlapping edit to the same file: the original failure. Sync must abort,
+	// return the conflicted path, and leave the worktree clean (no err).
+	t.Run("conflict", func(t *testing.T) {
+		dir := initRepo(t)
+		r, err := Open(ctx, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wt := filepath.Join(t.TempDir(), "wt")
+		if err := r.AddWorktree(ctx, wt, "task/conflict", "main"); err != nil {
+			t.Fatal(err)
+		}
+		runBr := gitRunner(t, wt)
+		if err := os.WriteFile(filepath.Join(wt, "README.md"), []byte("branch\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runBr("commit", "-aqm", "branch edit")
+		runMain := gitRunner(t, dir)
+		if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("main\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runMain("commit", "-aqm", "main edit")
+
+		updated, conflicts, err := r.SyncBranchFromBase(ctx, wt, "main")
+		if err != nil {
+			t.Fatalf("conflict should not be a hard error: %v", err)
+		}
+		if updated {
+			t.Fatal("conflicting sync should not report updated")
+		}
+		if len(conflicts) != 1 || conflicts[0] != "README.md" {
+			t.Fatalf("expected README.md conflict, got %v", conflicts)
+		}
+		// Worktree is clean -> the merge was aborted.
+		status := exec.Command("git", "status", "--porcelain")
+		status.Dir = wt
+		out, _ := status.CombinedOutput()
+		if strings.TrimSpace(string(out)) != "" {
+			t.Fatalf("worktree should be clean after aborted sync:\n%s", out)
+		}
+	})
+}
+
 // pushedSetFixture builds a repo with a bare origin where two commits are
 // pushed and a third exists only locally. Returns the repo handle and the
 // three SHAs: [0],[1] pushed, [2] unpushed.

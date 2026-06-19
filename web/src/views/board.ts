@@ -9,7 +9,7 @@ import { el, clear } from "../dom.js";
 import { showToast } from "./toast.js";
 import { undoToastSpec } from "./undo-actions.js";
 import type { ToastSpec } from "./undo-actions.js";
-import { button, pill, tag, field, formatTokens, formatTokensShort } from "../components.js";
+import { button, pill, tag, field, toggle, formatTokens, formatTokensShort } from "../components.js";
 import { openModal, closeModal, promptModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
@@ -94,8 +94,7 @@ export function renderBoard(root: HTMLElement): void {
           style: "display:none",
           onclick: (e: Event) => pushMain(e.currentTarget as HTMLButtonElement),
         }, ["Push"]),
-        button("Create task", { onclick: () => openCreateTask() }),
-        button("Define big task", { variant: "primary", onclick: openDefine }),
+        button("Create task", { variant: "primary", onclick: () => openCreateTask() }),
       ]),
     ]),
     el("div", { id: "board-err", class: "form-error" }, []),
@@ -1186,126 +1185,181 @@ function steerRow(t: Task, agents: Agent[]): HTMLElement {
   ]);
 }
 
-// ── Define / Create-task forms ─────────────────────────────────────────────
+// ── Create-task form ───────────────────────────────────────────────────────
 
-function openDefine(): void {
-  const title = el("input", { placeholder: "Outcome (e.g. Users can log in with email)" }) as HTMLInputElement;
-  const intent = el("textarea", { placeholder: "The why + desired outcome. What does done look like? Paste images for context.", rows: "5" }) as HTMLTextAreaElement;
-  const constraints = el("textarea", { placeholder: "Constraints, one per line (e.g. PCI-compliant, works on mobile)", rows: "3" }) as HTMLTextAreaElement;
-  const err = el("div", { class: "form-error" });
-  const attach = fileAttach({ err, pasteTarget: intent });
-
-  const form = el("form", {
-    class: "modal-form",
-    ondragover: (e: Event) => { e.preventDefault(); },
-    ondrop: (e: Event) => {
-      e.preventDefault();
-      attach.accept(Array.from((e as DragEvent).dataTransfer?.files ?? []));
-    },
-    onsubmit: async (e: Event) => {
-      e.preventDefault();
-      err.textContent = "";
-      try {
-        await api.createBigTask({
-          title: title.value.trim(),
-          intent: intent.value.trim(),
-          constraints: lines(constraints.value),
-          attachments: attach.urls(),
-        });
-        closeModal();
-        refresh();
-      } catch (e2) {
-        err.textContent = (e2 as Error).message;
-      }
-    },
-  }, [
-    field("Outcome", title),
-    field("Intent", intent),
-    field("Attachments", attach.el),
-    field("Constraints", constraints),
-    err,
-    el("div", { class: "form-actions" }, [
-      button("Define big task", { variant: "primary", type: "submit" }),
-      button("Save to backlog", { type: "button", onclick: async () => {
-        if (!title.value.trim() || !intent.value.trim()) {
-          err.textContent = "Title and intent are required.";
-          return;
-        }
-        err.textContent = "";
-        try {
-          await api.createBigTask({
-            title: title.value.trim(),
-            intent: intent.value.trim(),
-            constraints: lines(constraints.value),
-            attachments: attach.urls(),
-            status: "backlog",
-          });
-          closeModal();
-          refresh();
-        } catch (e2) {
-          err.textContent = (e2 as Error).message;
-        }
-      }}),
-    ]),
-  ]);
-  openModal("Define a big task", form, {
-    subtitle: "Describe an outcome in plain intent — a planner agent decomposes it into tasks for your approval.",
-  });
+// The repo name shown in the topbar ("New task in <project>"). main.ts sets the
+// document title to `fabrika — <project>` once /api/version resolves.
+function currentProjectName(): string {
+  const m = document.title.match(/—\s*(.+)$/);
+  return m ? m[1].trim() : "this project";
 }
 
+// One modal for both paths: by default a task routes straight to an implementer
+// agent (createTask); flip "Enable planning" and it becomes a big task a planner
+// decomposes for your approval (createBigTask). The footer hint, the submit
+// label, and the "what happens next" panel all track the toggle.
 export function openCreateTask(onCreated: () => void = refresh): void {
-  const title = el("input", { placeholder: "Title (e.g. Add /healthz endpoint)" }) as HTMLInputElement;
-  const spec = el("textarea", { placeholder: "What to build, where, and any constraints… Paste images for context.", rows: "4" }) as HTMLTextAreaElement;
-  const verify = el("textarea", { placeholder: "Verify commands, one per line (e.g. go test ./...)", rows: "3" }) as HTMLTextAreaElement;
-  const tags = el("input", { placeholder: "Tags, comma-separated (go, api)" }) as HTMLInputElement;
-  const priority = el("select", {}, [
-    el("option", { value: "low" }, ["Low"]),
-    el("option", { value: "medium" }, ["Medium"]),
-    el("option", { value: "high" }, ["High"]),
-  ]) as HTMLSelectElement;
-  priority.value = "medium";
+  const title = el("input", { class: "title-input", placeholder: "Title (e.g. Add /healthz endpoint)" }) as HTMLInputElement;
+  const desc = el("textarea", { placeholder: "What to build, where, and any constraints… Paste images for context.", rows: "4" }) as HTMLTextAreaElement;
   const err = el("div", { class: "form-error" });
-  const attach = fileAttach({ err, pasteTarget: spec });
+  const attach = fileAttach({ err, pasteTarget: desc });
 
-  const form = el("form", {
-    class: "modal-form",
+  // Topbar: F badge · New task · in <project>     [esc] ✕
+  const header = el("div", { class: "modal-topbar" }, [
+    el("div", { class: "modal-topbar-title" }, [
+      el("span", { class: "modal-logo" }, ["F"]),
+      el("span", { class: "modal-topbar-name" }, ["New task"]),
+      el("span", { class: "modal-topbar-ctx" }, [`in ${currentProjectName()}`]),
+    ]),
+    el("div", { class: "modal-topbar-right" }, [
+      el("span", { class: "kbd" }, ["esc"]),
+      el("button", { class: "modal-x", type: "button", title: "Close", onclick: closeModal }, ["✕"]),
+    ]),
+  ]);
+
+  // Enable-planning toggle.
+  const planInput = el("input", {}) as HTMLInputElement;
+  const planBox = el("div", { class: "plan-toggle" }, [
+    el("div", { class: "plan-toggle-text" }, [
+      el("div", { class: "plan-toggle-head" }, [
+        el("span", { class: "plan-bolt" }, ["⚡"]),
+        el("span", { class: "plan-title" }, ["Enable planning"]),
+      ]),
+      el("p", { class: "plan-sub" }, ["A planner agent drafts subtasks you review before anything runs"]),
+    ]),
+    toggle(planInput),
+  ]);
+
+  // "What happens next" — only relevant while planning is on.
+  const nextPanel = el("div", { class: "plan-next" }, [
+    el("div", { class: "plan-next-label" }, ["WHAT HAPPENS NEXT"]),
+    el("div", { class: "plan-flow" }, [
+      el("span", { class: "flow-step" }, [el("span", { class: "flow-ico bolt" }, ["⚡"]), "Planner drafts a plan"]),
+      el("span", { class: "flow-arrow" }, ["→"]),
+      el("span", { class: "flow-step" }, [el("span", { class: "flow-ico diamond" }, ["◆"]), "You review & edit"]),
+      el("span", { class: "flow-arrow" }, ["→"]),
+      el("span", { class: "flow-step" }, [el("span", { class: "flow-ico play" }, ["▶"]), "Approved tasks run"]),
+    ]),
+    el("p", { class: "plan-next-note" }, [
+      "On create, this lands in the Planning column and a planner agent proposes a task breakdown there. Nothing runs until you approve the plan.",
+    ]),
+  ]);
+  nextPanel.hidden = true;
+
+  const body = el("div", {
+    class: "modal-form create-task-form",
     ondragover: (e: Event) => { e.preventDefault(); },
     ondrop: (e: Event) => {
       e.preventDefault();
       attach.accept(Array.from((e as DragEvent).dataTransfer?.files ?? []));
     },
-    onsubmit: async (e: Event) => {
-      e.preventDefault();
-      err.textContent = "";
-      try {
+  }, [
+    taskField("Title", title),
+    taskField("Description", desc),
+    taskField("Attachments", attach.el),
+    planBox,
+    nextPanel,
+    err,
+  ]);
+
+  // Footer: state hint on the left, Cancel / submit on the right. The submit
+  // button carries the ⌘↵ shortcut badge.
+  const hintIco = el("span", { class: "hint-ico" }, ["▶"]);
+  const hintText = el("span", { class: "hint-text" }, ["Runs straight to an implementer agent"]);
+  const submitLabel = el("span", { class: "btn-label" }, ["Create task"]);
+  const submitBtn = el("button", { class: "primary", type: "button" }, [
+    submitLabel,
+    el("span", { class: "btn-kbd" }, ["⌘↵"]),
+  ]) as HTMLButtonElement;
+  const backlogBtn = el("button", { type: "button" }, ["Save to backlog"]) as HTMLButtonElement;
+  const footer = el("div", { class: "modal-footer" }, [
+    el("div", { class: "modal-footer-hint" }, [hintIco, hintText]),
+    el("div", { class: "modal-footer-actions" }, [
+      el("button", { class: "btn-ghost", type: "button", onclick: closeModal }, ["Cancel"]),
+      backlogBtn,
+      submitBtn,
+    ]),
+  ]);
+
+  const syncPlanning = (): void => {
+    const on = planInput.checked;
+    nextPanel.hidden = !on;
+    planBox.classList.toggle("active", on);
+    submitLabel.textContent = on ? "Plan & create" : "Create task";
+    hintIco.textContent = on ? "◆" : "▶";
+    hintIco.className = "hint-ico" + (on ? " diamond" : "");
+    hintText.textContent = on
+      ? "Nothing runs until you approve the plan"
+      : "Runs straight to an implementer agent";
+  };
+  planInput.addEventListener("change", syncPlanning);
+
+  const submit = async (): Promise<void> => {
+    err.textContent = "";
+    const t = title.value.trim();
+    const d = desc.value.trim();
+    try {
+      if (planInput.checked) {
+        await api.createBigTask({ title: t, intent: d, constraints: [], attachments: attach.urls() });
+      } else {
         await api.createTask({
-          title: title.value.trim(),
-          spec: spec.value.trim(),
-          acceptance: { verifyCmds: lines(verify.value), heldOut: [], properties: [], lockedGlobs: [] },
-          tags: tags.value.split(",").map((s) => s.trim()).filter(Boolean),
-          priority: priority.value,
+          title: t,
+          spec: d,
+          acceptance: { verifyCmds: [], heldOut: [], properties: [], lockedGlobs: [] },
+          tags: [],
+          priority: "medium",
           attachments: attach.urls(),
         });
-        closeModal();
-        onCreated();
-      } catch (e2) {
-        err.textContent = (e2 as Error).message;
       }
-    },
-  }, [
-    field("Title", title),
-    field("Spec", spec),
-    field("Attachments", attach.el),
-    field("Verify commands", verify),
-    field("Tags", tags),
-    field("Priority", priority),
-    el("p", { class: "muted sm" }, ["Verify commands are the machine-checkable acceptance contract."]),
-    err,
-    el("div", { class: "form-actions" }, [button("Create task", { variant: "primary", type: "submit" })]),
-  ]);
-  openModal("Create a task", form, {
-    subtitle: "One well-scoped change, routed straight to an implementer agent — no planner involved.",
+      closeModal();
+      onCreated();
+    } catch (e2) {
+      err.textContent = (e2 as Error).message;
+    }
+  };
+  // Park the idea unplanned in the Backlog column (a BigTask) — promote it later
+  // to plan or run. Independent of the planning toggle, which only governs how
+  // the primary action routes the work now.
+  const saveToBacklog = async (): Promise<void> => {
+    err.textContent = "";
+    const t = title.value.trim();
+    if (!t) {
+      err.textContent = "Title is required.";
+      return;
+    }
+    try {
+      await api.createBigTask({
+        title: t,
+        intent: desc.value.trim(),
+        constraints: [],
+        attachments: attach.urls(),
+        status: "backlog",
+      });
+      closeModal();
+      refresh();
+    } catch (e2) {
+      err.textContent = (e2 as Error).message;
+    }
+  };
+
+  submitBtn.addEventListener("click", () => { void submit(); });
+  backlogBtn.addEventListener("click", () => { void saveToBacklog(); });
+  body.addEventListener("keydown", (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      void submit();
+    }
   });
+
+  openModal("New task", body, { header, footer, className: "create-task-modal" });
+  title.focus();
+}
+
+// Field wrapper with the uppercase small-caps label used across the New task modal.
+function taskField(label: string, control: HTMLElement): HTMLElement {
+  const f = field(label, control);
+  f.classList.add("task-field");
+  return f;
 }
 
 // ── Shared bits ────────────────────────────────────────────────────────────
@@ -1334,10 +1388,6 @@ function buildSidebar(fields: (HTMLElement | null)[]): HTMLElement {
 
 function actionRow(buttons: HTMLElement[]): HTMLElement {
   return el("div", { class: "card-actions" }, buttons);
-}
-
-function lines(s: string): string[] {
-  return s.split("\n").map((x) => x.trim()).filter(Boolean);
 }
 
 function firstLine(s: string): string {

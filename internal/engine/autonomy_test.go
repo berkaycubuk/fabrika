@@ -105,6 +105,102 @@ func TestAutoMergeWithReviewerApproval(t *testing.T) {
 	}
 }
 
+// staleConflictPair dispatches two tasks that edit the same region of README
+// (via the given agent command), then merges the first so the second is left
+// stale and conflicting against main. Returns the two task IDs. The agent
+// command runs for both the initial work and the later resolution.
+func staleConflictPair(t *testing.T, eng *Engine, st *store.Store, agentCmd string) (string, string) {
+	t.Helper()
+	registerAgent(t, st, agentCmd)
+
+	t1 := &model.Task{Title: "first"}
+	if err := st.Tasks.Create(t1); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("dispatch t1")
+	}
+	t2 := &model.Task{Title: "second"}
+	if err := st.Tasks.Create(t2); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("dispatch t2")
+	}
+	// Merge t1 -> main advances; t2 (forked from the old main) is now stale.
+	if err := eng.Accept(t1.ID, false); err != nil {
+		t.Fatalf("accept t1: %v", err)
+	}
+	return t1.ID, t2.ID
+}
+
+// TestAcceptResolvesConflict: a human merging a stale, conflicting task triggers
+// an agent auto-resolution that, when the agent clears the markers and the gate
+// passes, merges the task without further human action.
+func TestAcceptResolvesConflict(t *testing.T) {
+	eng, st, repo := setup(t)
+	// One command serves both phases: initial work appends the (unique) worktree
+	// path so the two branches diverge and conflict; on resolution it sees the
+	// merge markers and rewrites README to a clean, marker-free file.
+	_, t2 := staleConflictPair(t, eng, st,
+		"if grep -q '<<<<<<<' README.md; then printf 'resolved\\n' > README.md; else pwd >> README.md; fi")
+
+	// Human clicks merge: conflict detected -> resolution dispatched (not an error).
+	err := eng.Accept(t2, false)
+	if !eng.IsResolutionStarted(err) {
+		t.Fatalf("Accept = %v, want resolution-started signal", err)
+	}
+	if got, _ := st.Tasks.Get(t2); got.Status != model.TaskRunning {
+		t.Fatalf("t2 status = %q, want running (resolving)", got.Status)
+	}
+
+	// Resolution runs async -> ends merged, with the resolved content on main.
+	waitStatus(t, st, t2, model.TaskMerged, 10*time.Second)
+	data, err := os.ReadFile(filepath.Join(repo, "README.md"))
+	if err != nil || string(data) != "resolved\n" {
+		t.Fatalf("README on main = %q (err %v), want resolved", data, err)
+	}
+	if eng.isParkedConflict(t2) {
+		t.Fatal("a merged task should not stay parked")
+	}
+}
+
+// TestResolutionFailureParks: when the agent fails to clear the conflict markers,
+// the task lands back in review and is parked so the sweep won't re-resolve it
+// every tick. The park clears when the task leaves review (Retry).
+func TestResolutionFailureParks(t *testing.T) {
+	eng, st, _ := setup(t)
+	// "pwd >>" appends without removing the merge markers -> resolution fails.
+	_, t2 := staleConflictPair(t, eng, st, "pwd >> README.md")
+
+	if err := st.Settings.Set(settingAutoMode, "on"); err != nil {
+		t.Fatal(err)
+	}
+	// First sweep starts a resolution (nothing merged yet).
+	if n := eng.sweepAutoMerge(); n != 0 {
+		t.Fatalf("first sweep merged %d, want 0 (resolution dispatched)", n)
+	}
+	// Resolution fails -> back to review, parked.
+	waitStatus(t, st, t2, model.TaskReview, 10*time.Second)
+	if !eng.isParkedConflict(t2) {
+		t.Fatal("a failed resolution should park the task")
+	}
+
+	// Subsequent sweeps must not start another resolution (stays in review).
+	if n := eng.sweepAutoMerge(); n != 0 {
+		t.Fatalf("second sweep merged %d, want 0", n)
+	}
+	if got, _ := st.Tasks.Get(t2); got.Status != model.TaskReview {
+		t.Fatalf("t2 status = %q, want review (not re-resolving)", got.Status)
+	}
+
+	// Retry releases the park so a fresh rebuild can try again.
+	eng.setStatusBy(t2, model.TaskReady, "human", "retry")
+	if eng.isParkedConflict(t2) {
+		t.Fatal("park should clear when the task leaves review")
+	}
+}
+
 func TestAuditSamplingFlags(t *testing.T) {
 	eng, st, _ := setup(t)
 	eng.cfg = autoMergeCfg()
