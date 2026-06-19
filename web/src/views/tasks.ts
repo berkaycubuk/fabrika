@@ -75,16 +75,21 @@ export function riskChip(tier: string): HTMLElement | null {
   return tag(tier, `risk-${tier}`);
 }
 
-// Tab definitions: each is a predicate over a task. "needs" mirrors the board's
+// Tab definitions: each is a predicate over a task. "all" is everything still in
+// motion (anything not yet at a terminal state), "needs" mirrors the board's
 // gate columns (work parked for a human), "running" the in-flight set, "done"
-// the merged terminal state.
+// the terminal merged/closed states.
 type TabId = "all" | "needs" | "running" | "done";
 const TABS: { id: TabId; label: string; match: (t: Task) => boolean }[] = [
-  { id: "all", label: "All", match: () => true },
+  { id: "all", label: "All active", match: (t) => !DONE_STATUSES.includes(t.status) },
   { id: "needs", label: "Needs you", match: needsYou },
   { id: "running", label: "Running", match: (t) => IN_FLIGHT.includes(t.status) },
-  { id: "done", label: "Done", match: (t) => t.status === "merged" },
+  { id: "done", label: "Done", match: (t) => DONE_STATUSES.includes(t.status) },
 ];
+
+// Terminal states: a task here has left the pipeline (merged after auto/manual
+// review, or closed without merging). Everything else counts as active.
+const DONE_STATUSES = ["merged", "closed"];
 
 // Statuses where the task sits at a human gate (accept / blocked / failed), plus
 // auto-merged work sampled for audit. Amber "needs you" — same contract as the
@@ -149,7 +154,10 @@ export function renderTasks(root: HTMLElement): void {
         button("Define big task", { variant: "primary", onclick: () => {} }),
       ]),
     ]),
-    el("div", { class: "task-tabs", id: "task-tabs" }, TABS.map(tabButton)),
+    el("div", { class: "task-toolbar" }, [
+      el("div", { class: "task-tabs", id: "task-tabs" }, TABS.map(tabButton)),
+      el("div", { class: "task-view-controls" }, VIEW_CONTROLS.map(viewControl)),
+    ]),
     el("div", { id: "tasks-err", class: "form-error" }, []),
     el("div", { class: "task-list", id: "task-list" }, []),
   );
@@ -167,6 +175,46 @@ function tabButton(t: (typeof TABS)[number]): HTMLElement {
       paint();
     },
   }, [t.label, el("span", { class: "task-tab-count", "data-tabcount": t.id }, [])]);
+}
+
+// View controls: filter / sort / layout. These mirror the right cluster of the
+// Figma toolbar — present as the surface for upcoming view options; for now they
+// are inert icon buttons that anchor the toolbar's right edge.
+const VIEW_CONTROLS: { id: string; label: string; paths: string[] }[] = [
+  { id: "filter", label: "Filter", paths: ["M2.5 3.5h11l-4.3 5.1v3.6l-2.4 1.3V8.6z"] },
+  { id: "sort", label: "Sort", paths: ["M3 4.5h10", "M3 8h6.5", "M3 11.5h3.5"] },
+  { id: "layout", label: "Layout", paths: ["M2.5 3.5h11v9h-11z", "M2.5 6.8h11", "M2.5 9.9h11"] },
+];
+
+function viewControl(c: (typeof VIEW_CONTROLS)[number]): HTMLElement {
+  return el("button", {
+    type: "button",
+    class: "view-ctl",
+    "data-ctl": c.id,
+    title: c.label,
+    "aria-label": c.label,
+  }, [svgIcon(c.paths)]);
+}
+
+// svgIcon builds a 16-grid stroked glyph from one or more path commands. `el`
+// goes through createElement (HTML namespace), so SVG nodes are built here with
+// the SVG namespace and currentColor strokes so they inherit the button's tone.
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgIcon(paths: string[]): SVGElement {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.4");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of paths) {
+    const p = document.createElementNS(SVG_NS, "path");
+    p.setAttribute("d", d);
+    svg.appendChild(p);
+  }
+  return svg;
 }
 
 async function refresh(): Promise<void> {

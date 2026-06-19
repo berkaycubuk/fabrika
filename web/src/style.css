@@ -981,23 +981,36 @@ button.option:hover { border-color: var(--accent); }
 .board-col.gate .board-col-head { color: var(--text); }
 .board-col.gate { border-top: 2px solid var(--amber); }
 
-/* ── Tasks list view: filter tabs + per-row live cluster ─────────────────── */
-.task-tabs { display: flex; gap: var(--space-3); margin: var(--space-9) 0 var(--space-2); }
+/* ── Tasks list view: filter-tab toolbar + per-row live cluster ──────────── */
+/* Toolbar row: filter tabs on the left, view-control icons on the right, closed
+   by a bottom hairline that separates the controls from the list below. */
+.task-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-6);
+  margin: var(--space-9) 0 var(--space-7);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+.task-tabs { display: flex; gap: var(--space-3); }
 .task-tab {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-6);
   background: transparent;
-  border: 1px solid var(--border);
+  /* Transparent border on rest reserves the active pill's 1px so toggling
+     selection never nudges the row. */
+  border: 1px solid transparent;
   border-radius: var(--radius);
   color: var(--muted);
   font: inherit;
   cursor: pointer;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
-.task-tab:hover { color: var(--text); border-color: var(--accent); }
-.task-tab.active { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+.task-tab:hover { color: var(--text); }
+.task-tab.active { color: var(--text); border-color: var(--border); background: var(--panel-2); }
 .task-tab-count {
   font-size: var(--fs-xs);
   color: var(--muted);
@@ -1008,7 +1021,27 @@ button.option:hover { border-color: var(--accent); }
   min-width: 18px;
   text-align: center;
 }
-.task-tab.active .task-tab-count { color: var(--accent); border-color: color-mix(in srgb, var(--pill-accent) 40%, transparent); }
+.task-tab.active .task-tab-count { color: var(--text); border-color: var(--border-hover); }
+
+/* View controls (filter / sort / layout): square icon buttons mirroring the tab
+   hairline, muted at rest and lifting to the panel on hover. */
+.task-view-controls { display: flex; gap: var(--space-3); flex-shrink: 0; }
+.view-ctl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.view-ctl:hover { color: var(--text); border-color: var(--border-hover); background: var(--panel-2); }
+.view-ctl svg { width: 15px; height: 15px; display: block; }
 
 /* Rows themselves are styled above; here we make them clickable and add the
    right-hand live cluster (pulse / needs-you / timestamp + avatar). */
