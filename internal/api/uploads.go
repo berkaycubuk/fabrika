@@ -21,12 +21,15 @@ const maxUploadBytes = 10 << 20 // 10 MiB
 var uploadNameRe = regexp.MustCompile(`^[a-f0-9-]{36}\.(png|jpg|jpeg|gif|webp|txt|log|json|mp4|webm)$`)
 
 // extByType maps the sniffed content type to the stored extension; doubling as
-// the allowlist of accepted image formats.
+// the allowlist of accepted formats.
 var extByType = map[string]string{
 	"image/png":  "png",
 	"image/jpeg": "jpg",
 	"image/gif":  "gif",
 	"image/webp": "webp",
+	"text/plain": "txt",
+	"video/mp4":  "mp4",
+	"video/webm": "webm",
 }
 
 func (s *Server) uploadsDir() string {
@@ -52,9 +55,13 @@ func (s *Server) createUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "unreadable upload")
 		return
 	}
-	ext, ok := extByType[http.DetectContentType(head[:n])]
+	ct := http.DetectContentType(head[:n])
+	if i := strings.IndexByte(ct, ';'); i != -1 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	ext, ok := extByType[ct]
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "only png, jpeg, gif, or webp images are accepted")
+		writeErr(w, http.StatusBadRequest, "only png, jpeg, gif, webp, txt, mp4, or webm files are accepted")
 		return
 	}
 
