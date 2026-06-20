@@ -985,7 +985,32 @@ func (e *Engine) finishGreen(ctx context.Context, task model.Task, ag model.Agen
 	}
 	e.logTransition(task.ID, model.TaskVerifying, model.TaskMerged, "engine", "auto-merged")
 	e.emitTask(task.ID)
+	e.maybeCompleteBigTask(task.BigTaskID)
 	log.Printf("engine: task %q -> auto-merged (tier=%s, audit=%v)", task.Title, tier, audit)
+}
+
+// maybeCompleteBigTask marks the parent big task done once every subtask under it
+// has merged. It is called from the auto-merge and Accept paths, both of which
+// already hold e.mu, so it MUST NOT lock; setBigTaskStatus does not lock either.
+// A big task with no subtasks is never auto-completed.
+func (e *Engine) maybeCompleteBigTask(bigTaskID string) {
+	if bigTaskID == "" {
+		return
+	}
+	bt, err := e.store.BigTasks.Get(bigTaskID)
+	if err != nil || bt.Status == model.BigTaskDone {
+		return
+	}
+	subtasks, err := e.store.Tasks.ListByBigTask(bigTaskID)
+	if err != nil || len(subtasks) == 0 {
+		return
+	}
+	for _, t := range subtasks {
+		if t.Status != model.TaskMerged {
+			return
+		}
+	}
+	e.setBigTaskStatus(bigTaskID, model.BigTaskDone)
 }
 
 // finish persists the attempt and sets the terminal-for-now status, emitting an
@@ -1159,6 +1184,7 @@ func (e *Engine) Accept(taskID string, force bool) error {
 	_ = repo.RemoveWorktree(e.ctx, e.worktreePath(taskID))
 	e.setStatusBy(taskID, model.TaskMerged, "human", "accepted")
 	e.emitTask(taskID)
+	e.maybeCompleteBigTask(t.BigTaskID)
 	log.Printf("engine: merged task %q (%s -> %s, force=%v)", t.Title, t.Branch, base, force)
 	return nil
 }
