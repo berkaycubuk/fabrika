@@ -6,7 +6,8 @@ PREFIX ?= /usr/local
 # Version stamped into the binary (override for releases: `make build VERSION=v0.1.0`).
 # Defaults to `git describe` (nearest tag, or short hash before any tag exists).
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -X main.version=$(VERSION)
+COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "")
+LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
 all: build
 

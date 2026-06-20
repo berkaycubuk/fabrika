@@ -290,6 +290,22 @@ func (r *Repo) Ahead(ctx context.Context, remote, branch string) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(out))
 }
 
+// BehindHead reports how many commits the checked-out HEAD carries beyond
+// buildCommit — a stale-binary detection helper. It is equivalent to
+// `git rev-list --count <buildCommit>..HEAD`. When buildCommit is empty or
+// not a valid commit object in this repo, it returns (0, nil) without error
+// so callers never get a false positive for the unknown case.
+func (r *Repo) BehindHead(ctx context.Context, buildCommit string) (int, error) {
+	if buildCommit == "" {
+		return 0, nil
+	}
+	out, err := r.run(ctx, "rev-list", "--count", buildCommit+"..HEAD")
+	if err != nil {
+		return 0, nil
+	}
+	return strconv.Atoi(strings.TrimSpace(out))
+}
+
 // PushedSet reports, for each sha, whether it has already been pushed to
 // remote/branch. It reads the local remote-tracking ref only — no network
 // round-trip. If that ref does not exist (branch never pushed), every sha
