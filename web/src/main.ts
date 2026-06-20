@@ -6,7 +6,7 @@ import { brand } from "./brand.js";
 import { initTheme, themeToggle } from "./theme.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
-import { renderBoard, onBoardEvent, onHeartbeat, onPlannerActivity, onPlanHeartbeat } from "./views/board.js";
+import { renderBoard, onBoardEvent, onHeartbeat, onPlannerActivity, onPlanHeartbeat, onTaskActivity } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
 import { renderConfig } from "./views/config.js";
 import { renderCrons } from "./views/crons.js";
@@ -126,6 +126,10 @@ function main(): void {
     }
     if (e.type === "plan.heartbeat") {
       onPlanHeartbeat(e.payload as PlanHeartbeat);
+      return;
+    }
+    if (e.type === "task.activity") {
+      onTaskActivity(e.payload as { taskId: string; event: PlanActivity });
       return;
     }
     // Every surface guards on its own DOM presence, so fan out broadly: the

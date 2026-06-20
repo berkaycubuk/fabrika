@@ -1012,12 +1012,14 @@ export function openTaskDetail(t: Task, agents: Agent[]): void {
     ]));
   }
   children.push(el("div", { id: `task-evidence-${t.id}`, class: "task-evidence" }, []));
+  children.push(taskActivitySection(t.id));
   children.push(historySection(t.id));
   children.push(commentsSection(t.id));
 
   openTaskId = t.id;
   openModal(t.title, el("div", { class: "detail" }, children), { wide: true, sidebar: side });
   loadEvidence(t.id);
+  loadTaskActivity(t.id);
   loadHistory(t.id);
   loadComments(t.id);
 }
@@ -1026,6 +1028,43 @@ export function openTaskDetail(t: Task, agents: Agent[]): void {
 // events that target this task reload the in-modal list live; cleared so the
 // list paints under the agent labels we already have.
 let openTaskId: string | null = null;
+
+// ── Implementer activity timeline ──────────────────────────────────────────
+
+function taskActivitySection(id: string): HTMLElement {
+  return el("div", { class: "plan-activity" }, [
+    el("div", { class: "plan-activity-head" }, [
+      el("div", { class: "section-h sm" }, ["Activity"]),
+    ]),
+    el("div", { id: `task-timeline-${id}`, class: "plan-timeline" }, [
+      el("div", { class: "muted sm plan-activity-empty" }, ["Loading…"]),
+    ]),
+  ]);
+}
+
+async function loadTaskActivity(id: string): Promise<void> {
+  try {
+    const activity = await api.getTaskActivity(id);
+    const slot = document.getElementById(`task-timeline-${id}`);
+    if (!slot) return;
+    clear(slot);
+    if (activity.length === 0) {
+      slot.append(el("div", { class: "muted sm plan-activity-empty" }, ["No activity recorded yet."]));
+      return;
+    }
+    for (const a of activity) slot.append(activityRow(a));
+  } catch {
+    /* activity is best-effort */
+  }
+}
+
+export function onTaskActivity(p: { taskId: string; event: PlanActivity }): void {
+  if (openTaskId !== p.taskId) return;
+  const slot = document.getElementById(`task-timeline-${p.taskId}`);
+  if (!slot) return;
+  slot.querySelector(".plan-activity-empty")?.remove();
+  slot.append(activityRow(p.event));
+}
 
 
 
