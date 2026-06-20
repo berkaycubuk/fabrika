@@ -170,6 +170,7 @@ export interface Metrics {
   auditRate: number;
   mutationTesting: boolean;
   autoMode: boolean;
+  idleTimeout: string;
   totalTokens?: number; // board-wide sum of agent token usage
 }
 
