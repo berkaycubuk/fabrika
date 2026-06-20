@@ -25,6 +25,7 @@ type Hub struct {
 	mu      sync.Mutex
 	clients map[*client]struct{}
 	subs    map[chan Event]struct{}
+	seq     int64 // monotonic event counter; bumped on every Broadcast
 }
 
 type client struct {
@@ -46,6 +47,7 @@ func (h *Hub) Broadcast(e Event) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.seq++ // advance the cursor so long-poll waiters wake and observe the change
 	for c := range h.clients {
 		select {
 		case c.send <- data:
@@ -63,6 +65,14 @@ func (h *Hub) Broadcast(e Event) {
 			// refetch state, same philosophy as WS clients.
 		}
 	}
+}
+
+// Seq returns the current monotonic event cursor. Clients pass the value back
+// as the `since` query param to detect whether new events have arrived.
+func (h *Hub) Seq() int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seq
 }
 
 // Subscribe registers an in-process event listener with the given buffer.

@@ -592,3 +592,45 @@ func TestDeleteBigTaskOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+func TestPromoteBigTaskReturnsPlannerAgent(t *testing.T) {
+	s, h := newTestServerWithStore(t)
+
+	// Register an agent with the planner role.
+	rec := do(t, h, "POST", "/api/agents", model.Agent{
+		Name:    "Planner",
+		Command: "true",
+		Roles:   []string{model.RolePlanner},
+		Enabled: true,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create planner agent: %d %s", rec.Code, rec.Body.String())
+	}
+	var plannerAgent model.Agent
+	if err := json.Unmarshal(rec.Body.Bytes(), &plannerAgent); err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed a backlog big task directly in the store.
+	bt := &model.BigTask{Title: "Big thing", Intent: "Do something big", Status: model.BigTaskBacklog}
+	if err := s.BigTasks.Create(bt); err != nil {
+		t.Fatalf("create big task: %v", err)
+	}
+
+	// POST /api/bigtasks/{id}/plan to promote it.
+	rec = do(t, h, "POST", "/api/bigtasks/"+bt.ID+"/plan", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("promote: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var got model.BigTask
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Status != model.BigTaskDraft {
+		t.Fatalf("status = %q, want %q", got.Status, model.BigTaskDraft)
+	}
+	if got.PlannerAgentID != plannerAgent.ID {
+		t.Fatalf("plannerAgentId = %q, want %q", got.PlannerAgentID, plannerAgent.ID)
+	}
+}
