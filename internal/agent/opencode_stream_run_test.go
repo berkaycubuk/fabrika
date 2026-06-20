@@ -60,15 +60,20 @@ func TestOpencodeStreamSinkActivity(t *testing.T) {
 }
 
 // TestOpencodeStreamSinkUsageAccumulates verifies that usage is summed across
-// multiple step_finish lines (unlike claude's last-wins absolute usage), with
-// the last cumulative total winning.
+// multiple step_finish lines (unlike claude's last-wins absolute usage). Each
+// step_finish carries one LLM call's per-request tokens — input is that call's
+// context size and total includes its cache tokens — so input, output, and total
+// are each summed per call. The run total is the SUM of every step's total (which
+// stays >= summed input+output because each per-call total also includes cache).
 func TestOpencodeStreamSinkUsageAccumulates(t *testing.T) {
 	sink := &streamSink{format: "opencode"}
 
+	// Per-call totals (160/75/45) exceed each call's input+output because they
+	// include that call's cache tokens, matching real opencode semantics.
 	lines := []string{
-		buildOpencodeStepFinishLine(100, 40, 140),
-		buildOpencodeStepFinishLine(50, 20, 210),
-		buildOpencodeStepFinishLine(30, 10, 250),
+		buildOpencodeStepFinishLine(100, 40, 160),
+		buildOpencodeStepFinishLine(50, 20, 75),
+		buildOpencodeStepFinishLine(30, 10, 45),
 	}
 	feedOpencode(t, sink, lines)
 
@@ -81,8 +86,8 @@ func TestOpencodeStreamSinkUsageAccumulates(t *testing.T) {
 	if sink.usage.OutputTokens != 70 {
 		t.Errorf("OutputTokens=%d, want 70 (40+20+10)", sink.usage.OutputTokens)
 	}
-	if sink.usage.TotalTokens != 250 {
-		t.Errorf("TotalTokens=%d, want 250 (last cumulative total)", sink.usage.TotalTokens)
+	if sink.usage.TotalTokens != 280 {
+		t.Errorf("TotalTokens=%d, want 280 (sum of per-step totals 160+75+45)", sink.usage.TotalTokens)
 	}
 }
 
