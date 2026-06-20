@@ -575,11 +575,18 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
 // matching is by DOM presence of the timeline slots so a closed modal is inert.
 let openBigTaskId: string | null = null;
 
-// plannerTimelineSection lays out the heartbeat line (latest planner pulse) above
-// an oldest-first, lazily-loaded timeline of typed planner steps.
+// plannerTimelineSection lays out a GitHub-Actions-style live planning timeline:
+// a header (PLANNER ACTIVITY label + a LIVE pill that shows only while the
+// planner is working), the heartbeat status line, and an oldest-first, lazily
+// loaded rail of typed planner steps.
 function plannerTimelineSection(b: BigTask): HTMLElement {
   return el("div", { class: "plan-activity" }, [
-    el("div", { class: "section-h sm" }, ["Planner activity"]),
+    el("div", { class: "plan-activity-head" }, [
+      el("div", { class: "section-h sm" }, ["Planner activity"]),
+      // The LIVE pill starts hidden; paintPlanHeartbeat reveals it while the
+      // planner is actively working and hides it again once it goes quiet.
+      el("span", { class: "plan-live hidden" }, ["LIVE"]),
+    ]),
     el("div", { id: `plan-heartbeat-${b.id}`, class: "plan-heartbeat" }, []),
     el("div", { id: `plan-timeline-${b.id}`, class: "plan-timeline" }, [
       el("div", { class: "muted sm plan-activity-empty" }, ["Loading…"]),
@@ -603,12 +610,38 @@ async function loadBigTaskActivity(id: string): Promise<void> {
   }
 }
 
-// activityRow renders one planner step: its type tag, summary, and a relative
-// time derived from the entry's unix-millis timestamp.
-function activityRow(a: PlanActivity): HTMLElement {
+// renderActivitySummary builds the single-line summary cell for a planner step.
+// It recognises three shapes and styles them so the meaningful token reads first
+// (CSS ellipsis-truncates the row): a file path (dimmed directory + emphasized
+// basename), a "lead · detail" command/agent line (emphasized lead + muted
+// rest), or plain prose (verbatim text, no child spans).
+export function renderActivitySummary(summary: string): HTMLElement {
+  const span = el("span", { class: "plan-activity-summary" }, []);
+  const slash = summary.lastIndexOf("/");
+  const base = slash >= 0 ? summary.slice(slash + 1) : summary;
+  // A file path has no spaces and a dotted basename (an extension).
+  const isPath = !summary.includes(" ") && base.includes(".");
+  const sep = summary.indexOf(" · ");
+  if (isPath) {
+    if (slash >= 0) span.append(el("span", { class: "sum-dir" }, [summary.slice(0, slash + 1)]));
+    span.append(el("span", { class: "sum-base" }, [base]));
+  } else if (sep >= 0) {
+    span.append(el("span", { class: "sum-lead" }, [summary.slice(0, sep)]));
+    span.append(el("span", { class: "sum-rest" }, [summary.slice(sep)]));
+  } else {
+    span.append(summary);
+  }
+  return span;
+}
+
+// activityRow renders one planner step on the rail: a timeline node (the dot CSS
+// draws on the rail), its type tag, the styled summary, and a relative time
+// derived from the entry's unix-millis timestamp.
+export function activityRow(a: PlanActivity): HTMLElement {
   return el("div", { class: "plan-activity-row" }, [
+    el("span", { class: "plan-activity-node" }, []),
     tag(a.type, `activity-${a.type}`),
-    el("span", { class: "plan-activity-summary" }, [a.summary]),
+    renderActivitySummary(a.summary),
     el("span", { class: "plan-activity-time", title: a.ts ? new Date(a.ts).toLocaleString() : "" }, [a.ts ? relTime(a.ts) : ""]),
   ]);
 }
@@ -641,17 +674,28 @@ export function onPlanHeartbeat(p: PlanHeartbeat): void {
   if (node) paintPlanHeartbeat(node, p);
 }
 
-// paintPlanHeartbeat mirrors the board's running-card pulse for the planner: green
-// "working" while output flows, amber "quiet" once silent past QUIET_AFTER.
-function paintPlanHeartbeat(node: HTMLElement, hb: PlanHeartbeat): void {
+// paintPlanHeartbeat mirrors the board's running-card pulse for the planner as a
+// status line: a CSS-drawn status dot, the agent + state in an emphasized span,
+// and a muted "· last output <ago>" suffix. Green "working" while output flows,
+// amber "quiet" once silent past QUIET_AFTER. It also drives the header LIVE
+// pill, revealing it while working and hiding it once quiet.
+export function paintPlanHeartbeat(node: HTMLElement, hb: PlanHeartbeat): void {
   const quiet = hb.idleSeconds >= QUIET_AFTER;
   node.className = "plan-heartbeat pulse" + (quiet ? " quiet" : "");
   const who = hb.agentName || "planner";
+  const state = quiet ? "quiet" : "working";
   const ago = hb.idleSeconds < 4 ? "just now" : `${fmtDur(hb.idleSeconds)} ago`;
-  node.textContent = quiet
-    ? `● ${who} quiet · last output ${ago}`
-    : `● ${who} working · last output ${ago}`;
+  clear(node);
+  node.append(
+    el("span", { class: "plan-status-dot" }, []),
+    el("span", { class: "plan-status-agent" }, [`${who} ${state}`]),
+    el("span", { class: "plan-status-meta" }, [` · last output ${ago}`]),
+  );
   node.title = hb.lastLine ? `${hb.lastLine}\n(last output ${ago})` : `last output ${ago}`;
+  // The LIVE pill lives in the section header beside the heartbeat line; show it
+  // only while the planner is actively working.
+  const live = node.parentElement?.querySelector(".plan-live");
+  if (live) live.classList.toggle("hidden", quiet);
 }
 
 function decideCard(d: Decision): CardItem {
