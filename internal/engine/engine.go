@@ -552,6 +552,18 @@ func (e *Engine) onHeartbeat(hb agent.HeartbeatInfo) {
 	started := ri.startedAt
 	e.mu.Unlock()
 	if !ok {
+		e.planMu.Lock()
+		_, inPlan := e.planRuns[hb.TaskID]
+		e.planMu.Unlock()
+		if inPlan {
+			e.emit("plan.heartbeat", map[string]any{
+				"bigTaskId":   hb.TaskID,
+				"agentName":   hb.AgentName,
+				"idleSeconds": int(hb.IdleFor.Round(time.Second) / time.Second),
+				"lastLine":    hb.LastLine,
+				"outputBytes": hb.OutputBytes,
+			})
+		}
 		return
 	}
 	e.emit("task.heartbeat", map[string]any{
