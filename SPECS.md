@@ -370,12 +370,14 @@ POST   /api/bigtasks                       GET  /api/bigtasks        DELETE /api
 POST   /api/bigtasks/{id}/plan             # promote backlog -> planning
 POST   /api/bigtasks/{id}/replan           # retry an errored plan request
 POST   /api/bigtasks/{id}/stop             # cancel planning with a reason
+GET    /api/bigtasks/{id}/activity         # planner activity timeline (oldest-first, [] when empty)
 GET    /api/plans                          GET  /api/plans/{id}
 POST   /api/plans/{id}/approve|reject|revise
 GET    /api/decisions                      POST /api/decisions/{id}/answer  # body {answer, promote}
 
 # Tasks / accept / audit / steer
 GET    /api/tasks                          POST /api/tasks            GET    /api/tasks/{id}
+GET    /api/tasks/{id}/activity            # implementer activity timeline (oldest-first, [] when empty)
 DELETE /api/tasks/{id}                      # discard a closed task
 GET    /api/tasks/{id}/comments            POST /api/tasks/{id}/comments
 GET    /api/reviews                         # Accept queue (review|failed|blocked)
@@ -417,6 +419,17 @@ GET    /api/metrics                         # throughput, trust, per-agent activ
 GET    /api/version
 WS     /api/events                          # push: plan/decision/task/release updates + metrics
 ```
+
+### Activity timelines
+
+Both the planner and the implementer keep a persisted, bounded per-subject activity timeline so the work an agent did is replayable after the fact, not just while it streams.
+
+- **Planner** — `plan_activity`, keyed by big task, drives `GET /api/bigtasks/{id}/activity`.
+- **Implementer** — `task_activity`, keyed by task, drives `GET /api/tasks/{id}/activity`.
+
+The two stores behave identically. Each is **cap-and-trimmed**: on every append the oldest rows (lowest id) are dropped so a single subject retains at most a fixed number of entries (~500), keeping a chatty agent from bloating the per-project store. `task_activity` is **reset at the start of each fresh run** of the task (a retry starts a clean timeline rather than appending to the prior attempt's) and **cleared when the task is deleted**. The matching `GET` endpoint returns the timeline **oldest-first** and always responds `[]` — never `null`, and never `404` — when a task exists but has no activity yet, mirroring `GET /api/bigtasks/{id}/activity`.
+
+In the UI, the **Task detail** surface renders the same typed activity timeline component the planner detail uses for big tasks. It is populated live as the run proceeds via the `task.activity` WebSocket event (alongside `task.updated`), and because the rows are persisted, the full timeline is rehydrated from the `GET` endpoint when the detail is reopened later.
 
 ## 12. Repo layout
 
