@@ -71,6 +71,7 @@ export const api = {
   replanBigTask: (id: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/replan`),
   stopPlanning: (id: string, reason?: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/stop`, { reason }),
   getBigTaskActivity: (id: string) => req<PlanActivity[]>("GET", `/api/bigtasks/${id}/activity`),
+  getTaskActivity: (id: string) => req<PlanActivity[]>("GET", `/api/tasks/${id}/activity`),
   reorderBigTasks: (ids: string[]) => req<void>("POST", "/api/bigtasks/reorder", { ids }),
 
   // Plans (approve flow, Phase 2)
