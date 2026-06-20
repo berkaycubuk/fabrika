@@ -54,7 +54,7 @@ Every endpoint is namespaced under `/api`. HTTP methods are stated explicitly (G
 
 A task is the unit of work an agent picks up. Core fields: `id`, `title`, `spec`, `acceptance` (`{verifyCmds[],heldOut[],properties[],lockedGlobs[]}`), `dependsOn[]`, `touchPaths[]`, `tags[]`, `attachments[]`, `riskTier` (`low|medium|high`), `priority` (`low|medium|high`), `status` (`ready|claimed|running|verifying|review|merged|blocked|failed`), `branch`, `agentId`, `preferredAgentId`, `reporter` (`user|planner`), `autoMerged`, `auditFlagged`, `reverted`, `mergeCommitSha`, `releaseId`, `pushed`.
 
-- **GET `/api/tasks`** — list tasks (newest-first). Supports additive filter query params: `status`, `agentId`, `riskTier`. Each accepts a single value or a comma-separated list (OR within a param); different params combine with AND. Example: `GET /api/tasks?status=review,blocked&riskTier=high`. Response: JSON array of task objects.
+- **GET `/api/tasks`** — list tasks (newest-first). Supports additive filter query params: `status`, `agentId`, `riskTier`. Each accepts a single value or a comma-separated list (OR within a param); different params combine with AND. Example: `GET /api/tasks?status=review,blocked&riskTier=high`. A `bigTaskId` filter is also supported — `GET /api/tasks?bigTaskId=BIGTASK_ID` returns only that big task's child tasks (the tasks its plan decomposed into). Response: JSON array of task objects.
 - **POST `/api/tasks`** — create a task. Request body is a task object; `title` is required. `riskTier`/`priority`, if set, must be valid; an omitted `riskTier` is derived from `touchPaths` via the manifest. Server assigns `id`, sets `reporter` to `user`. Response: `201` with the created task.
 - **GET `/api/tasks/{id}`** — fetch one task with its attempt history. Response: `{"task":{...},"attempts":[...]}`. Each attempt has `id`, `taskId`, `agentId`, `result` (`pass|fail|escalated`), `evidence` (`{stages,diff,artifacts}`), `usage` (`{inputTokens,outputTokens,totalTokens}`), `log`.
 - **DELETE `/api/tasks/{id}`** — delete a task. No request body. Response: `{"status":"ok"}`-style acknowledgement.
@@ -75,6 +75,7 @@ A task is the unit of work an agent picks up. Core fields: `id`, `title`, `spec`
 A big task is a high-level intent that a planner decomposes into tasks. Fields: `id`, `title`, `intent`, `constraints[]`, `attachments[]`, `repoPath`, `status` (`backlog|draft|planning|planned|running|done|error`), `error`, `plannerAgentId`, `planFeedback`.
 
 - **GET `/api/bigtasks`** — list big tasks (newest-first). Response: JSON array.
+- **GET `/api/bigtasks/{id}`** — fetch a single big task by id. Response: the big-task object. Returns `404` for an unknown id. Use this to poll a big task's `status`/`plannerAgentId` while planning runs asynchronously.
 - **POST `/api/bigtasks`** — create a big task; `title` is required. A `backlog` status parks it as-is; otherwise the repo is preflighted and, if a planner agent is configured, planning runs asynchronously (status → `planning`). Response: `201` with the created big task.
 - **POST `/api/bigtasks/reorder`** — reorder the backlog. Request body: `{"ids":["...","..."]}` in the desired order. Response: acknowledgement.
 - **DELETE `/api/bigtasks/{id}`** — delete a big task. No request body.
@@ -130,7 +131,7 @@ A convention is a standing rule agents must follow. Fields: `id`, `rule`, `statu
 
 ### Attention
 
-- **GET `/api/attention`** — a single bundle of everything awaiting the human, for the unified inbox. Response: `{"reviews":[...],"decisions":[...],"audits":[...],"plans":[...]}` — `reviews` and `audits` are `{task,attempt}` items, `decisions` are decision objects, `plans` are plan views.
+- **GET `/api/attention`** — a single bundle of everything awaiting the human, for the unified inbox. Response: `{"cursor":<number>,"reviews":[...],"decisions":[...],"audits":[...],"plans":[...]}` — `reviews` and `audits` are `{task,attempt}` items, `decisions` are decision objects, `plans` are plan views. The numeric `cursor` is a monotonic board-change counter. Supports **long-poll**: pass `since=<cursor>` and `wait=<seconds>` to block until the board changes — e.g. `GET /api/attention?since=42&wait=30`. If the cursor has already advanced past `since`, the call returns immediately with the current bundle; otherwise it blocks up to `wait` seconds (capped at 60) and wakes on any board change, returning the fresh bundle (and new `cursor`) the moment something happens — or the unchanged bundle if the wait elapses first. Typical loop: read the `cursor` from one response, then re-request with `?since=<cursor>&wait=30` to stream changes without busy-polling.
 
 ### Settings & config
 
@@ -487,3 +488,20 @@ That convention is then injected into every future agent prompt across all proje
 - **Network / auth error** — git's error message is forwarded verbatim in the `detail` field.
 
 On a `409`, read `detail` to diagnose. A non-fast-forward requires a manual `git pull --rebase` (or equivalent) on the integration branch before retrying.
+
+---
+
+### 9. `POST /api/bigtasks/{id}/plan` is asynchronous — `draft` is not a failure
+
+`POST /api/bigtasks/{id}/plan` does **not** return the finished plan. It returns `200` immediately with the big task in the queued `draft` state and `plannerAgentId` populated to the planner it assigned — this is the expected success response, **not** an error. The actual decomposition runs in the background afterward, so the plan only appears once the planner finishes.
+
+Do not treat the `draft` status (or the absence of a plan in the response) as a failure. Instead, **`poll GET /api/bigtasks/{id}`** for the big task's `status` to track progress — it advances through `draft` → `planning` → `planned` (or `error`). Once it reaches `planned`, fetch the proposed plan from `GET /api/plans` (or filter child tasks with `GET /api/tasks?bigTaskId=BIGTASK_ID`).
+
+```sh
+# Kick off planning (returns immediately, status: "draft")
+curl -s -X POST http://localhost:7777/api/bigtasks/BIGTASK_ID/plan \
+  -H 'Content-Type: application/json'
+
+# Then poll for status until it leaves the queued state
+curl -s http://localhost:7777/api/bigtasks/BIGTASK_ID | jq '{status, plannerAgentId}'
+```
