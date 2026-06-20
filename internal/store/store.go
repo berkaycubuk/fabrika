@@ -26,22 +26,23 @@ type Store struct {
 	global  *sql.DB
 	project *sql.DB
 
-	Agents      *AgentRepo
-	Conventions *ConventionRepo
-	Settings    *SettingsRepo
-	Relay       *RelayRepo
-	BigTasks    *BigTaskRepo
-	Tasks       *TaskRepo
-	Attempts    *AttemptRepo
-	Plans       *PlanRepo
-	Decisions   *DecisionRepo
-	Comments    *CommentRepo
-	Releases    *ReleaseRepo
-	ActiveRuns  *ActiveRunRepo
-	Sessions    *SessionRepo
-	Crons       *CronRepo
-	Transitions *TransitionRepo
-	Uploads     *UploadRepo
+	Agents       *AgentRepo
+	Conventions  *ConventionRepo
+	Settings     *SettingsRepo
+	Relay        *RelayRepo
+	BigTasks     *BigTaskRepo
+	Tasks        *TaskRepo
+	Attempts     *AttemptRepo
+	Plans        *PlanRepo
+	Decisions    *DecisionRepo
+	Comments     *CommentRepo
+	Releases     *ReleaseRepo
+	ActiveRuns   *ActiveRunRepo
+	Sessions     *SessionRepo
+	Crons        *CronRepo
+	Transitions  *TransitionRepo
+	Uploads      *UploadRepo
+	PlanActivity *PlanActivityRepo
 }
 
 // Open opens (creating if needed) both databases and applies migrations.
@@ -99,6 +100,7 @@ func Open(globalDir, projectDir string) (*Store, error) {
 	s.Crons = &CronRepo{db: project}
 	s.Transitions = &TransitionRepo{db: project}
 	s.Uploads = &UploadRepo{db: project}
+	s.PlanActivity = &PlanActivityRepo{db: project}
 	if err := s.Crons.bootstrap(); err != nil {
 		global.Close()
 		project.Close()
