@@ -509,6 +509,7 @@ func (m *activityMeter) Write(p []byte) (int, error) {
 	m.lastNano.Store(time.Now().UnixNano())
 	m.bytes.Add(int64(len(p)))
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, b := range p {
 		if b == '\n' || b == '\r' {
 			if s := strings.TrimSpace(string(m.partial)); s != "" {
@@ -519,7 +520,6 @@ func (m *activityMeter) Write(p []byte) (int, error) {
 			m.partial = append(m.partial, b)
 		}
 	}
-	m.mu.Unlock()
 	return len(p), nil
 }
 
