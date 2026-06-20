@@ -3,6 +3,8 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -32,22 +34,40 @@ func (s *Subprocess) RunStream(ctx context.Context, a model.Agent, t model.Task,
 	if err != nil {
 		return res, err
 	}
+	// Parse the plain-text transcript for the same markers Run parses from
+	// buffered stdout. The agent's textual output (where markers live) arrives
+	// inside assistant text blocks in stream-json format — scanning the raw
+	// NDJSON would hit JSON syntax instead of the markers themselves.
+	transcript := sink.transcript.String()
+	if q, ok := parseEscalation(transcript); ok {
+		res.Escalated = true
+		res.Decision = q
+	}
+	res.Comments = parseComments(transcript)
+	res.Evidence = parseEvidence(transcript)
+	// Prefer stream-json result-event usage (haveUsage); only if no result
+	// event appeared, fall back to the fabrika_USAGE marker in the transcript.
 	if sink.haveUsage {
 		res.Usage = sink.usage
+	} else if u, ok := parseUsage(transcript); ok {
+		res.Usage = u
 	}
 	return res, nil
 }
 
 // streamSink is the extra stdout writer leg for RunStream: it splits the
 // agent's stdout into newline-terminated lines and, per complete line, forwards
-// a parsed ActivityEvent to onActivity and tracks the latest stream-json result
-// usage. It fires from exec's copier goroutine, so it stays cheap. It is not
-// safe for concurrent use, which matches how exec drives a single copier.
+// a parsed ActivityEvent to onActivity, tracks the latest stream-json result
+// usage, and accumulates a plain-text transcript from assistant text blocks so
+// marker parsers can find escalation/comment/evidence lines after the run. It
+// fires from exec's copier goroutine, so it stays cheap. It is not safe for
+// concurrent use, which matches how exec drives a single copier.
 type streamSink struct {
 	onActivity func(ActivityEvent)
 	buf        []byte // bytes of the in-progress (unterminated) line
 	usage      model.Usage
 	haveUsage  bool
+	transcript strings.Builder // plain-text from assistant text blocks, for marker parsing
 }
 
 func (w *streamSink) Write(p []byte) (int, error) {
@@ -73,7 +93,7 @@ func (w *streamSink) flush() {
 	}
 }
 
-// handle parses one stream-json line for activity and usage.
+// handle parses one stream-json line for activity, usage, and transcript text.
 func (w *streamSink) handle(line []byte) {
 	if len(bytes.TrimSpace(line)) == 0 {
 		return
@@ -87,5 +107,22 @@ func (w *streamSink) handle(line []byte) {
 	if u, ok := ParseStreamUsage(line); ok {
 		w.usage = u
 		w.haveUsage = true
+	}
+	// Accumulate text from assistant content blocks into a plain-text
+	// transcript. Markers (fabrika_DECISION: etc.) live in the agent's textual
+	// output, which claude --output-format stream-json wraps inside assistant
+	// text blocks; scanning the raw NDJSON line would match JSON syntax noise
+	// instead. Embedded newlines are preserved verbatim; blocks are separated
+	// by a newline so each marker stays on its own line.
+	var sl streamLine
+	if json.Unmarshal(line, &sl) == nil && sl.Type == "assistant" && sl.Message != nil {
+		for _, b := range sl.Message.Content {
+			if b.Type == "text" && b.Text != "" {
+				w.transcript.WriteString(b.Text)
+				if !strings.HasSuffix(b.Text, "\n") {
+					w.transcript.WriteByte('\n')
+				}
+			}
+		}
 	}
 }
