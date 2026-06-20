@@ -176,7 +176,7 @@ func RenderCommand(template, promptFile, worktree, model string) string {
 // carries human comments on the task (oldest first) so a person can steer a
 // retry by commenting; lastFailure summarizes the previous failed attempt so
 // the agent corrects course instead of repeating it.
-func RenderPrompt(t model.Task, conventions []model.Convention, attachments []string, guidance []string, lastFailure string) string {
+func RenderPrompt(t model.Task, conventions []model.Convention, knowledge string, attachments []string, guidance []string, lastFailure string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task: %s\n\n", t.Title)
 	if t.Spec != "" {
@@ -214,6 +214,12 @@ func RenderPrompt(t model.Task, conventions []model.Convention, attachments []st
 		}
 	}
 	b.WriteString("\n")
+
+	if k := strings.TrimSpace(knowledge); k != "" {
+		b.WriteString("## Project knowledge base\n")
+		b.WriteString("Persistent architecture/design context for this repo:\n")
+		fmt.Fprintf(&b, "%s\n\n", k)
+	}
 
 	if len(conventions) > 0 {
 		b.WriteString("## Conventions\n")

@@ -748,7 +748,7 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	// attempt's evidence is summarized so the agent corrects instead of repeats.
 	conventions, _ := e.store.Conventions.List()
 	promptFile, cleanup, err := writeTempPrompt(agent.RenderPrompt(
-		task, conventions, e.stageAttachments(wt, task.Attachments),
+		task, conventions, e.knowledgeText(), e.stageAttachments(wt, task.Attachments),
 		e.taskGuidance(task.ID), e.lastFailureSummary(task.ID)))
 	if err != nil {
 		log.Printf("engine: write prompt: %v", err)
