@@ -99,7 +99,26 @@ function autonomyControls(m: Metrics): HTMLElement {
     el("label", { class: "checkbox" }, [autoMode, "auto mode"]),
   ]);
 
-  return el("div", { class: "metrics-bar", style: "margin-top:16px" }, [setWip, setRate]);
+  const idleInput = el("input", {
+    type: "text",
+    value: m.idleTimeout ?? "",
+    title: "e.g. 10m — empty uses the 5m default, 'off' disables stall kills",
+    placeholder: "e.g. 10m or off",
+  }) as HTMLInputElement;
+  const setIdle = el("form", {
+    class: "wip-cap",
+    onsubmit: (e: Event) => {
+      e.preventDefault();
+      saveSetting({ agent_idle_timeout: idleInput.value.trim() });
+    },
+  }, [
+    el("label", {}, ["Idle timeout"]),
+    idleInput,
+    button("Set", { variant: "primary", type: "submit" }),
+    el("span", { class: "muted sm" }, ["empty = 5m default, 'off' = disabled"]),
+  ]);
+
+  return el("div", { class: "metrics-bar", style: "margin-top:16px" }, [setWip, setRate, setIdle]);
 }
 
 async function saveSetting(s: Record<string, string>): Promise<void> {
