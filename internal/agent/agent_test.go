@@ -33,14 +33,14 @@ func TestRenderCommandModel(t *testing.T) {
 }
 
 func TestRenderPromptCoAuthor(t *testing.T) {
-	out := RenderPrompt(model.Task{Title: "x"}, nil, nil, nil, "")
+	out := RenderPrompt(model.Task{Title: "x"}, nil, "", nil, nil, "")
 	if !strings.Contains(out, "Co-authored-by: fabrika <noreply@fabrika-ai.com>") {
 		t.Fatalf("RenderPrompt output missing fabrika co-author instruction:\n%s", out)
 	}
 }
 
 func TestRenderPromptAttachments(t *testing.T) {
-	out := RenderPrompt(model.Task{Title: "x"}, nil, []string{"/repo/.fabrika/uploads/a.png"}, nil, "")
+	out := RenderPrompt(model.Task{Title: "x"}, nil, "", []string{"/repo/.fabrika/uploads/a.png"}, nil, "")
 	if !strings.Contains(out, "## Attached files") || !strings.Contains(out, "/repo/.fabrika/uploads/a.png") {
 		t.Fatalf("RenderPrompt output missing attachment paths:\n%s", out)
 	}
@@ -71,14 +71,14 @@ func TestParseEvidence(t *testing.T) {
 }
 
 func TestRenderPromptEvidenceRule(t *testing.T) {
-	out := RenderPrompt(model.Task{Title: "x"}, nil, nil, nil, "")
+	out := RenderPrompt(model.Task{Title: "x"}, nil, "", nil, nil, "")
 	if !strings.Contains(out, EvidenceMarker) {
 		t.Fatalf("RenderPrompt output missing evidence marker instruction:\n%s", out)
 	}
 }
 
 func TestRenderPromptUsageRule(t *testing.T) {
-	out := RenderPrompt(model.Task{Title: "x"}, nil, nil, nil, "")
+	out := RenderPrompt(model.Task{Title: "x"}, nil, "", nil, nil, "")
 	if !strings.Contains(out, UsageMarker) {
 		t.Fatalf("RenderPrompt output missing usage marker instruction:\n%s", out)
 	}
@@ -135,7 +135,7 @@ func TestParseUsageTotalDerivation(t *testing.T) {
 }
 
 func TestRenderPromptGuidanceAndLastFailure(t *testing.T) {
-	out := RenderPrompt(model.Task{Title: "x"}, nil, nil,
+	out := RenderPrompt(model.Task{Title: "x"}, nil, "", nil,
 		[]string{"use the existing el() helper", "don't add a scrollbar"},
 		`stage "verify" failed:`+"\nCould not find 'test/heldout/x.ts'")
 	for _, want := range []string{
@@ -151,7 +151,7 @@ func TestRenderPromptGuidanceAndLastFailure(t *testing.T) {
 	}
 
 	// Both sections are omitted when there is nothing to say.
-	out = RenderPrompt(model.Task{Title: "x"}, nil, nil, nil, "")
+	out = RenderPrompt(model.Task{Title: "x"}, nil, "", nil, nil, "")
 	if strings.Contains(out, "Guidance from the human") || strings.Contains(out, "Previous attempt failed") {
 		t.Fatalf("empty guidance/failure should render no sections:\n%s", out)
 	}
