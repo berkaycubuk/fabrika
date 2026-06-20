@@ -151,9 +151,12 @@ func (w *streamSink) handle(line []byte) {
 
 // handleOpencode parses one opencode --format json NDJSON line for activity,
 // usage, and transcript text. Unlike claude's last-wins absolute usage, opencode
-// emits per-step token counts, so usage is ACCUMULATED across step_finish lines
-// (the last cumulative total wins). Top-level `text` parts are written to the
-// transcript so fabrika_* markers stay parseable, mirroring the claude path.
+// emits per-call token counts on each step_finish line (input is that call's
+// context size, total includes its cache tokens), so usage is ACCUMULATED across
+// step_finish lines — input, output, and total are each summed per call so the
+// run total is the sum of every step's total, not just the final step's. Top-level
+// `text` parts are written to the transcript so fabrika_* markers stay parseable,
+// mirroring the claude path.
 func (w *streamSink) handleOpencode(line []byte) {
 	if ev, ok := ParseOpencodeActivity(line); ok {
 		ev.Ts = time.Now().UnixMilli()
@@ -164,9 +167,7 @@ func (w *streamSink) handleOpencode(line []byte) {
 	if u, ok := ParseOpencodeStreamUsage(line); ok {
 		w.usage.InputTokens += u.InputTokens
 		w.usage.OutputTokens += u.OutputTokens
-		if u.TotalTokens > 0 {
-			w.usage.TotalTokens = u.TotalTokens
-		}
+		w.usage.TotalTokens += u.TotalTokens
 		w.haveUsage = true
 	}
 	if text, ok := opencodeStreamText(line); ok {
