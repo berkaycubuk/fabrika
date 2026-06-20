@@ -762,6 +762,13 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 			log.Printf("engine: delete active run %s: %v", task.ID, err)
 		}
 	}()
+	// Reset the activity log so a retry shows only the latest run's timeline.
+	// A failed run's activity is retained until the NEXT run starts (mirrors the
+	// planner's PlanActivity reset in plan.go).
+	if err := e.store.TaskActivity.DeleteByTask(task.ID); err != nil {
+		log.Printf("engine: reset task activity %s: %v", task.ID, err)
+	}
+
 	// Stream the implementer like the planner (plan.go): for a *Subprocess whose
 	// command StreamCommand routes through stream-json (claude), run via RunStream
 	// so the activity meter keeps ticking and the idle-stall watchdog regains real
@@ -778,6 +785,9 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 			streamAg.Command = cmd
 			agentRes, err = sub.RunStream(ctx, streamAg, task, wt, promptFile, func(ev agent.ActivityEvent) {
 				e.emit("task.activity", map[string]any{"taskId": task.ID, "event": ev})
+				if aerr := e.store.TaskActivity.Append(task.ID, model.PlanActivity{Type: ev.Type, Summary: ev.Summary, Ts: ev.Ts}); aerr != nil {
+					log.Printf("engine: persist task activity %s: %v", task.ID, aerr)
+				}
 			})
 		} else {
 			agentRes, err = e.agent.Run(ctx, ag, task, wt, promptFile)
@@ -1531,6 +1541,9 @@ func (e *Engine) DeleteTask(taskID string) error {
 		return err
 	}
 	if err := e.store.Transitions.DeleteByTask(taskID); err != nil {
+		return err
+	}
+	if err := e.store.TaskActivity.DeleteByTask(taskID); err != nil {
 		return err
 	}
 	if err := e.store.Tasks.Delete(taskID); err != nil {
