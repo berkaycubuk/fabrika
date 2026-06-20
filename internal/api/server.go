@@ -14,21 +14,23 @@ import (
 
 	"github.com/berkaycubuk/fabrika/internal/config"
 	"github.com/berkaycubuk/fabrika/internal/engine"
+	"github.com/berkaycubuk/fabrika/internal/git"
 	"github.com/berkaycubuk/fabrika/internal/relay"
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
 // Server holds the dependencies shared across handlers.
 type Server struct {
-	store    *store.Store
-	cfg      *config.Config
-	hub      *Hub
-	web      fs.FS  // embedded static UI assets (may be nil in tests)
-	repoRoot string // project root; uploads live under <repoRoot>/.fabrika/uploads
-	engine   *engine.Engine
-	relay    *relay.Manager
-	notifier *relay.Notifier
-	version  string
+	store       *store.Store
+	cfg         *config.Config
+	hub         *Hub
+	web         fs.FS  // embedded static UI assets (may be nil in tests)
+	repoRoot    string // project root; uploads live under <repoRoot>/.fabrika/uploads
+	engine      *engine.Engine
+	relay       *relay.Manager
+	notifier    *relay.Notifier
+	version     string
+	BuildCommit string // set after construction to the build-time commit hash
 }
 
 // NewServer constructs a Server and its engine. cfg + repoRoot configure the
@@ -237,7 +239,12 @@ func (s *Server) getVersion(w http.ResponseWriter, _ *http.Request) {
 	if s.cfg != nil {
 		project = s.cfg.Project.Name
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"version": s.version, "project": project})
+	behindHead := 0
+	repo, err := git.Open(context.Background(), s.repoRoot)
+	if err == nil {
+		behindHead, _ = repo.BehindHead(context.Background(), s.BuildCommit)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"version": s.version, "project": project, "behindHead": behindHead})
 }
 
 // mapStoreErr translates store errors into HTTP responses.
