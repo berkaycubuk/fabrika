@@ -135,6 +135,17 @@ func (s *Server) listBigTasks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, bts)
 }
 
+// getBigTask returns a single big task so agents can poll one item's status
+// without fetching and filtering the whole list.
+func (s *Server) getBigTask(w http.ResponseWriter, r *http.Request) {
+	bt, err := s.store.BigTasks.Get(r.PathValue("id"))
+	if err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, bt)
+}
+
 // createBigTask stores the BigTask and decomposes it into work. When a planner
 // agent is configured, planning runs asynchronously (the BigTask goes to
 // `planning`; a proposed Plan with `planned` tasks + open decisions appears via

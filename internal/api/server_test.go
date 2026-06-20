@@ -326,6 +326,40 @@ func TestListBigTasks(t *testing.T) {
 	}
 }
 
+// TestGetBigTask confirms the single-resource read returns one big task by id
+// and 404s an unknown id, so agents can poll one item without filtering the list.
+func TestGetBigTask(t *testing.T) {
+	h := newTestServer(t)
+
+	rec := do(t, h, "POST", "/api/bigtasks", model.BigTask{Title: "Ship login", Intent: "y"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create bigtask: %d %s", rec.Code, rec.Body.String())
+	}
+	var created model.BigTask
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.ID == "" {
+		t.Fatal("expected assigned ID")
+	}
+
+	rec = do(t, h, "GET", "/api/bigtasks/"+created.ID, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get bigtask: %d %s", rec.Code, rec.Body.String())
+	}
+	var got model.BigTask
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode bigtask: %v", err)
+	}
+	if got.ID != created.ID || got.Title != "Ship login" {
+		t.Fatalf("get bigtask = %+v", got)
+	}
+
+	// Unknown id -> 404.
+	rec = do(t, h, "GET", "/api/bigtasks/nope", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("get unknown bigtask: %d", rec.Code)
+	}
+}
+
 func TestPlanAndDecisionEndpointsLive(t *testing.T) {
 	h := newTestServer(t)
 
