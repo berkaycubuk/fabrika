@@ -282,6 +282,15 @@ type TaskTransition struct {
 	CreatedAt  string `json:"createdAt"`
 }
 
+// PlanActivity is one entry in a big task's planner activity log. It mirrors
+// agent.ActivityEvent but lives in this leaf package so the store can persist
+// activity without importing the agent package.
+type PlanActivity struct {
+	Type    string `json:"type"`
+	Summary string `json:"summary"`
+	Ts      int64  `json:"ts"`
+}
+
 // Convention is standing context injected into future specs + agent runs.
 type Convention struct {
 	ID     string `json:"id"`
