@@ -29,6 +29,7 @@ const NAV: Nav[] = [
 ];
 
 let current = "board";
+let staleBanner: HTMLElement;
 
 function route(content: HTMLElement, id: string): void {
   const nav = NAV.find((n) => n.id === id) ?? NAV[0];
@@ -56,12 +57,16 @@ function sidebar(): HTMLElement {
   const brandEl = brand("");
   fetch("/api/version")
     .then((r) => r.json())
-    .then((d: { version: string; project?: string }) => {
+    .then((d: { version: string; project?: string; behindHead?: number }) => {
       versionEl.textContent = d.version;
       if (d.project) {
         const newBrand = brand(d.project);
         brandEl.replaceWith(newBrand);
         document.title = `fabrika — ${d.project}`;
+      }
+      if (d.behindHead && d.behindHead > 0) {
+        staleBanner.textContent = `${d.behindHead} merged changes not yet live — rebuild & restart to apply`;
+        staleBanner.style.display = "";
       }
     })
     .catch(() => { versionEl.textContent = ""; });
@@ -94,7 +99,11 @@ function main(): void {
   initTheme();
   const app = document.getElementById("app")!;
   const content = el("main", { class: "content" });
-  app.append(el("div", { class: "layout" }, [sidebar(), content]));
+  staleBanner = el("div", { class: "stale-banner", style: "display:none" });
+  app.append(el("div", { class: "shell" }, [
+    staleBanner,
+    el("div", { class: "layout" }, [sidebar(), content]),
+  ]));
 
   const go = () => route(content, location.hash.replace("#", "") || "board");
   window.addEventListener("hashchange", go);

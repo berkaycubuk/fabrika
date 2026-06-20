@@ -165,6 +165,32 @@ code { font-family: var(--mono); font-size: var(--fs-md); }
 
 .layout { display: flex; height: 100vh; overflow: hidden; }
 
+/* Shell wraps the stale banner + layout so the banner sits above the sidebar/content
+   row without breaking the flex layout. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.shell > .layout {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Stale-binary banner — thin amber bar at the top of the shell. */
+.stale-banner {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-8);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--pill-amber) 12%, transparent);
+  color: var(--amber);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 /* Sidebar */
 .sidebar {
   width: 220px;
