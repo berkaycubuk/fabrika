@@ -110,6 +110,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/bigtasks", s.listBigTasks)
 	mux.HandleFunc("GET /api/bigtasks/{id}", s.getBigTask)
 	mux.HandleFunc("GET /api/bigtasks/{id}/activity", s.getBigTaskActivity)
+	mux.HandleFunc("GET /api/tasks/{id}/activity", s.getTaskActivity)
 	mux.HandleFunc("POST /api/bigtasks", s.createBigTask)
 	mux.HandleFunc("POST /api/bigtasks/reorder", s.reorderBigTasks)
 	mux.HandleFunc("DELETE /api/bigtasks/{id}", s.deleteBigTask)
