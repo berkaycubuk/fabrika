@@ -34,6 +34,10 @@ const defaultPort = 7777
 // revision the Go toolchain embeds automatically.
 var version = "dev"
 
+// commit is the build commit hash, stamped via
+// `-ldflags "-X main.commit=$(COMMIT)"`.
+var commit string
+
 // versionString returns the stamped release version, or "dev (<commit>)" when
 // built without ldflags (e.g. plain `go build` / `go run`).
 func versionString() string {
@@ -60,6 +64,22 @@ func versionString() string {
 		}
 	}
 	return version
+}
+
+// buildCommit returns the build-time commit hash, or falls back to the
+// vcs.revision from debug.ReadBuildInfo(), or "".
+func buildCommit() string {
+	if commit != "" {
+		return commit
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				return s.Value
+			}
+		}
+	}
+	return ""
 }
 
 func main() {
@@ -200,6 +220,7 @@ func cmdServe(port int, openBrowser bool) error {
 	defer stop()
 
 	srv := api.NewServer(st, cfg, cwd, assets, versionString())
+	srv.BuildCommit = buildCommit()
 	srv.Start(ctx) // launch the dispatch loop
 
 	addr := fmt.Sprintf("localhost:%d", port)

@@ -1,11 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/berkaycubuk/fabrika/internal/config"
 	"github.com/berkaycubuk/fabrika/internal/model"
+	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
 func TestAttentionEndpoint(t *testing.T) {
@@ -108,5 +113,92 @@ func TestAttentionEndpoint(t *testing.T) {
 	}
 	if resp.Plans[0].ID != plan.ID {
 		t.Fatalf("plan = %s, want %s", resp.Plans[0].ID, plan.ID)
+	}
+}
+
+// newTestServerHub builds a server and returns it directly so tests can reach
+// the event hub to broadcast and inspect the cursor.
+func newTestServerHub(t *testing.T) *Server {
+	t.Helper()
+	dir := t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "g"), filepath.Join(dir, "p"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	srv := NewServer(s, &config.Config{}, dir, nil, "")
+	srv.Start(context.Background())
+	return srv
+}
+
+func TestAttentionCursorAndLongPoll(t *testing.T) {
+	srv := newTestServerHub(t)
+	h := srv.Handler()
+
+	// The plain snapshot carries the current cursor (0 with no events yet).
+	rec := do(t, h, "GET", "/api/attention", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("attention: %d %s", rec.Code, rec.Body.String())
+	}
+	var resp attentionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Cursor != 0 {
+		t.Fatalf("cursor = %d, want 0", resp.Cursor)
+	}
+
+	// A broadcast advances the cursor.
+	srv.hub.Broadcast(Event{Type: "test.event"})
+	if got := srv.hub.Seq(); got != 1 {
+		t.Fatalf("seq after broadcast = %d, want 1", got)
+	}
+
+	// since < current seq returns immediately even with wait set.
+	start := time.Now()
+	rec = do(t, h, "GET", "/api/attention?since=0&wait=30", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("attention: %d %s", rec.Code, rec.Body.String())
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("expected immediate return, blocked for %s", elapsed)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", resp.Cursor)
+	}
+
+	// since == current seq blocks until a broadcast wakes the long-poll.
+	done := make(chan attentionResponse, 1)
+	go func() {
+		r := do(t, h, "GET", "/api/attention?since=1&wait=30", nil)
+		var out attentionResponse
+		_ = json.Unmarshal(r.Body.Bytes(), &out)
+		done <- out
+	}()
+
+	// Give the request time to enter the blocking select before broadcasting.
+	time.Sleep(100 * time.Millisecond)
+	srv.hub.Broadcast(Event{Type: "test.wakeup"})
+
+	select {
+	case out := <-done:
+		if out.Cursor != 2 {
+			t.Fatalf("woken cursor = %d, want 2", out.Cursor)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("long-poll did not wake on broadcast")
+	}
+
+	// wait timeout elapses and returns the snapshot when no event arrives.
+	start = time.Now()
+	rec = do(t, h, "GET", "/api/attention?since=2&wait=1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("attention: %d %s", rec.Code, rec.Body.String())
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Fatalf("expected to block ~1s, returned after %s", elapsed)
 	}
 }
