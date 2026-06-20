@@ -147,6 +147,23 @@ func (s *Server) getBigTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, bt)
 }
 
+// getBigTaskActivity returns the persisted planner activity timeline for a big
+// task, oldest-first, so the UI can render a planning timeline after the run
+// ends (especially for a FAILED plan). It always responds with a JSON array:
+// an unknown id or no activity yet yields [], never null or 404 — there is
+// simply no activity to show.
+func (s *Server) getBigTaskActivity(w http.ResponseWriter, r *http.Request) {
+	activity, err := s.store.PlanActivity.List(r.PathValue("id"))
+	if err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+	if activity == nil {
+		activity = []model.PlanActivity{}
+	}
+	writeJSON(w, http.StatusOK, activity)
+}
+
 // createBigTask stores the BigTask and decomposes it into work. When a planner
 // agent is configured, planning runs asynchronously (the BigTask goes to
 // `planning`; a proposed Plan with `planned` tasks + open decisions appears via
