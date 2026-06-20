@@ -63,3 +63,75 @@ func TestStreamingImplementerStall(t *testing.T) {
 		t.Fatal("liveness stage should be a failure")
 	}
 }
+
+// streamActivityCmd emits one assistant stream-json line (which ParseActivity
+// turns into a "think" event) and writes a file so the run produces a non-empty
+// diff. The "stream-json" substring routes dispatch through RunStream.
+const streamActivityCmd = `printf 'work' > out.txt && ` +
+	`printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"thinking hard"}]}}' # stream-json`
+
+// TestStreamingImplementerPersistsActivity proves the implementer activity the
+// engine already emits over the WebSocket is ALSO persisted to TaskActivity, so
+// a reload (or a late-joining client) can render the run's timeline — mirroring
+// how the planner persists its own activity in plan.go.
+func TestStreamingImplementerPersistsActivity(t *testing.T) {
+	eng, st, _ := setup(t)
+	registerAgent(t, st, streamActivityCmd)
+
+	task := &model.Task{Title: "streams activity", Spec: "emit one activity line"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	if !eng.dispatchOnce() {
+		t.Fatal("expected the task to be dispatched")
+	}
+
+	acts, err := st.TaskActivity.List(task.ID)
+	if err != nil {
+		t.Fatalf("list task activity: %v", err)
+	}
+	var found bool
+	for _, a := range acts {
+		if a.Type == "think" && a.Summary == "thinking hard" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a persisted 'think' activity, got %v", acts)
+	}
+}
+
+// TestStreamingRunResetsPriorActivity proves a fresh run wipes the previous
+// run's timeline first, so a retry shows only the latest run — mirroring the
+// planner's PlanActivity reset in plan.go. A stale entry seeded before dispatch
+// must be gone, replaced solely by the new run's activity.
+func TestStreamingRunResetsPriorActivity(t *testing.T) {
+	eng, st, _ := setup(t)
+	registerAgent(t, st, streamActivityCmd)
+
+	task := &model.Task{Title: "resets activity", Spec: "emit one activity line"}
+	if err := st.Tasks.Create(task); err != nil {
+		t.Fatal(err)
+	}
+	// Seed a stale entry from a notional prior run; the next run must clear it.
+	if err := st.TaskActivity.Append(task.ID, model.PlanActivity{Type: "read", Summary: "stale prior run"}); err != nil {
+		t.Fatalf("seed stale activity: %v", err)
+	}
+
+	if !eng.dispatchOnce() {
+		t.Fatal("expected the task to be dispatched")
+	}
+
+	acts, err := st.TaskActivity.List(task.ID)
+	if err != nil {
+		t.Fatalf("list task activity: %v", err)
+	}
+	for _, a := range acts {
+		if a.Summary == "stale prior run" {
+			t.Fatalf("stale activity from a prior run survived the reset: %v", acts)
+		}
+	}
+	if len(acts) == 0 {
+		t.Fatal("expected the fresh run's activity to be persisted")
+	}
+}
