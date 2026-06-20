@@ -18,12 +18,20 @@ const FileName = "fabrika.toml"
 
 // Config is the parsed fabrika.toml.
 type Config struct {
-	Project  Project  `toml:"project" json:"project"`
-	Verbs    Verbs    `toml:"verbs" json:"verbs"`
-	Risk     Risk     `toml:"risk" json:"risk"`
-	Autonomy Autonomy `toml:"autonomy" json:"autonomy"`
-	Deploy   Deploy   `toml:"deploy" json:"deploy"`
-	CI       CI       `toml:"ci" json:"ci"`
+	Project   Project   `toml:"project" json:"project"`
+	Verbs     Verbs     `toml:"verbs" json:"verbs"`
+	Risk      Risk      `toml:"risk" json:"risk"`
+	Autonomy  Autonomy  `toml:"autonomy" json:"autonomy"`
+	Deploy    Deploy    `toml:"deploy" json:"deploy"`
+	CI        CI        `toml:"ci" json:"ci"`
+	Knowledge Knowledge `toml:"knowledge" json:"knowledge"`
+}
+
+// Knowledge is an optional project-level knowledge base injected into planner
+// and implementer prompts. File takes precedence over Text when both are set.
+type Knowledge struct {
+	Text string `toml:"text" json:"text"`
+	File string `toml:"file" json:"file"`
 }
 
 // CI configures the CI run poller. An absent [ci] section or an empty Command
@@ -147,6 +155,21 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ResolveKnowledge returns the project knowledge text. If Knowledge.File is set
+// it reads that file (relative to repoRoot) and returns its trimmed contents,
+// returning any read error. Otherwise it returns the trimmed inline Text. When
+// neither is set it returns "" and a nil error.
+func (c *Config) ResolveKnowledge(repoRoot string) (string, error) {
+	if c.Knowledge.File != "" {
+		data, err := os.ReadFile(filepath.Join(repoRoot, c.Knowledge.File))
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(data)), nil
+	}
+	return strings.TrimSpace(c.Knowledge.Text), nil
+}
+
 // Exists reports whether a manifest is present at the repo root.
 func Exists(repoRoot string) bool {
 	_, err := os.Stat(filepath.Join(repoRoot, FileName))
@@ -219,6 +242,12 @@ medium = ["src/api/**"]
 [autonomy]
 auto_merge = ["low"]
 escalate   = ["medium", "high"]
+
+# [knowledge]                  # project context injected into planner + implementer prompts
+# file = "CONTEXT.md"          # path to a Markdown doc (relative to repo root); takes precedence over text
+# text = """
+# Inline project knowledge in Markdown. House conventions, domain notes, etc.
+# """
 `, d.Message, name, verbs.String())
 }
 
@@ -245,4 +274,10 @@ medium = ["src/api/**"]
 [autonomy]
 auto_merge = ["low"]          # tiers that merge without you
 escalate   = ["medium", "high"]
+
+# [knowledge]                  # project context injected into planner + implementer prompts
+# file = "CONTEXT.md"          # path to a Markdown doc (relative to repo root); takes precedence over text
+# text = """
+# Inline project knowledge in Markdown. House conventions, domain notes, etc.
+# """
 `
