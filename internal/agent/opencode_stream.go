@@ -107,7 +107,7 @@ func opencodeToolEvent(p *opencodePart) ActivityEvent {
 	case "list":
 		return ActivityEvent{Type: "search", Summary: firstNonEmpty(in.Path, title, p.Tool)}
 	default:
-		return ActivityEvent{Type: "tool", Summary: p.Tool}
+		return ActivityEvent{Type: "tool", Summary: truncate(firstNonEmpty(in.Command, title, p.Tool), activityMaxLen)}
 	}
 }
 

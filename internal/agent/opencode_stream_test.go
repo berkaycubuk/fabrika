@@ -118,11 +118,11 @@ func TestParseOpencodeActivity(t *testing.T) {
 			wantSummary: "internal/",
 		},
 		{
-			name:        "bash default uses bare tool name",
+			name:        "bash default shows command",
 			line:        buildOpencodeToolLine("bash", map[string]any{"command": "go test ./..."}, ""),
 			wantOK:      true,
 			wantType:    "tool",
-			wantSummary: "bash",
+			wantSummary: "go test ./...",
 		},
 		{
 			name:        "uppercase tool name maps via lowercase",
