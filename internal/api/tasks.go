@@ -227,12 +227,17 @@ func (s *Server) promoteBigTask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, ok := s.engine.PlannerAgent(); ok {
+	if plannerAgent, ok := s.engine.PlannerAgent(); ok {
 		if err := s.store.BigTasks.UpdateStatus(bt.ID, model.BigTaskDraft); err != nil {
 			mapStoreErr(w, err)
 			return
 		}
 		bt.Status = model.BigTaskDraft
+		if err := s.store.BigTasks.SetPlannerAgent(bt.ID, plannerAgent.ID); err != nil {
+			mapStoreErr(w, err)
+			return
+		}
+		bt.PlannerAgentID = plannerAgent.ID
 		s.engine.PlanBigTask(*bt)
 		writeJSON(w, http.StatusOK, bt)
 		return
