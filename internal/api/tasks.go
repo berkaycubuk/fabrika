@@ -25,9 +25,9 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 // filterTasks applies additive query-parameter filtering to the task slice.
-// Each supported param (status, agentId, riskTier) accepts a single value or a
-// comma-separated list (OR within a param); different params combine with AND.
-// An absent or empty param applies no constraint on its field.
+// Each supported param (status, agentId, riskTier, bigTaskId) accepts a single
+// value or a comma-separated list (OR within a param); different params combine
+// with AND. An absent or empty param applies no constraint on its field.
 func filterTasks(tasks []model.Task, q url.Values) []model.Task {
 	matches := func(values, field string) bool {
 		values = strings.TrimSpace(values)
@@ -45,7 +45,8 @@ func filterTasks(tasks []model.Task, q url.Values) []model.Task {
 	for _, t := range tasks {
 		if matches(q.Get("status"), t.Status) &&
 			matches(q.Get("agentId"), t.AgentID) &&
-			matches(q.Get("riskTier"), t.RiskTier) {
+			matches(q.Get("riskTier"), t.RiskTier) &&
+			matches(q.Get("bigTaskId"), t.BigTaskID) {
 			out = append(out, t)
 		}
 	}
