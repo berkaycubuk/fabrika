@@ -263,6 +263,8 @@ Agents are **first-class entities you create and edit in the UI**, persisted in 
 
 **Command template** substitutes `{prompt_file}`, `{worktree}`, and `{model}`. Agents run as subprocesses with a hard `Timeout` (default 30m) and an idle/stall watchdog (default 5m of silence → killed as stalled, recorded as a distinct liveness failure rather than a timeout). A heartbeat (last output line, idle time, byte count) surfaces liveness to the cockpit so a running card shows staleness.
 
+Implementer agents now stream like the planner: for claude agents the engine injects `--output-format stream-json --verbose` and parses the stream-json transcript (`RunStream`), while opencode and other non-claude CLIs keep running buffered (`Run`). Because every stream-json line is fresh output, silence on a streaming agent now genuinely means stuck — so the global `agent_idle_timeout` watchdog is safe to enable for implementers (a sane value such as 10m, set via the Factory idle-timeout control).
+
 **Agent → engine output markers** (stdout sentinels the agent may emit):
 - `fabrika_DECISION: {json}` — a task-level question; pauses the task into `blocked` as a `Decision` instead of failing it.
 - `fabrika_COMMENT: …` — a narrative note, saved to the task comment thread.

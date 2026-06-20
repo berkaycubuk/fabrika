@@ -762,7 +762,29 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 			log.Printf("engine: delete active run %s: %v", task.ID, err)
 		}
 	}()
-	agentRes, err := e.agent.Run(ctx, ag, task, wt, promptFile)
+	// Stream the implementer like the planner (plan.go): for a *Subprocess whose
+	// command StreamCommand routes through stream-json (claude), run via RunStream
+	// so the activity meter keeps ticking and the idle-stall watchdog regains real
+	// stall detection. The injected command (with --output-format stream-json
+	// --verbose) is run via a copy of the agent so ag stays untouched for the rest
+	// of the run. Every other case — not a *Subprocess, or a non-claude CLI like
+	// opencode that StreamCommand reports stream=false — falls back to buffered Run
+	// unchanged. RunStream gives full result parity with Run, so the AgentResult the
+	// gate path consumes below is identical for both routes.
+	var agentRes agent.AgentResult
+	if sub, ok := e.agent.(*agent.Subprocess); ok {
+		if cmd, stream := agent.StreamCommand(ag.Command); stream {
+			streamAg := ag
+			streamAg.Command = cmd
+			agentRes, err = sub.RunStream(ctx, streamAg, task, wt, promptFile, func(ev agent.ActivityEvent) {
+				e.emit("task.activity", map[string]any{"taskId": task.ID, "event": ev})
+			})
+		} else {
+			agentRes, err = e.agent.Run(ctx, ag, task, wt, promptFile)
+		}
+	} else {
+		agentRes, err = e.agent.Run(ctx, ag, task, wt, promptFile)
+	}
 	// A cancelled context means the human stopped this task in flight (steer).
 	// Finalize as closed with their reason rather than treating it as a failure.
 	if reason, cancelled := e.cancellation(task.ID); cancelled {
