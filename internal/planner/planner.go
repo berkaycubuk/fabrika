@@ -64,7 +64,7 @@ func Passthrough(bt model.BigTask) model.Plan {
 // planFile. The planner authors the acceptance contract (verify commands, locked
 // globs, held-out checks) — the implementer never sees held-out checks.
 // attachments are local paths to images attached when the big task was defined.
-func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile string, attachments []string) string {
+func RenderPrompt(bt model.BigTask, conventions []model.Convention, knowledge string, planFile string, attachments []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Plan this work: %s\n\n", bt.Title)
 	if bt.Intent != "" {
@@ -83,6 +83,11 @@ func RenderPrompt(bt model.BigTask, conventions []model.Convention, planFile str
 			fmt.Fprintf(&b, "  - %s\n", p)
 		}
 		b.WriteString("\n")
+	}
+	if k := strings.TrimSpace(knowledge); k != "" {
+		b.WriteString("## Project knowledge base\n")
+		b.WriteString("Persistent architecture/design context for this repo:\n")
+		fmt.Fprintf(&b, "%s\n\n", k)
 	}
 	if len(conventions) > 0 {
 		b.WriteString("## Standing conventions (obey these)\n")

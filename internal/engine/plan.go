@@ -243,7 +243,7 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 
 	planFile := filepath.Join(wt, planFileName)
 	conventions, _ := e.store.Conventions.List()
-	basePrompt := planner.RenderPrompt(bt, conventions, planFile, e.attachmentPaths(bt.Attachments))
+	basePrompt := planner.RenderPrompt(bt, conventions, e.knowledgeText(), planFile, e.attachmentPaths(bt.Attachments))
 	synthetic := model.Task{ID: bt.ID, Title: "plan: " + bt.Title}
 
 	// Reset the activity log so a re-plan shows only the latest run's timeline.
