@@ -43,6 +43,7 @@ type Store struct {
 	Transitions  *TransitionRepo
 	Uploads      *UploadRepo
 	PlanActivity *PlanActivityRepo
+	TaskActivity *TaskActivityRepo
 }
 
 // Open opens (creating if needed) both databases and applies migrations.
@@ -101,6 +102,7 @@ func Open(globalDir, projectDir string) (*Store, error) {
 	s.Transitions = &TransitionRepo{db: project}
 	s.Uploads = &UploadRepo{db: project}
 	s.PlanActivity = &PlanActivityRepo{db: project}
+	s.TaskActivity = &TaskActivityRepo{db: project}
 	if err := s.Crons.bootstrap(); err != nil {
 		global.Close()
 		project.Close()
