@@ -279,6 +279,26 @@ export interface SessionHeartbeat {
   runningSeconds: number;
 }
 
+// PlanActivity is one entry of a big task's planner activity timeline (mirrors
+// internal/model.PlanActivity): a typed, human-readable step the planner took
+// while decomposing the request. ts is unix millis.
+export interface PlanActivity {
+  type: string; // read|search|write|think|usage|tool
+  summary: string;
+  ts: number;
+}
+
+// PlanHeartbeat is the payload of a "plan.heartbeat" event: the planner's
+// liveness pulse while it decomposes a big task, mirroring Heartbeat for the
+// board's running tasks so a stalled or running planner is visible.
+export interface PlanHeartbeat {
+  bigTaskId: string;
+  agentName: string;
+  idleSeconds: number;
+  lastLine: string;
+  outputBytes: number;
+}
+
 export const ROLES = ["implementer", "planner", "reviewer"];
 
 export interface CronSchedule {

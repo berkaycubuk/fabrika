@@ -13,7 +13,7 @@ import { button, pill, tag, field, toggle, formatTokens, formatTokensShort } fro
 import { openModal, closeModal, promptModal } from "../ui.js";
 import { STAGE_ORDER } from "../types.js";
 import { DEFAULT_AVATAR } from "../avatar.js";
-import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release, Heartbeat, Transition } from "../types.js";
+import type { Plan, Decision, ReviewItem, Task, Agent, BigTask, Evidence, Attempt, Usage, Comment, FabrikaEvent, Release, Heartbeat, Transition, PlanActivity, PlanHeartbeat } from "../types.js";
 import { renderTransitionTimeline } from "./history.js";
 import { registerReleaseListener } from "../ws.js";
 import { pushStatusLabel } from "../push.js";
@@ -548,6 +548,12 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
       }}),
     ]));
   }
+  // The planner timeline is the whole point for planning/errored requests: it
+  // shows live what the planner is doing and, crucially, stays as the
+  // post-mortem after a FAILED plan since the log is persisted.
+  if (b.status === "planning" || b.status === "error") {
+    children.push(plannerTimelineSection(b));
+  }
   children.push(bigTaskCommentsSection(b.id));
   const side = buildSidebar([
     asideField("Status", [pill(b.status, `status-${b.status}`)]),
@@ -556,8 +562,96 @@ export function openBigTaskDetail(b: BigTask, agents: Agent[]): void {
       ? asideField("Constraints", b.constraints.map((c) => el("code", { class: "verify-cmd" }, [c])))
       : null,
   ]);
+  openBigTaskId = b.id;
   openModal(b.title, el("div", { class: "detail" }, children), { wide: true, sidebar: side });
   loadBigTaskComments(b.id);
+  if (b.status === "planning" || b.status === "error") loadBigTaskActivity(b.id);
+}
+
+// ── Planner activity timeline ──────────────────────────────────────────────
+
+// The big task whose planning detail is currently open (if any). planner.activity
+// and plan.heartbeat events that target it update the in-modal timeline live;
+// matching is by DOM presence of the timeline slots so a closed modal is inert.
+let openBigTaskId: string | null = null;
+
+// plannerTimelineSection lays out the heartbeat line (latest planner pulse) above
+// an oldest-first, lazily-loaded timeline of typed planner steps.
+function plannerTimelineSection(b: BigTask): HTMLElement {
+  return el("div", { class: "plan-activity" }, [
+    el("div", { class: "section-h sm" }, ["Planner activity"]),
+    el("div", { id: `plan-heartbeat-${b.id}`, class: "plan-heartbeat" }, []),
+    el("div", { id: `plan-timeline-${b.id}`, class: "plan-timeline" }, [
+      el("div", { class: "muted sm plan-activity-empty" }, ["Loading…"]),
+    ]),
+  ]);
+}
+
+async function loadBigTaskActivity(id: string): Promise<void> {
+  try {
+    const activity = await api.getBigTaskActivity(id);
+    const slot = document.getElementById(`plan-timeline-${id}`);
+    if (!slot) return;
+    clear(slot);
+    if (activity.length === 0) {
+      slot.append(el("div", { class: "muted sm plan-activity-empty" }, ["No planner activity recorded yet."]));
+      return;
+    }
+    for (const a of activity) slot.append(activityRow(a));
+  } catch {
+    /* activity is best-effort */
+  }
+}
+
+// activityRow renders one planner step: its type tag, summary, and a relative
+// time derived from the entry's unix-millis timestamp.
+function activityRow(a: PlanActivity): HTMLElement {
+  return el("div", { class: "plan-activity-row" }, [
+    tag(a.type, `activity-${a.type}`),
+    el("span", { class: "plan-activity-summary" }, [a.summary]),
+    el("span", { class: "plan-activity-time", title: a.ts ? new Date(a.ts).toLocaleString() : "" }, [a.ts ? relTime(a.ts) : ""]),
+  ]);
+}
+
+// relTime renders a unix-millis timestamp as a compact "Ns ago" relative time.
+function relTime(ts: number): string {
+  const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (sec < 5) return "just now";
+  return `${fmtDur(sec)} ago`;
+}
+
+// onPlannerActivity appends a live planner step to the open big task's timeline
+// in place (no board refetch — these are high-frequency). Exported for the WS
+// event loop in main.ts.
+export function onPlannerActivity(p: { bigTaskId: string; event: PlanActivity }): void {
+  if (openBigTaskId !== p.bigTaskId) return;
+  const slot = document.getElementById(`plan-timeline-${p.bigTaskId}`);
+  if (!slot) return;
+  // Drop the loading/empty placeholder before the first real row lands.
+  slot.querySelector(".plan-activity-empty")?.remove();
+  slot.append(activityRow(p.event));
+}
+
+// onPlanHeartbeat reflects the latest planner liveness pulse (agent + idle + last
+// line) on the open big task's planning detail, in place. Exported for the WS
+// event loop in main.ts.
+export function onPlanHeartbeat(p: PlanHeartbeat): void {
+  if (openBigTaskId !== p.bigTaskId) return;
+  const node = document.getElementById(`plan-heartbeat-${p.bigTaskId}`);
+  if (node) paintPlanHeartbeat(node, p);
+}
+
+// paintPlanHeartbeat mirrors the board's running-card pulse for the planner: green
+// "working" while output flows, amber "quiet" once silent past QUIET_AFTER.
+function paintPlanHeartbeat(node: HTMLElement, hb: PlanHeartbeat): void {
+  const quiet = hb.idleSeconds >= QUIET_AFTER;
+  node.className = "plan-heartbeat pulse" + (quiet ? " quiet" : "");
+  const who = hb.agentName || "planner";
+  const ago = hb.idleSeconds < 4 ? "just now" : `${fmtDur(hb.idleSeconds)} ago`;
+  node.textContent = quiet
+    ? `● ${who} quiet · last output ${ago}`
+    : `● ${who} working · last output ${ago}`;
+  node.title = hb.lastLine ? `${hb.lastLine}\n(last output ${ago})` : `last output ${ago}`;
 }
 
 function decideCard(d: Decision): CardItem {
