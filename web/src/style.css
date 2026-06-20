@@ -904,12 +904,127 @@ button.link.danger:hover { color: var(--red); }
 
 /* Planner activity timeline (big-task planning detail) */
 .plan-activity { margin-top: var(--space-7); }
+
+/* Header: label on the left, LIVE pill pushed to the right. */
+.plan-activity-head { display: flex; align-items: center; justify-content: space-between; }
+.plan-activity-head .section-h.sm { margin: 0; }
+.plan-live {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--pill-green) 16%, transparent);
+  color: var(--green);
+}
+.plan-live.hidden { display: none; }
+
+/* Heartbeat status line: glowing state dot + agent + muted meta. */
 .plan-heartbeat { margin: var(--space-2) 0 var(--space-4); }
 .plan-heartbeat:empty { display: none; }
-.plan-timeline { display: flex; flex-direction: column; gap: var(--space-2); }
-.plan-activity-row { display: flex; align-items: baseline; gap: var(--space-3); font-size: var(--fs-md); padding: var(--space-1) 0; }
-.plan-activity-summary { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plan-activity-time { color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; }
+.plan-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--green);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--green) 60%, transparent);
+  animation: pulse-blink 1.6s ease-in-out infinite;
+}
+.quiet .plan-status-dot {
+  background: var(--amber);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--amber) 60%, transparent);
+}
+.plan-status-agent { color: var(--green); font-weight: 600; }
+.quiet .plan-status-agent { color: var(--amber); }
+.plan-status-meta { color: var(--muted); }
+/* The dot carries the blink now, so suppress the shared first-letter pulse. */
+.plan-heartbeat.pulse::first-letter { animation: none; }
+
+/* Timeline rail: each row draws its own half-segments so the rail caps at the
+   first and last node instead of running past them. */
+.plan-timeline { display: flex; flex-direction: column; }
+.plan-activity-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: nowrap;
+  height: 34px;
+  padding-left: 20px;
+  font-size: var(--fs-md);
+}
+.plan-activity-row::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in srgb, var(--muted) 35%, var(--border));
+}
+.plan-activity-row:first-child::before { top: 50%; }
+.plan-activity-row:last-child::before { bottom: 50%; }
+.plan-activity-node {
+  position: absolute;
+  left: 4.5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--muted);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+/* Node fill mirrors the row's activity-type accent. */
+.plan-activity-row:has(.activity-read) .plan-activity-node { background: var(--accent); }
+.plan-activity-row:has(.activity-write) .plan-activity-node { background: var(--green); }
+.plan-activity-row:has(.activity-search) .plan-activity-node { background: var(--indigo); }
+.plan-activity-row:has(.activity-tool) .plan-activity-node { background: var(--amber); }
+.plan-activity-row:has(.activity-think) .plan-activity-node { background: var(--muted); }
+.plan-activity-row:has(.activity-usage) .plan-activity-node { background: var(--teal); }
+
+/* Color-coded type tags (override the uniform .tag look). */
+.tag.activity-read, .tag.activity-write, .tag.activity-search,
+.tag.activity-tool, .tag.activity-think, .tag.activity-usage {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+.tag.activity-read { color: var(--accent); background: color-mix(in srgb, var(--pill-accent) 16%, transparent); }
+.tag.activity-write { color: var(--green); background: color-mix(in srgb, var(--pill-green) 16%, transparent); }
+.tag.activity-search { color: var(--indigo); background: color-mix(in srgb, var(--indigo) 16%, transparent); }
+.tag.activity-tool { color: var(--amber); background: color-mix(in srgb, var(--pill-amber) 16%, transparent); }
+.tag.activity-think { color: var(--muted); background: color-mix(in srgb, var(--muted) 16%, transparent); }
+.tag.activity-usage { color: var(--teal); background: color-mix(in srgb, var(--teal) 16%, transparent); }
+
+/* Summary: single line, truncates with ellipsis (long paths never wrap). */
+.plan-activity-summary {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-md);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sum-dir, .sum-rest { color: var(--muted); }
+.sum-base, .sum-lead { color: var(--text); font-weight: 600; }
+
+.plan-activity-time {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-align: right;
+}
+.plan-activity-empty { color: var(--muted); font-size: var(--fs-md); padding: var(--space-1) 0; }
 
 /* Decide: decision cards */
 .option-row { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: var(--space-4) 0; }
