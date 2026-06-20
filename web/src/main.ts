@@ -6,12 +6,12 @@ import { brand } from "./brand.js";
 import { initTheme, themeToggle } from "./theme.js";
 import { connectEvents } from "./ws.js";
 import { renderAgents, onAgentEvent } from "./views/agents.js";
-import { renderBoard, onBoardEvent, onHeartbeat } from "./views/board.js";
+import { renderBoard, onBoardEvent, onHeartbeat, onPlannerActivity, onPlanHeartbeat } from "./views/board.js";
 import { renderFactory, onFactoryEvent } from "./views/factory.js";
 import { renderConfig } from "./views/config.js";
 import { renderCrons } from "./views/crons.js";
 import { renderTasks, onTasksEvent } from "./views/tasks.js";
-import type { FabrikaEvent, Heartbeat } from "./types.js";
+import type { FabrikaEvent, Heartbeat, PlanActivity, PlanHeartbeat } from "./types.js";
 
 interface Nav {
   id: string;
@@ -116,6 +116,16 @@ function main(): void {
     // API every few seconds per in-flight task.
     if (e.type === "task.heartbeat") {
       onHeartbeat(e.payload as Heartbeat);
+      return;
+    }
+    // Planner activity + heartbeats are likewise high-frequency: update the open
+    // planning detail in place rather than fanning out to a full board refetch.
+    if (e.type === "planner.activity") {
+      onPlannerActivity(e.payload as { bigTaskId: string; event: PlanActivity });
+      return;
+    }
+    if (e.type === "plan.heartbeat") {
+      onPlanHeartbeat(e.payload as PlanHeartbeat);
       return;
     }
     // Every surface guards on its own DOM presence, so fan out broadly: the

@@ -902,6 +902,15 @@ button.link.danger:hover { color: var(--red); }
 .plan-decision .q { color: var(--text); font-weight: 500; }
 .plan-decision .hint { font-style: italic; }
 
+/* Planner activity timeline (big-task planning detail) */
+.plan-activity { margin-top: var(--space-7); }
+.plan-heartbeat { margin: var(--space-2) 0 var(--space-4); }
+.plan-heartbeat:empty { display: none; }
+.plan-timeline { display: flex; flex-direction: column; gap: var(--space-2); }
+.plan-activity-row { display: flex; align-items: baseline; gap: var(--space-3); font-size: var(--fs-md); padding: var(--space-1) 0; }
+.plan-activity-summary { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-activity-time { color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; }
+
 /* Decide: decision cards */
 .option-row { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: var(--space-4) 0; }
 button.option {

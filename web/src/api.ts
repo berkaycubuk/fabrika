@@ -1,5 +1,5 @@
 // Typed fetch wrappers over the Fabrika REST API (SPECS.md §11).
-import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, RelayInfo, Session, SessionMessage, CronSchedule, Transition } from "./types.js";
+import type { Agent, Task, Attempt, ReviewItem, Metrics, Plan, Decision, BigTask, Comment, ConfigManifest, Convention, Release, RelayInfo, Session, SessionMessage, CronSchedule, Transition, PlanActivity } from "./types.js";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -70,6 +70,7 @@ export const api = {
   promoteBigTask: (id: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/plan`),
   replanBigTask: (id: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/replan`),
   stopPlanning: (id: string, reason?: string) => req<{ status: string }>("POST", `/api/bigtasks/${id}/stop`, { reason }),
+  getBigTaskActivity: (id: string) => req<PlanActivity[]>("GET", `/api/bigtasks/${id}/activity`),
   reorderBigTasks: (ids: string[]) => req<void>("POST", "/api/bigtasks/reorder", { ids }),
 
   // Plans (approve flow, Phase 2)
