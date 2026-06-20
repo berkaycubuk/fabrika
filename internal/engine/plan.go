@@ -260,7 +260,17 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 			e.failBigTask(bt.ID, "write planner prompt: %v", err)
 			return
 		}
-		res, err := e.agent.Run(planCtx, ag, synthetic, wt, promptFile)
+		// Stream the planner so its activity meter keeps ticking (stall detection)
+		// and the UI can show typed planner activity live. Fall back to the plain
+		// Run path for alternate runners that aren't a *Subprocess.
+		var res agent.AgentResult
+		if sub, ok := e.agent.(*agent.Subprocess); ok {
+			res, err = sub.RunStream(planCtx, ag, synthetic, wt, promptFile, func(ev agent.ActivityEvent) {
+				e.emit("planner.activity", map[string]any{"bigTaskId": bt.ID, "event": ev})
+			})
+		} else {
+			res, err = e.agent.Run(planCtx, ag, synthetic, wt, promptFile)
+		}
 		cleanup()
 
 		// A deliberate planning stop lands the big task in error.
