@@ -51,6 +51,7 @@ type Metrics struct {
 	AuditRate       float64 `json:"auditRate"`       // configured post-merge audit sampling rate
 	MutationTesting bool    `json:"mutationTesting"` // mutation-testing validator enabled
 	AutoMode        bool    `json:"autoMode"`        // auto-merge review-queue tasks without a human
+	IdleTimeout     string  `json:"idleTimeout"`     // raw agent_idle_timeout setting value ("", "10m", "off", …)
 
 	TotalTokens int `json:"totalTokens"` // board-wide sum of agent token usage
 }
@@ -224,6 +225,7 @@ func (s *Server) getMetrics(w http.ResponseWriter, r *http.Request) {
 	if v, _ := s.store.Settings.Get("auto_mode"); v != "" {
 		m.AutoMode = strings.EqualFold(v, "on")
 	}
+	m.IdleTimeout, _ = s.store.Settings.Get("agent_idle_timeout")
 
 	writeJSON(w, http.StatusOK, m)
 }
