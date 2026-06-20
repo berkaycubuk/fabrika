@@ -246,6 +246,12 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 	basePrompt := planner.RenderPrompt(bt, conventions, planFile, e.attachmentPaths(bt.Attachments))
 	synthetic := model.Task{ID: bt.ID, Title: "plan: " + bt.Title}
 
+	// Reset the activity log so a re-plan shows only the latest run's timeline.
+	// A failed run's activity is retained until the NEXT run starts.
+	if err := e.store.PlanActivity.DeleteByBigTask(bt.ID); err != nil {
+		log.Printf("engine: reset plan activity %s: %v", bt.ID, err)
+	}
+
 	// Run the planner, validate the contract invariants the prompt can only ask
 	// for, and give the planner ONE repair attempt with the exact violations fed
 	// back. Catching an unsatisfiable held-out check here turns a guaranteed
@@ -267,6 +273,9 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 		if sub, ok := e.agent.(*agent.Subprocess); ok {
 			res, err = sub.RunStream(planCtx, ag, synthetic, wt, promptFile, func(ev agent.ActivityEvent) {
 				e.emit("planner.activity", map[string]any{"bigTaskId": bt.ID, "event": ev})
+				if aerr := e.store.PlanActivity.Append(bt.ID, model.PlanActivity{Type: ev.Type, Summary: ev.Summary, Ts: ev.Ts}); aerr != nil {
+					log.Printf("engine: persist plan activity %s: %v", bt.ID, aerr)
+				}
 			})
 		} else {
 			res, err = e.agent.Run(planCtx, ag, synthetic, wt, promptFile)
@@ -443,6 +452,9 @@ func (e *Engine) DeleteBigTask(id string) error {
 		return err
 	}
 	if err := e.store.Comments.DeleteByBigTask(id); err != nil {
+		return err
+	}
+	if err := e.store.PlanActivity.DeleteByBigTask(id); err != nil {
 		return err
 	}
 	if err := e.store.BigTasks.Delete(id); err != nil {
