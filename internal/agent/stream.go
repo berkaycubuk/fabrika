@@ -52,6 +52,7 @@ type toolInput struct {
 	Pattern  string `json:"pattern"`
 	Path     string `json:"path"`
 	Query    string `json:"query"`
+	Command  string `json:"command"`
 }
 
 // ParseActivity parses ONE NDJSON line of claude stream-json output into a typed
@@ -114,7 +115,7 @@ func toolEvent(b streamBlock) ActivityEvent {
 	case "Write", "Edit", "NotebookEdit":
 		return ActivityEvent{Type: "write", Summary: firstNonEmpty(in.FilePath, b.Name)}
 	default:
-		return ActivityEvent{Type: "tool", Summary: b.Name}
+		return ActivityEvent{Type: "tool", Summary: truncate(firstNonEmpty(in.Command, b.Name), activityMaxLen)}
 	}
 }
 
