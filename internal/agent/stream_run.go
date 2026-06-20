@@ -26,7 +26,7 @@ import (
 // fabrika_USAGE marker. Raw stdout/stderr are still buffered into res for
 // parity with Run, so a caller's plan-file fallback and logging keep working.
 func (s *Subprocess) RunStream(ctx context.Context, a model.Agent, t model.Task, worktree, promptFile string, onActivity func(ActivityEvent)) (AgentResult, error) {
-	sink := &streamSink{onActivity: onActivity}
+	sink := &streamSink{onActivity: onActivity, format: streamFormat(a.Command)}
 	res, err := s.runCore(ctx, a, t, worktree, promptFile, sink)
 	// runCore has waited for the process and its output copiers, so no more
 	// writes can race here; flush any final unterminated line.
@@ -64,10 +64,26 @@ func (s *Subprocess) RunStream(ctx context.Context, a model.Agent, t model.Task,
 // concurrent use, which matches how exec drives a single copier.
 type streamSink struct {
 	onActivity func(ActivityEvent)
+	// format selects the line parser. The zero value "" behaves identically to
+	// "claude" (claude stream-json), so existing claude callers and tests that
+	// build &streamSink{} keep working untouched. "opencode" routes lines
+	// through the opencode --format json parsers.
+	format     string
 	buf        []byte // bytes of the in-progress (unterminated) line
 	usage      model.Usage
 	haveUsage  bool
 	transcript strings.Builder // plain-text from assistant text blocks, for marker parsing
+}
+
+// streamFormat reports which line parser RunStream should use for a command:
+// "opencode" when the command runs opencode (or already carries --format json),
+// otherwise "claude" (the default stream-json path).
+func streamFormat(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if strings.Contains(trimmed, "--format json") || strings.Contains(trimmed, "--format=json") || invokesOpencode(trimmed) {
+		return "opencode"
+	}
+	return "claude"
 }
 
 func (w *streamSink) Write(p []byte) (int, error) {
@@ -93,9 +109,15 @@ func (w *streamSink) flush() {
 	}
 }
 
-// handle parses one stream-json line for activity, usage, and transcript text.
+// handle parses one stream line for activity, usage, and transcript text,
+// branching on the sink's format. The claude/default path is left byte-for-byte
+// unchanged; the opencode path uses the Task 1 NDJSON parsers.
 func (w *streamSink) handle(line []byte) {
 	if len(bytes.TrimSpace(line)) == 0 {
+		return
+	}
+	if w.format == "opencode" {
+		w.handleOpencode(line)
 		return
 	}
 	if ev, ok := ParseActivity(line); ok {
@@ -123,6 +145,34 @@ func (w *streamSink) handle(line []byte) {
 					w.transcript.WriteByte('\n')
 				}
 			}
+		}
+	}
+}
+
+// handleOpencode parses one opencode --format json NDJSON line for activity,
+// usage, and transcript text. Unlike claude's last-wins absolute usage, opencode
+// emits per-step token counts, so usage is ACCUMULATED across step_finish lines
+// (the last cumulative total wins). Top-level `text` parts are written to the
+// transcript so fabrika_* markers stay parseable, mirroring the claude path.
+func (w *streamSink) handleOpencode(line []byte) {
+	if ev, ok := ParseOpencodeActivity(line); ok {
+		ev.Ts = time.Now().UnixMilli()
+		if w.onActivity != nil {
+			w.onActivity(ev)
+		}
+	}
+	if u, ok := ParseOpencodeStreamUsage(line); ok {
+		w.usage.InputTokens += u.InputTokens
+		w.usage.OutputTokens += u.OutputTokens
+		if u.TotalTokens > 0 {
+			w.usage.TotalTokens = u.TotalTokens
+		}
+		w.haveUsage = true
+	}
+	if text, ok := opencodeStreamText(line); ok {
+		w.transcript.WriteString(text)
+		if !strings.HasSuffix(text, "\n") {
+			w.transcript.WriteByte('\n')
 		}
 	}
 }

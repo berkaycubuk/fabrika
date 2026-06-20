@@ -54,9 +54,33 @@ func TestStreamCommand(t *testing.T) {
 			wantStream: true,
 		},
 		{
-			name:       "opencode unchanged",
+			name:       "opencode gets --format json injected",
 			command:    "opencode run -p hi",
-			wantCmd:    "opencode run -p hi",
+			wantCmd:    "opencode run -p hi --format json",
+			wantStream: true,
+		},
+		{
+			name:       "opencode with absolute path",
+			command:    "/usr/local/bin/opencode run -p hi",
+			wantCmd:    "/usr/local/bin/opencode run -p hi --format json",
+			wantStream: true,
+		},
+		{
+			name:       "opencode --format json idempotent",
+			command:    "opencode run -p hi --format json",
+			wantCmd:    "opencode run -p hi --format json",
+			wantStream: true,
+		},
+		{
+			name:       "opencode --format=json idempotent",
+			command:    "opencode run -p hi --format=json",
+			wantCmd:    "opencode run -p hi --format=json",
+			wantStream: true,
+		},
+		{
+			name:       "opencode pinned non-json --format stays buffered",
+			command:    "opencode run -p hi --format text",
+			wantCmd:    "opencode run -p hi --format text",
 			wantStream: false,
 		},
 		{
