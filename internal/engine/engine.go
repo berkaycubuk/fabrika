@@ -770,14 +770,15 @@ func (e *Engine) run(ctx context.Context, task model.Task, ag model.Agent, base 
 	}
 
 	// Stream the implementer like the planner (plan.go): for a *Subprocess whose
-	// command StreamCommand routes through stream-json (claude), run via RunStream
-	// so the activity meter keeps ticking and the idle-stall watchdog regains real
-	// stall detection. The injected command (with --output-format stream-json
-	// --verbose) is run via a copy of the agent so ag stays untouched for the rest
-	// of the run. Every other case — not a *Subprocess, or a non-claude CLI like
-	// opencode that StreamCommand reports stream=false — falls back to buffered Run
-	// unchanged. RunStream gives full result parity with Run, so the AgentResult the
-	// gate path consumes below is identical for both routes.
+	// command StreamCommand routes through streaming (claude via --output-format
+	// stream-json, opencode via --format json), run via RunStream so the activity
+	// meter keeps ticking and the idle-stall watchdog regains real stall detection.
+	// The injected command is run via a copy of the agent so ag stays untouched for
+	// the rest of the run. Every other case — not a *Subprocess, a CLI that is
+	// neither claude nor opencode, or an opencode command pinned to a non-JSON
+	// --format — falls back to buffered Run unchanged. RunStream gives full result
+	// parity with Run, so the AgentResult the gate path consumes below is identical
+	// for both routes.
 	var agentRes agent.AgentResult
 	if sub, ok := e.agent.(*agent.Subprocess); ok {
 		if cmd, stream := agent.StreamCommand(ag.Command); stream {
