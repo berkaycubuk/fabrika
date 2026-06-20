@@ -312,6 +312,33 @@ func ParseReview(out string) (ReviewVerdict, bool) {
 
 // Run executes the agent command in the worktree and parses any escalation.
 func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, worktree, promptFile string) (AgentResult, error) {
+	res, err := s.runCore(ctx, a, t, worktree, promptFile, nil)
+	if err != nil {
+		return res, err
+	}
+	if q, ok := parseEscalation(res.Stdout); ok {
+		res.Escalated = true
+		res.Decision = q
+	}
+	res.Comments = parseComments(res.Stdout)
+	res.Evidence = parseEvidence(res.Stdout)
+	if u, ok := parseUsage(res.Stdout); ok {
+		res.Usage = u
+	}
+	return res, nil
+}
+
+// runCore carries the process/timeout/stall plumbing shared by Run and
+// RunStream: same process-group kill, hard timeout, IdleTimeout stall monitor,
+// and activity meter. extraStdout, when non-nil, is added as an additional
+// writer leg on the agent's stdout (besides the raw buffer, the meter, and any
+// OnOutput leg) so a streaming caller can parse output incrementally; it does
+// not alter buffering. The raw streams are always buffered into res.Stdout /
+// res.Stderr. runCore does NOT parse stdout markers — it returns res with the
+// failure-mode fields set (ExitCode / TimedOut / Stalled / IdleFor) and a
+// non-nil error in the start/stall/timeout/exec-error cases; callers parse the
+// buffered output when err == nil.
+func (s *Subprocess) runCore(ctx context.Context, a model.Agent, t model.Task, worktree, promptFile string, extraStdout io.Writer) (AgentResult, error) {
 	command := RenderCommand(a.Command, promptFile, worktree, a.Model)
 	shell := s.Shell
 	if len(shell) == 0 {
@@ -340,13 +367,17 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 	meter := newActivityMeter()
 	cmd := exec.CommandContext(killCtx, shell[0], args...)
 	cmd.Dir = worktree
-	cmd.Stdout = io.MultiWriter(&stdout, meter)
+	stdoutWriters := []io.Writer{&stdout, meter}
 	if s.OnOutput != nil {
-		cmd.Stdout = io.MultiWriter(&stdout, meter, writerFunc(func(p []byte) (int, error) {
+		stdoutWriters = append(stdoutWriters, writerFunc(func(p []byte) (int, error) {
 			s.OnOutput(t.ID, p)
 			return len(p), nil
 		}))
 	}
+	if extraStdout != nil {
+		stdoutWriters = append(stdoutWriters, extraStdout)
+	}
+	cmd.Stdout = io.MultiWriter(stdoutWriters...)
 	cmd.Stderr = io.MultiWriter(&stderr, meter)
 	// Run the agent in its own process group so a kill (stall, hard timeout, or
 	// human steer — all routed through killCtx) takes down the whole tree, not
@@ -432,15 +463,6 @@ func (s *Subprocess) Run(ctx context.Context, a model.Agent, t model.Task, workt
 		return res, fmt.Errorf("run agent %q: %w", a.Name, runErr)
 	}
 
-	if q, ok := parseEscalation(res.Stdout); ok {
-		res.Escalated = true
-		res.Decision = q
-	}
-	res.Comments = parseComments(res.Stdout)
-	res.Evidence = parseEvidence(res.Stdout)
-	if u, ok := parseUsage(res.Stdout); ok {
-		res.Usage = u
-	}
 	return res, nil
 }
 
