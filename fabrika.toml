@@ -18,3 +18,6 @@
 [autonomy]
   auto_merge = ["low"]
   escalate = ["medium", "high"]
+
+[knowledge]
+  file = "CONTEXT.md"
