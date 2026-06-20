@@ -40,6 +40,8 @@ define ─▶ plan ─▶ approve ─▶ [ implement → gate → review/mutatio
 
 ## Install
 
+![Installing Fabrika and launching the board in under a minute](demo/install.gif)
+
 **macOS / Linux — one line:**
 
 ```sh
