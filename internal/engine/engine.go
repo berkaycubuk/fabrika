@@ -304,11 +304,15 @@ func (e *Engine) recoverOrphans() {
 		return
 	}
 	for _, bt := range bts {
-		if bt.Status != model.BigTaskPlanning {
+		if bt.Status == model.BigTaskPlanning {
+			e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
+			log.Printf("engine: big task %q planning was orphaned by a restart — re-queued", bt.Title)
 			continue
 		}
-		e.setBigTaskStatus(bt.ID, model.BigTaskDraft)
-		log.Printf("engine: big task %q planning was orphaned by a restart — re-queued", bt.Title)
+		// One-time backfill: complete big tasks whose subtasks all merged before
+		// the auto-complete rule existed. The helper guards done/zero-subtask/
+		// not-all-merged cases, so it is a no-op for anything not eligible.
+		e.maybeCompleteBigTask(bt.ID)
 	}
 
 	// A session caught mid-Finish (gating) by a restart lost its gate/merge
