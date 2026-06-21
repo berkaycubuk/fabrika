@@ -247,6 +247,10 @@ func (e *Engine) Start(ctx context.Context) {
 		log.Printf("engine: cleared stale git locks: %v", cleared)
 	}
 	e.reapOrphanProcesses()
+	// GC leaked branches/worktree dirs from prior runs (stale plan branches that
+	// collide on replan, merged-task branches that accumulate). Runs after stale-
+	// lock clearing so deletes aren't wedged by a leftover index.lock.
+	e.gcOrphans()
 	e.recoverOrphans()
 	e.release.ResumeBakeTimers()
 	e.ci.Start(ctx)
