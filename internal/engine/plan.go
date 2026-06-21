@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/git"
 	"github.com/berkaycubuk/fabrika/internal/model"
 	"github.com/berkaycubuk/fabrika/internal/planner"
+	"github.com/google/uuid"
 )
 
 // Preflight validates the target repo is ready to plan and dispatch work: it
@@ -340,37 +342,55 @@ func (e *Engine) planBigTaskCore(bt model.BigTask, ag model.Agent) {
 }
 
 // persistPlan writes the plan row, its tasks (planned), and open decisions, then
-// marks the big task planned and notifies the UI.
+// marks the big task planned and notifies the UI. All of those row writes happen
+// inside a single per-project transaction so a crash mid-persist leaves EITHER
+// no plan/tasks/decisions with the big task still planning, OR the complete plan
+// with the big task marked planned — never a partial plan. The WebSocket emits
+// run only after a successful commit so the UI is never told about rolled-back
+// rows.
 func (e *Engine) persistPlan(bt model.BigTask, raw planner.RawPlan) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	plan := &model.Plan{BigTaskID: bt.ID, Status: model.PlanProposed}
-	if err := e.store.Plans.Create(plan); err != nil {
-		log.Printf("engine: create plan: %v", err)
+	// Assign the plan ID up front so Build can reference it for the decisions'
+	// plan_id; the insert below preserves the same ID.
+	plan := &model.Plan{ID: uuid.NewString(), BigTaskID: bt.ID, Status: model.PlanProposed}
+	tasks, decisions := planner.Build(bt, plan.ID, raw)
+
+	err := e.store.WithProjectTx(func(tx *sql.Tx) error {
+		if err := insertPlanTx(tx, plan); err != nil {
+			return err
+		}
+		for i := range tasks {
+			if err := insertTaskTx(tx, &tasks[i]); err != nil {
+				return err
+			}
+		}
+		for i := range decisions {
+			if err := insertDecisionTx(tx, &decisions[i]); err != nil {
+				return err
+			}
+		}
+		if err := updateBigTaskStatusTx(tx, bt.ID, model.BigTaskPlanned); err != nil {
+			return err
+		}
+		return setPlanFeedbackTx(tx, bt.ID, "")
+	})
+	if err != nil {
+		log.Printf("engine: persist plan: %v", err)
 		return
 	}
-	tasks, decisions := planner.Build(bt, plan.ID, raw)
+
+	// Commit succeeded: announce the now-durable rows to the UI.
 	for i := range tasks {
-		t := tasks[i]
-		if err := e.store.Tasks.Create(&t); err != nil {
-			log.Printf("engine: create planned task: %v", err)
-			continue
-		}
-		e.emit("task.created", t)
+		e.emit("task.created", tasks[i])
 	}
 	for i := range decisions {
-		d := decisions[i]
-		if err := e.store.Decisions.Create(&d); err != nil {
-			log.Printf("engine: create decision: %v", err)
-			continue
-		}
-		e.emit("decision.created", d)
+		e.emit("decision.created", decisions[i])
 	}
-	if err := e.store.BigTasks.UpdateStatus(bt.ID, model.BigTaskPlanned); err != nil {
-		log.Printf("engine: set bigtask planned: %v", err)
+	if bt2, gerr := e.store.BigTasks.Get(bt.ID); gerr == nil {
+		e.emit("bigtask.updated", *bt2)
 	}
-	e.store.BigTasks.SetPlanFeedback(bt.ID, "")
 	plan.Tasks, plan.OpenDecisions = tasks, decisions
 	e.emit("plan.ready", *plan)
 	log.Printf("engine: planned %q -> %d task(s), %d decision(s)", bt.Title, len(tasks), len(decisions))
