@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -165,29 +166,61 @@ func (e *Engine) runResolve(ctx context.Context, task model.Task, ag model.Agent
 func (e *Engine) finalizeResolution(task model.Task, ag model.Agent, base string, repo *git.Repo, ev model.Evidence, logText string, usage model.Usage) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.recordAttempt(task, ag, ev, model.ResultPass, logText, usage)
 
 	wt := e.worktreePath(task.ID)
 	if err := repo.Merge(e.ctx, base, task.Branch); err != nil {
 		// Shouldn't happen (base is already merged into the branch), but guard the
-		// loop: park and route to review rather than retry.
+		// loop: park and route to review rather than retry. The pass attempt is
+		// still recorded so the run's evidence is preserved.
+		e.recordAttempt(task, ag, ev, model.ResultPass, logText, usage)
 		e.setStatus(task.ID, model.TaskReview)
 		e.markMergeConflict(task.ID)
 		e.emitTask(task.ID)
 		log.Printf("engine: resolved branch %q still failed to merge: %v (-> review)", task.Title, err)
 		return
 	}
-	if sha, rerr := repo.RevParse(e.ctx, "HEAD"); rerr == nil {
-		_ = e.store.Tasks.SetMergeCommitSHA(task.ID, sha)
+
+	// Git side first (not transactional): capture the merge SHA and drop the
+	// worktree. The SQLite row writes that record the merge outcome then go in one
+	// transaction so a crash can't leave a half-recorded merge.
+	sha, shaErr := repo.RevParse(e.ctx, "HEAD")
+	if shaErr != nil {
+		log.Printf("engine: RevParse after resolution merge: %v", shaErr)
 	}
 	_ = repo.RemoveWorktree(e.ctx, wt)
 
 	audit := e.sample(e.auditRate())
-	if err := e.store.Tasks.MarkMerged(task.ID, true, audit); err != nil {
-		log.Printf("engine: mark merged after resolution: %v", err)
+	tr := &model.TaskTransition{
+		TaskID:     task.ID,
+		FromStatus: model.TaskRunning,
+		ToStatus:   model.TaskMerged,
+		Actor:      "engine",
+		Reason:     "auto-merged after conflict resolution",
 	}
+	err := e.store.WithProjectTx(func(tx *sql.Tx) error {
+		if err := insertAttemptTx(tx, &model.Attempt{
+			TaskID: task.ID, AgentID: ag.ID, Result: model.ResultPass,
+			Evidence: ev, Usage: usage, Log: logText,
+		}); err != nil {
+			return err
+		}
+		if shaErr == nil {
+			if err := setMergeCommitSHATx(tx, task.ID, sha); err != nil {
+				return err
+			}
+		}
+		if err := markMergedTx(tx, task.ID, true, audit); err != nil {
+			return err
+		}
+		return insertTransitionTx(tx, tr)
+	})
+	if err != nil {
+		log.Printf("engine: record resolved merge: %v", err)
+		return
+	}
+
 	e.clearMergeConflict(task.ID)
-	e.logTransition(task.ID, model.TaskRunning, model.TaskMerged, "engine", "auto-merged after conflict resolution")
+	e.emit("task.transition.added", tr)
 	e.emitTask(task.ID)
 	log.Printf("engine: task %q -> merged (conflict auto-resolved, audit=%v)", task.Title, audit)
 }
