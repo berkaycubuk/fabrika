@@ -237,6 +237,15 @@ func (e *Engine) configuredIdleTimeout() (time.Duration, bool) {
 // Start launches the dispatch loop until ctx is cancelled.
 func (e *Engine) Start(ctx context.Context) {
 	e.ctx, e.cancel = context.WithCancel(ctx)
+	// Clear stale git index.lock files left by a killed commit/merge before any
+	// orphan recovery runs git worktree/branch deletes (a stale lock would wedge
+	// them). The single-instance flock is held, so no git child is running and any
+	// lock older than a few seconds is necessarily stale. Best-effort.
+	if cleared, err := git.ClearStaleLocks(e.repoRoot, 10*time.Second); err != nil {
+		log.Printf("engine: clear stale git locks: %v", err)
+	} else if len(cleared) > 0 {
+		log.Printf("engine: cleared stale git locks: %v", cleared)
+	}
 	e.reapOrphanProcesses()
 	e.recoverOrphans()
 	e.release.ResumeBakeTimers()
