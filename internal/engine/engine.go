@@ -12,6 +12,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"math/rand"
@@ -1234,13 +1235,48 @@ func (e *Engine) Accept(taskID string, force bool) error {
 	if err := repo.Merge(e.ctx, base, t.Branch); err != nil {
 		return fmt.Errorf("merge failed: %w", err)
 	}
-	if sha, err := repo.RevParse(e.ctx, "HEAD"); err == nil {
-		_ = e.store.Tasks.SetMergeCommitSHA(taskID, sha)
-	} else {
-		log.Printf("engine: RevParse after accept merge: %v", err)
+	// Git side first (not transactional): capture the merge SHA and drop the
+	// worktree, then record the merge outcome (SHA + status + transition) in one
+	// transaction so a crash can't leave a half-recorded merge.
+	sha, shaErr := repo.RevParse(e.ctx, "HEAD")
+	if shaErr != nil {
+		log.Printf("engine: RevParse after accept merge: %v", shaErr)
 	}
 	_ = repo.RemoveWorktree(e.ctx, e.worktreePath(taskID))
-	e.setStatusBy(taskID, model.TaskMerged, "human", "accepted")
+
+	from := t.Status
+	var tr *model.TaskTransition
+	if from != model.TaskMerged {
+		tr = &model.TaskTransition{
+			TaskID: taskID, FromStatus: from, ToStatus: model.TaskMerged,
+			Actor: "human", Reason: "accepted",
+		}
+	}
+	if err := e.store.WithProjectTx(func(tx *sql.Tx) error {
+		if shaErr == nil {
+			if err := setMergeCommitSHATx(tx, taskID, sha); err != nil {
+				return err
+			}
+		}
+		if err := updateTaskStatusTx(tx, taskID, model.TaskMerged); err != nil {
+			return err
+		}
+		if tr != nil {
+			return insertTransitionTx(tx, tr)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("record merge: %w", err)
+	}
+
+	// Commit succeeded: a move out of review invalidates a prior merge-conflict
+	// verdict (mirrors setStatusBy), then announce to the UI.
+	if from == model.TaskReview {
+		e.clearMergeConflict(taskID)
+	}
+	if tr != nil {
+		e.emit("task.transition.added", tr)
+	}
 	e.emitTask(taskID)
 	e.maybeCompleteBigTask(t.BigTaskID)
 	log.Printf("engine: merged task %q (%s -> %s, force=%v)", t.Title, t.Branch, base, force)
