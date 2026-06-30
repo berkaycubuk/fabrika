@@ -2,7 +2,7 @@ package api
 
 import (
 	"net/http"
-	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/berkaycubuk/fabrika/internal/model"
@@ -10,8 +10,25 @@ import (
 	"github.com/berkaycubuk/fabrika/internal/store"
 )
 
+// listTasks applies additive query-parameter filtering and an optional limit
+// entirely through the store (a SQL LIMIT, not a Go slice). Each supported
+// param (status, agentId, riskTier, bigTaskId) accepts a single value or a
+// comma-separated list (OR within a param); different params combine with AND.
+// An absent or empty param applies no constraint on its field. A `limit` that
+// fails to parse or is <= 0 means no limit.
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
-	tasks, err := s.store.Tasks.List()
+	q := r.URL.Query()
+	filter := store.TaskFilter{
+		Statuses:   splitParam(q.Get("status")),
+		AgentIDs:   splitParam(q.Get("agentId")),
+		RiskTiers:  splitParam(q.Get("riskTier")),
+		BigTaskIDs: splitParam(q.Get("bigTaskId")),
+	}
+	if n, err := strconv.Atoi(q.Get("limit")); err == nil && n > 0 {
+		filter.Limit = n
+	}
+
+	tasks, err := s.store.Tasks.ListFiltered(filter)
 	if err != nil {
 		mapStoreErr(w, err)
 		return
@@ -19,35 +36,17 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []model.Task{}
 	}
-	tasks = filterTasks(tasks, r.URL.Query())
 	tasks = s.engine.PushAnnotate(r.Context(), tasks)
 	writeJSON(w, http.StatusOK, tasks)
 }
 
-// filterTasks applies additive query-parameter filtering to the task slice.
-// Each supported param (status, agentId, riskTier, bigTaskId) accepts a single
-// value or a comma-separated list (OR within a param); different params combine
-// with AND. An absent or empty param applies no constraint on its field.
-func filterTasks(tasks []model.Task, q url.Values) []model.Task {
-	matches := func(values, field string) bool {
-		values = strings.TrimSpace(values)
-		if values == "" {
-			return true
-		}
-		for _, v := range strings.Split(values, ",") {
-			if strings.TrimSpace(v) == field {
-				return true
-			}
-		}
-		return false
-	}
-	out := []model.Task{}
-	for _, t := range tasks {
-		if matches(q.Get("status"), t.Status) &&
-			matches(q.Get("agentId"), t.AgentID) &&
-			matches(q.Get("riskTier"), t.RiskTier) &&
-			matches(q.Get("bigTaskId"), t.BigTaskID) {
-			out = append(out, t)
+// splitParam splits a raw query value on commas, trims each element, and drops
+// empties. An absent or all-empty value yields nil (no constraint).
+func splitParam(raw string) []string {
+	var out []string
+	for _, v := range strings.Split(raw, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
 		}
 	}
 	return out
