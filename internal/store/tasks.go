@@ -433,6 +433,63 @@ func (r *TaskRepo) ListByStatus(statuses ...string) ([]model.Task, error) {
 	return out, rows.Err()
 }
 
+// TaskFilter constrains ListFiltered. Each slice is an OR-set (empty = no
+// constraint); distinct fields are AND-ed together. Limit <= 0 means no limit.
+type TaskFilter struct {
+	Statuses   []string // OR-set; empty = no constraint
+	AgentIDs   []string // OR-set; empty = no constraint
+	RiskTiers  []string // OR-set; empty = no constraint
+	BigTaskIDs []string // OR-set; empty = no constraint
+	Limit      int      // <= 0 means no limit
+}
+
+// ListFiltered returns tasks matching the filter, newest-first, capped at the
+// SQL level by f.Limit. Each non-empty slice contributes an `IN (...)` clause;
+// the clauses are AND-ed. Returns an empty slice when nothing matches.
+func (r *TaskRepo) ListFiltered(f TaskFilter) ([]model.Task, error) {
+	var clauses []string
+	var args []interface{}
+	addIn := func(col string, vals []string) {
+		if len(vals) == 0 {
+			return
+		}
+		ph := strings.TrimRight(strings.Repeat("?,", len(vals)), ",")
+		clauses = append(clauses, col+` IN (`+ph+`)`)
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	addIn("status", f.Statuses)
+	addIn("agent_id", f.AgentIDs)
+	addIn("risk_tier", f.RiskTiers)
+	addIn("big_task_id", f.BigTaskIDs)
+
+	q := `SELECT ` + taskReadCols + ` FROM tasks`
+	if len(clauses) > 0 {
+		q += ` WHERE ` + strings.Join(clauses, ` AND `)
+	}
+	q += ` ORDER BY created_at DESC`
+	if f.Limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, f.Limit)
+	}
+
+	rows, err := r.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}
+
 // StatusByIDs returns a map from task ID to status for the given IDs.
 // Missing IDs are simply absent from the map. Empty/nil input returns an empty map.
 func (r *TaskRepo) StatusByIDs(ids []string) (map[string]string, error) {
