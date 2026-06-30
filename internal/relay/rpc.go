@@ -11,7 +11,8 @@ import (
 // relayAllowlist is the set of API calls a paired phone may make: the
 // attention feed, the judgment actions on it, the full task list (the board's
 // lifecycle columns), defining/grooming the backlog, the per-task comment
-// thread, and shipping the branch. Sessions, steering,
+// thread, managing the agent registry (list/create/update/delete and
+// enable/disable), and shipping the branch. Sessions, steering,
 // settings, config writes, uploads and the events WebSocket are deliberately
 // excluded — the phone is for judgment and kicking off work, not full
 // operations.
@@ -30,6 +31,12 @@ var relayAllowlist = []struct{ method, pattern string }{
 	{"POST", "/api/bigtasks"},            // define a big task (Create & plan / Backlog)
 	{"POST", "/api/bigtasks/{id}/plan"},  // promote a backlog item into planning
 	{"DELETE", "/api/bigtasks/{id}"},     // drop a backlog item from the phone
+	{"GET", "/api/agents"},               // list the agent registry
+	{"POST", "/api/agents"},              // register a new agent
+	{"PUT", "/api/agents/{id}"},          // edit an agent
+	{"DELETE", "/api/agents/{id}"},       // remove an agent
+	{"POST", "/api/agents/{id}/enable"},  // enable an agent
+	{"POST", "/api/agents/{id}/disable"}, // disable an agent
 	{"POST", "/api/decisions/{id}/answer"},
 	{"POST", "/api/plans/{id}/approve"},
 	{"POST", "/api/plans/{id}/reject"},
