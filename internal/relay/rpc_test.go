@@ -20,9 +20,15 @@ func TestAllowlist(t *testing.T) {
 		{"POST", "/api/tasks/t1/audit-ok"},
 		{"GET", "/api/tasks/t1/comments"},
 		{"POST", "/api/tasks/t1/comments"},
-		{"DELETE", "/api/bigtasks/b1"}, // backlog grooming from the phone
-		{"POST", "/api/git/push"},      // ship the branch from the phone
-		{"GET", "/api/attention?x=1"},  // query strings don't bypass
+		{"DELETE", "/api/bigtasks/b1"},     // backlog grooming from the phone
+		{"GET", "/api/agents"},             // list the agent registry
+		{"POST", "/api/agents"},            // register an agent
+		{"PUT", "/api/agents/a1"},          // edit an agent
+		{"DELETE", "/api/agents/a1"},       // remove an agent
+		{"POST", "/api/agents/a1/enable"},  // enable an agent
+		{"POST", "/api/agents/a1/disable"}, // disable an agent
+		{"POST", "/api/git/push"},          // ship the branch from the phone
+		{"GET", "/api/attention?x=1"},      // query strings don't bypass
 	}
 	for _, c := range allow {
 		if !allowed(c.method, c.path) {
@@ -45,6 +51,8 @@ func TestAllowlist(t *testing.T) {
 		{"POST", "/api/bigtasks/reorder"},      // board ordering is local-only
 		{"POST", "/api/tasks/t1/accept/extra"}, // extra segment
 		{"POST", "/api/relay/pair"},            // no relay-ception
+		{"GET", "/api/agents/a1"},              // no GET-by-id agent route
+		{"POST", "/api/agents/a1/route"},       // not in the allowlist
 	}
 	for _, c := range deny {
 		if allowed(c.method, c.path) {
